@@ -39,6 +39,14 @@
 ;; or "syntax" like before?  or  ?
 
 
+;; NOTE: most (if not all) of the functionality in this module is also
+;; available as routines in Gambit core; when I wrote this code I
+;; didn't know what was available where, so I wrote this from scratch,
+;; but at some point I or someone else should look into replacing this
+;; with the Gambit core routines and maybe merge what's left into
+;; Gambit core.
+
+
 (define (expr? obj) ;; returns false for expressions without 'attached notes'
   (and (vector? obj)
        (##fixnum.= (##vector-length obj) 4)
