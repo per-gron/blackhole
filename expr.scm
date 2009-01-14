@@ -1,9 +1,3 @@
-;; Copyright 2006-2009 by Christian Jaeger, <christian at pflanze mine nu>
-
-;; Published under the terms of either the GNU LGPL Version 2.1 or the
-;; Apache License Version 2.0; you can choose whichever license you
-;; prefer.
-
 (define (map* fn obj #!optional (tail '()))
   (let rec ((obj obj))
     (cond ((pair? obj)
