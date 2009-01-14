@@ -162,22 +162,27 @@
    
    (c-declare
     (lambda args
+      (*build-loadenv-force-compile* #t)
       (void)))
    
    (c-initialize
     (lambda args
+      (*build-loadenv-force-compile* #t)
       (void)))
    
    (c-define-type
     (lambda args
+      (*build-loadenv-force-compile* #t)
       (void)))
    
    (c-lambda
     (lambda args
+      (*build-loadenv-force-compile* #t)
       (void)))
    
    (c-define
     (lambda args
+      (*build-loadenv-force-compile* #t)
       (void)))))
 
 (define-macro (make-loadenv-vars . vars)
@@ -389,9 +394,10 @@
                          ,resolver-args))))))))
 
 (define (resolve-modules names #!optional cm)
-  (apply append (map (lambda (x)
-                       (resolve-module x cm))
-                     names)))
+  (apply append
+         (map (lambda (x)
+                (resolve-module x cm))
+              names)))
 
 (define (resolve-one-module name #!optional cm)
   (let ((res (resolve-module name cm)))
@@ -456,9 +462,12 @@
        (or (table-ref (*calc-info-cache*)
                       (cons pp mp)
                       #f)
-           (let ((ret ((package-calculate-info (module-package mod))
+           (let ((ret ((package-calculate-info
+                        (module-package mod))
                        mod)))
-             (table-set! (*calc-info-cache*) (cons pp mp) ret)
+             (table-set! (*calc-info-cache*)
+                         (cons pp mp)
+                         ret)
              ret))))))
 
 (define module-include
