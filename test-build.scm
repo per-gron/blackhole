@@ -806,3 +806,61 @@
                   ((two a) (one a)))))
             
             (two (lambda (x) #t)))))
+
+;; Test that define-syntax can take syntactic closures as the first
+;; parameter.
+(begin
+  (expand-macro
+   `(define-syntax
+      ,(make-syntactic-closure (build#top-environment)
+                               '()
+                               'xx)
+      (syntax-rules ()
+        ((xx) #t))))
+  ;; If this test fails, it will already have generated an error by
+  ;; now.
+  #t)
+
+;; This once resulted in an infinite loop. It is a more intricate test
+;; for define-syntax' ability to take syntactic closures as first
+;; parameter.
+(let-syntax
+    ((mac
+      (syntax-rules ()
+        ((mac name)
+         (define-syntax name
+           (syntax-rules ()
+             ((name) 'name)))))))
+  (mac xx)
+  (eq? (xx) 'xx))
+
+;; Test that let-syntax can take syntactic closures as names of the
+;; macros.
+(eval
+ (expand-macro
+  `(let-syntax
+       ((,(make-syntactic-closure (build#top-environment)
+                                  '()
+                                  'xx)
+         (syntax-rules ()
+           ((xx) #t))))
+     (xx))))
+
+
+
+
+
+;; This currently doesn't work; The xx inside the syntax-rules macro
+;; leaks.
+(let-syntax
+    ((mac
+      (syntax-rules ()
+        ((mac)
+         (define-syntax xx
+           (syntax-rules ()
+             ((xx) #f)))))))
+  (define-syntax xx
+    (syntax-rules ()
+      ((xx) #t)))
+  (mac)
+  (xx))

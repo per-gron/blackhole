@@ -173,8 +173,25 @@
 
 (define (make-syntactic-closure env ids form)
   (cond
-   ((and (null? ids)
-         (syntactic-closure? form))
+   ((and (syntactic-closure? form)
+         (null?
+          (syntactic-closure-ids ids)))
+    form)
+
+   ;; This, in combination with the next clause is an important
+   ;; optimization because other parts of the code assumes that it is
+   ;; done:
+   ;;
+   ;; What it does is to guarantee that identifiers are either just a
+   ;; symbol, or a syntactic closure containing a symbol. In other
+   ;; words, identifiers can never be multiple syntactic closures
+   ;; nested in each other.
+   ;;
+   ;; There is no case where multiple nested syntactic closures that
+   ;; are an identifier cannot be replaced with just a symbol or one
+   ;; syntactic closure containing a symbol.
+   ((and (syntactic-closure? form)
+         (symbol? (syntactic-closure-form form)))
     form)
 
    ((symbol? form)
@@ -214,12 +231,28 @@
    "#"))
 
 (define (environment-add-macro-fun name fun env)
-  (environment-top-ns-macro-add env name fun env)
-  (string->symbol
-   (string-append
-    (module-namespace (environment-module env))
-    (symbol->string name)
-    "|||macro|||")))
+  (let ((fn
+         (lambda (name env)
+           (environment-top-ns-macro-add env name fun env)
+           (string->symbol
+            (string-append
+             (module-namespace (environment-module env))
+             (symbol->string name)
+             "|||macro|||")))))
+    (cond
+     ((symbol? name)
+      (fn name env))
+
+     ((identifier? name)
+      ;; This code assumes that make-syntactic-closure guarantees that
+      ;; identifiers never contain nested syntactic closures and that
+      ;; syntactic closures that contain a symbol never has that
+      ;; particular symbol in the ids list.
+      (fn (synclosure-extract-form name)
+          (syntactic-closure-env name)))
+
+     (else
+      (error "Name must be an identifier" name)))))
 
 ;; Names is a list of symbols or pairs, where the car
 ;; is the symbol and the cdr is its namespace.
@@ -940,7 +973,12 @@
 (define (identifier? id)
   (or (symbol? id)
       (and (syntactic-closure? id)
-           (identifier?
+           ;; One might think that the next line has to be identifier?
+           ;; and not just symbol?, to create a recursive test, but
+           ;; optimizations that are done by make-syntactic-closure
+           ;; that guarantee that identifiers never are multiple
+           ;; nested syntactic closures makes that redundant.
+           (symbol?
             (syntactic-closure-form id)))))
 
 (define (identifier=? env1 id1 env2 id2)
@@ -1140,7 +1178,7 @@
          
          (let* ((name (cadr code))
                 (trans (caddr code))
-                (before-name (expand-macro (expr*:value name) env)))
+                (before-name (expr*:value name)))
            (if (top-level)
                (let* ((fun (parameterize
                             ((calcing #f))
