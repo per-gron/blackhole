@@ -175,7 +175,7 @@
   (cond
    ((and (syntactic-closure? form)
          (null?
-          (syntactic-closure-ids ids)))
+          (syntactic-closure-ids form)))
     form)
 
    ;; This, in combination with the next clause is an important
@@ -1186,13 +1186,13 @@
                       (fn-name (environment-add-macro-fun
                                 before-name
                                 (eval-no-hook fun)
-                                env))
-                      (def `(##define ,fn-name
-                              ,fun)))
-                 (expand-macro (if (calcing)
-                                   `(define-macro-register ,name ,trans)
-                                   def)
-                               empty-environment))
+                                env)))
+                 (expand-macro
+                  (if (calcing)
+                      `(define-macro-register ,name ,trans)
+                      `(##define ,fn-name
+                         ,fun))
+                  empty-environment))
                source)))))
    
    (define-macro-register

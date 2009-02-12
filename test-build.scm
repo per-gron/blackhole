@@ -849,7 +849,6 @@
 
 
 
-
 ;; This currently doesn't work; The xx inside the syntax-rules macro
 ;; leaks.
 (let-syntax
@@ -864,3 +863,16 @@
       ((xx) #t)))
   (mac)
   (xx))
+
+;; When evaluating this, whoa gets exported as macro to the top
+;; level. (See above) I think this is related to the fact that top
+;; level stuff is stored with a hashtable that is not cloned when
+;; making sub-environments. That is: An incorrent assumption that
+;; there is only one top level per environment tree.
+(expand-macro
+ (make-syntactic-closure
+  (build#make-environment (build#top-environment))
+  '()
+  '(define-syntax whoa
+     (syntax-rules ()
+       ((whoa) #t)))))

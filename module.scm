@@ -785,6 +785,9 @@
    ;; include
    (lambda (mod)
      '(##namespace ("build#"
+                    current-package-directory
+                    package-search-directory
+                    
                     make-package
                     package-path
                     package-include
