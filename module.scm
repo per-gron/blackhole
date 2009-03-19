@@ -10,34 +10,26 @@
 ;; This file only contains the neccesary functions. Utilities are
 ;; supposed to be in a separare module in the standard library.
 
-;;;; ---------- Package paths ----------
+;;;; ---------- Loaders ----------
 
-(define package-file "Packagefile")
-
-(define (current-package-directory)
-  (package-search-directory (current-directory)))
-
-(define (package-search-directory dir #!optional orig-dir)
-  (let ((pfile (path-expand package-file dir)))
-    (if (file-exists? pfile)
-        dir
-        (let ((parent-dir (path-normalize ".." #f dir)))
-          (if (equal? dir parent-dir)
-              (or orig-dir dir)
-              (package-search-directory
-               parent-dir
-               (or orig-dir dir)))))))
-
-;;;; ---------- Packages ----------
-
-(define-type package
+(define-type loader
   id: 786F06E1-BAF1-45A5-B31F-ED09AE93514F
 
-  path
+  ;; Returns an s-expression with code that use should expand to when
+  ;; a module is used.
   (include unprintable: equality-skip: read-only:)
+  ;; Returns a list of lists. The inner list is arguments to the
+  ;; load-once function, will be called like (apply load-once ...)
   (load unprintable: equality-skip: read-only:)
-  (all-modules unprintable: equality-skip: read-only:)
+  ;; Returns a module-info object for the given module
   (calculate-info unprintable: equality-skip: read-only:)
+  ;; Takes a relative module identifier symbol and optionally an
+  ;; origin path, to which the path should be interpreted relative
+  ;; to, and returns the object that should be in the path field of a
+  ;; module object.
+  (path-absolutize unprintable: equality-skip: read-only:)
+  ;; Takes a module and returns a string for the name of the module
+  (module-name unprintable: equality-skip: read-only:)
   ;; Returns #t if yes, #f if no or 'not-compiled if the module is not
   ;; compiled at all.
   (needs-compile? unprintable: equality-skip: read-only:)
@@ -86,7 +78,7 @@
 
    (module
     (lambda (code env mac-env)
-      (error "Ill-placed module" code)))
+      (error "Ill-placed module form" code)))
    
    (define
      (lambda (code env mac-env)
@@ -325,42 +317,44 @@
 
 ;;;; ---------- Module objects ----------
 
-;; A module object consists of the package and the absolute module name
+;; A module object consists of the loader and the module path
 
 (define-type module
   id: 48AC4955-EC9E-466F-B8EF-B7F0B9BBC63D
 
-  ;; The package object
-  (package read-only:)
-  ;; The absolute module name
+  ;; The loader object
+  (loader read-only:)
+  ;; The absolute module path. It must be a hashable object.
   (path read-only:))
 
-;;;; ---------- Package resolvers ----------
+;;;; ---------- Module resolvers ----------
 
-;; A package resolver is a function that takes a list (like (/srfi/1)
-;; or (spork /core)), the current package and the current module path
+;; A module resolver is a function that takes a list (like (/srfi/1)
+;; or (spork /core)), the current loader and the current module path
 ;; (or #f) and returns a module identifier.
 
-(define (current-package-resolver pkg path . ids)
+;; This is the 'here module resolver function
+(define (current-module-resolver loader path . ids)
   (map (lambda (id)
          (make-module
-          pkg
-          (module-path-absolutize id path)))
+          loader
+          ((loader-path-absolutize loader) id path)))
        ids))
 
-(define (make-package-resolver pkg)
-  (lambda (_ path . ids)
+(define (package-module-resolver path)
+  (lambda (_ __ . ids)
     (map (lambda (id)
-           (if (not (module-path-absolute? id))
-               (error "Module name must be absolute")
-               (make-module pkg id)))
+           (make-module
+            local-loader
+            ((loader-path-absolutize local-loader) id path)))
          ids)))
 
-(define (make-singleton-package-resolver pkg)
+;; This is a helper function for singleton loaders, for instance 'build
+(define (make-singleton-module-resolver pkg)
   (lambda (_ __)
     (list (make-module pkg #f))))
 
-(define package-resolvers '())
+(define *module-resolvers* '())
 
 (define (resolve-module name #!optional cm)
   (if (module? name)
@@ -370,28 +364,27 @@
             (cond
              ((symbol? name)
               (values 'here (list name)))
+             ((string? name)
+              (values 'lib (list name)))
              ((pair? name)
               (values (car name) (cdr name)))
              (else
               (error "Invalid module identifier:" name))))
         (lambda (resolver-id resolver-args)
           (let ((resolver (let ((pair (assq resolver-id
-                                            package-resolvers)))
+                                            *module-resolvers*)))
                             (and pair (cdr pair)))))
             (if (not resolver)
-                (error "Package resolver not found:" resolver-id)
+                (error "Module resolver not found:" resolver-id)
                 (apply resolver
                        `(,(if cm
-                              (module-package cm)
-                              (current-package))
+                              (module-loader cm)
+                              (current-loader))
                          ,(if cm
                               (module-path cm)
                               (let ((current-mod (current-module)))
-                                (if current-mod
-                                    (module-path current-mod)
-                                    (repl-path))))
-                         .
-                         ,resolver-args))))))))
+                                (and current-mod (module-path current-mod))))
+                         ,@resolver-args))))))))
 
 (define (resolve-modules names #!optional cm)
   (apply append
@@ -413,31 +406,11 @@
 (define (current-module)
   (environment-module (top-environment)))
 
-(define *repl-package* #f)
-
-(define (repl-package)
-  (if (or (not *repl-package*)
-          (not (equal? (path-normalize (current-directory))
-                       (package-path *repl-package*))))
-      (set! *repl-package* (package (current-package-directory))))
-  *repl-package*)
-
-(define (repl-path)
-  (let ((cd (current-directory))
-        (pd (package-path (repl-package))))
-    (if (not (equal? (substring cd 0 (string-length pd))
-                     pd))
-        (error "Internal error in repl-path:" cd pd))
-    (string->symbol
-     (substring cd
-                (- (string-length pd) 1)
-                (string-length cd)))))
-
-(define (current-package)
+(define (current-loader)
   (let ((cm (current-module)))
     (if cm
-        (module-package (current-module))
-        (repl-package))))
+        (module-loader (current-module))
+        local-loader)))
 
 
 (define *calc-info-cache* (make-parameter #f))
@@ -457,33 +430,28 @@
 (define module-info
   (make-module-util-function
    (lambda (mod)
-     (let ((pp (package-path (module-package mod)))
-           (mp (module-path mod)))
-       (or (table-ref (*calc-info-cache*)
-                      (cons pp mp)
-                      #f)
-           (let ((ret ((package-calculate-info
-                        (module-package mod))
+     (let ((mp (module-path mod)))
+       (or (table-ref (*calc-info-cache*) mp #f)
+           (let ((ret ((loader-calculate-info
+                        (module-loader mod))
                        mod)))
-             (table-set! (*calc-info-cache*)
-                         (cons pp mp)
-                         ret)
+             (table-set! (*calc-info-cache*) mp ret)
              ret))))))
 
 (define module-include
   (make-module-util-function
    (lambda (mod)
-     ((package-include (module-package mod)) mod))))
+     ((loader-include (module-loader mod)) mod))))
 
 (define module-load
   (make-module-util-function
    (lambda (mod)
-     ((package-load (module-package mod)) mod))))
+     ((loader-load (module-loader mod)) mod))))
 
 (define module-needs-compile?
   (make-module-util-function
    (lambda (mod)
-     ((package-needs-compile? (module-package mod)) mod))))
+     ((loader-needs-compile? (module-loader mod)) mod))))
 
 (define (module-compile! mod #!optional continue-on-error)
   (let ((mod (resolve-one-module mod)))
@@ -498,12 +466,12 @@
                 #f)
               (raise e)))
         (lambda ()
-          ((package-compile! (module-package mod)) mod)))))))
+          ((loader-compile! (module-loader mod)) mod)))))))
 
 (define module-clean!
   (make-module-util-function
    (lambda (mod)
-     ((package-clean! (module-package mod)) mod))))
+     ((loader-clean! (module-loader mod)) mod))))
 
 (define module-namespace
   (let ((fn
@@ -512,8 +480,7 @@
             (let ((path (module-path mod)))
               (and path
                    (string-append
-                    (path-strip-directory
-                     (symbol->string path))
+                    ((loader-module-name (module-loader mod)) mod)
                     "#")))))))
     (lambda (mod)
       ;; This function might be called with #f as argument
@@ -566,7 +533,7 @@
         (use ,@(module-info-uses (module-info mod)))))))
 
 
-;;;; ---------- Package utility functions ----------
+;;;; ---------- Loader utility functions ----------
 
 (define *load-once-registry* (make-table))
 
@@ -653,29 +620,15 @@
                  ld-options: (string-append
                               ld-options " " *compiler-ld-options*))))
 
-(define (find-file path mod)
-  (string-append path
-                 "/"
-                 (symbol->string (module-path mod))))
-
-(define (find-ext path mod ext)
-  (string-append (find-file path mod) "." ext))
-
-(define (find-scm path mod)
-  (find-ext path mod "scm"))
-
-(define (object-files path mod)
-  (let* ((id (module-path mod))
-         (name (symbol->string id))
-         (dir (path-directory
-               (string-append path "/" name)))
+(define (object-files path)
+  (let* ((dir (path-directory path))
          (begin-str (string-append (path-strip-directory
-                                    name)
+                                    (path-strip-extension path))
                                    ".o")))
     (map (lambda (fn)
            (path-expand fn dir))
          (filter (lambda (fn) (string-begins-with fn begin-str))
-            (directory-files dir)))))
+                 (directory-files dir)))))
 
 (define (object-file-extract-number fn)
   (or (string->number
@@ -693,8 +646,8 @@
                   (string-length fn)))
       0))
 
-(define (last-object-file path mod)
-  (let ((lst (object-files path mod))
+(define (last-object-file path)
+  (let ((lst (object-files path))
         (max-num -1)
         (res #f))
     (let loop ((lst lst))
@@ -707,96 +660,95 @@
             (loop (cdr lst)))))
     res))
 
-(define (clean-file path mod)
+(define (clean-file path)
   (for-each delete-file
-            (object-files path mod)))
+            (object-files path)))
 
 
-;;;; ---------- Package implementations ----------
+;;;; ---------- Loader implementations ----------
 
-(define (package path)
-  (let ((path (path-normalize path)))
-    (make-package
-     ;; path
-     path
-     
-     ;; include
-     (lambda (mod)
-       (let* ((info (module-info mod))
-              (syms (append (module-info-defines info)
-                            (module-info-macros info))))
-         `(begin
-            ;; Don't include the namespace directive if no symbols are
-            ;; declared; it will mean an entierly other thing then.
-            ,@(if (null? syms)
-                  '()
-                  `((##namespace (,(module-namespace mod)
-                                  ,@syms)))))))
-     
-     ;; load
-     (lambda (mod)
-       (cons (list (find-file path mod)
-                   mod)
-             (apply append
-                    (map module-load
-                         (module-info-uses
-                          (module-info mod))))))
-    
-     ;; all-modules
-     (lambda ()
-       (find-files-with-ext-remove-ext ".scm" path))
-     
-     ;; calculate-info
-     (lambda (mod)
-       (module-info-calculate mod (find-scm path mod)))
-     
-     ;; needs-compile?
-     (lambda (mod)
-       (let ((of (last-object-file path mod)))
-         (if of
-             (not (file-newer? of (find-scm path mod)))
-             'not-compiled)))
-             
-     
-     ;; clean!
-     (lambda (mod)
-       (clean-file path mod))
-     
-     ;; compile!
-     (lambda (mod)
-       (let ((info (module-info mod)))
-         (with-build-loadenv ;; For *build-loadenv-uses*
-          (lambda ()
-            (let ((result (compile-with-options
-                           mod
-                           (find-scm path mod)
-                           options: (module-info-options info)
-                           cc-options: (module-info-cc-options info)
-                           ld-options-prelude: (module-info-ld-options-prelude
-                                                info)
-                           ld-options: (module-info-ld-options info))))
-              (if (not result)
-                  (error "Compilation failed"))))))))))
+(define local-loader
+  (make-loader
+   ;; include
+   (lambda (mod)
+     (let* ((info (module-info mod))
+            (syms (append (module-info-defines info)
+                          (module-info-macros info))))
+       `(begin
+          ;; Don't include the namespace directive if no symbols are
+          ;; declared; it will mean an entierly other thing then.
+          ,@(if (null? syms)
+                '()
+                `((##namespace (,(module-namespace mod)
+                                ,@syms)))))))
+   
+   ;; load
+   (lambda (mod)
+     (cons (list (path-strip-extension (module-path mod))
+                 mod)
+           (apply append
+                  (map module-load
+                       (module-info-uses
+                        (module-info mod))))))
+   
+   ;; calculate-info
+   (lambda (mod)
+     (module-info-calculate mod (module-path mod)))
+   
+   ;; path-absolutize
+   (lambda (path #!optional ref)
+     (path-normalize (string-append (symbol->string path) ".scm")
+                     #f ;; Don't allow relative paths
+                     (if ref
+                         (path-directory ref)
+                         (current-directory))))
 
-(define build-package
-  (make-package
-   ;; path
-   'build
+   ;; module-name
+   (lambda (mod)
+     (path-strip-directory
+      (path-strip-extension
+       (module-path mod))))
+   
+   ;; needs-compile?
+   (lambda (mod)
+     (let* ((path (module-path mod))
+            (of (last-object-file path)))
+       (if of
+           (not (file-newer? of path))
+           'not-compiled)))
+   
+   ;; clean!
+   (lambda (mod)
+     (clean-file (module-path mod)))
+   
+   ;; compile!
+   (lambda (mod)
+     (let ((info (module-info mod)))
+       (with-build-loadenv ;; For *build-loadenv-uses*
+        (lambda ()
+          (let ((result (compile-with-options
+                         mod
+                         (module-path mod)
+                         options: (module-info-options info)
+                         cc-options: (module-info-cc-options info)
+                         ld-options-prelude: (module-info-ld-options-prelude
+                                              info)
+                         ld-options: (module-info-ld-options info))))
+            (if (not result)
+                (error "Compilation failed")))))))))
+
+(define build-loader
+  (make-loader
    ;; include
    (lambda (mod)
      '(##namespace ("build#"
-                    current-package-directory
-                    package-search-directory
-                    
-                    make-package
-                    package-path
-                    package-include
-                    package-load
-                    package-all-modules
-                    package-calculate-info
-                    package-needs-compile?
-                    package-clean!
-                    package-compile!
+                    make-loader
+                    loader-include
+                    loader-load
+                    loader-calculate-info
+                    loader-needs-compile?
+                    loader-clean!
+                    loader-compile!
 
                     make-module-info
                     module-info-defines
@@ -812,21 +764,17 @@
                     module-info-environment
                     module-info-calculate
 
-                    module-path-absolute?
-                    module-path-absolutize
-
                     resolve-module
                     resolve-modules
                     resolve-one-module
 
-                    repl-package
                     current-module
-                    current-package
+                    current-loader
 
                     with-module-cache
 
                     make-module
-                    module-package
+                    module-loader
                     module-path
                     module-info
                     module-include
@@ -838,14 +786,16 @@
                     module-use
                     module-module
 
-                    package
-                    build-package)))
+                    loader
+                    build-loader)))
    ;; load
    (lambda (mod) '())
-   ;; all-modules
-   (lambda () '())
    ;; calculate-info
    (lambda (mod) empty-module-info)
+   ;; path-absolutize
+   (lambda (path #!optional ref) #f)
+   ;; module-name
+   (lambda (mod) "build")
    ;; needs-compile?
    (lambda (mod) #f)
    ;; clean!
@@ -853,20 +803,20 @@
    ;; compile!
    (lambda (mod) #f)))
 
-(define termite-package
-  (make-package
-   ;; path
-   'termite
+(define termite-loader
+  (make-loader
    ;; include
    (lambda (mod)
      '(##include "~~/lib/termite/termite#.scm"))
    ;; load
    (lambda (mod)
      '(("~~/lib/termite/termite")))
-   ;; all-modules
-   (lambda () '())
    ;; calculate-info
    (lambda (mod) empty-module-info)
+   ;; path-absolutize
+   (lambda (path #!optional ref) #f)
+   ;; module-name
+   (lambda (mod) "termite")
    ;; needs-compile?
    (lambda (mod) #f)
    ;; clean!
@@ -874,10 +824,8 @@
    ;; compile!
    (lambda (mod) #f)))
 
-(define ssax-sxml-package
-  (make-package
-   ;; path
-   'ssax-sxml
+(define ssax-sxml-loader
+  (make-loader
    ;; include
    (lambda (mod)
      '(##namespace ("ssax-sxml#"
@@ -889,10 +837,12 @@
    ;; load
    (lambda (mod)
      '(("~~/lib/ssax-sxml/ssax-sxml")))
-   ;; all-modules
-   (lambda () '())
    ;; calculate-info
    (lambda (mod) empty-module-info)
+   ;; path-absolutize
+   (lambda (path #!optional ref) #f)
+   ;; module-name
+   (lambda (mod) "ssax-sxml")
    ;; needs-compile?
    (lambda (mod) #f)
    ;; clean!
@@ -911,8 +861,18 @@
 (define *compiler-ld-options-prelude* "")
 (define *compiler-ld-options* "")
 
-;; Include configuration
-(##include "conf.scm")
+(set! *compiler-options* '(debug))
+;;(set! *compiler-cc-options* "-I/usr/local/BerkeleyDB.4.7/include")
+;;(set! *compiler-ld-options-prelude* "-L/usr/local/BerkeleyDB.4.7/lib")
+
+(set! *module-resolvers*
+      `((here . ,current-module-resolver)
+        (build . ,(make-singleton-module-resolver
+                   build-loader))
+        (std . ,(package-module-resolver "~~/lib/module/std/"))
+        ;;(termite . ,(make-singleton-module-resolver
+        ;;             termite-loader))
+        ))
 
 ;; Fill in with default values
 (set! *global-includes*

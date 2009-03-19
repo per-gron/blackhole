@@ -876,3 +876,63 @@
   '(define-syntax whoa
      (syntax-rules ()
        ((whoa) #t)))))
+
+
+
+
+(load "~~/lib/module/build")
+(use (std spork/widget))
+
+(define-syntax one
+  (syntax-rules ()
+    ((_ body)
+     (begin body))))
+
+(define-syntax two
+  (syntax-rules ()
+    ((_ body)
+     (one body))))
+
+(two `head)
+
+(letrec-syntax
+    ((one
+      (syntax-rules ()
+        ((_ body)
+         (begin body))))
+     (two
+      (syntax-rules ()
+        ((_ body)
+         (one body)))))
+  (two `head))
+
+(letrec-syntax
+    ((one
+      (syntax-rules ()
+        ((_ body)
+         (begin body))))
+     (two
+      (sc-macro-transformer
+       (lambda (form env)
+         `(one ,(make-syntactic-closure env '() (cadr form)))))))
+  (two `head))
+
+(expand-macro
+ (capture-syntactic-environment
+  (lambda (e)
+    `(let-syntax
+         ((one
+           (syntax-rules ()
+             ((_ body)
+              (begin body)))))
+       (one ,(make-syntactic-closure e '() '`head))))))
+
+(expand-macro
+ (capture-syntactic-environment
+  (lambda (e)
+    `(let-syntax
+         ((one
+           (sc-macro-transformer
+            (lambda (form env)
+              `(begin ,(make-syntactic-closure env '() (cadr form)))))))
+       (one ,(make-syntactic-closure e '() '`head))))))
