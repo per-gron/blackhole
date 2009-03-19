@@ -448,6 +448,20 @@
     (test 3)))
 
 
+;; Test syntactic closures within quasiquotes. (Previously there was a
+;; bug that made this return h1#x, because code inside quasiquotes
+;; that was within syntactic closures would get macroexpanded like
+;; normal code and not as if it was inside a quote.
+(eq? 'x
+     (eval
+      (expand-macro
+       `(let ((x #f))
+          ,(capture-syntactic-environment
+            (lambda (e)
+              (list 'quasiquote
+                    (make-syntactic-closure e '() 'x))))))))
+
+
 ;; This is REALLY a corner case
 ;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
 ;; says that this should return 2, but this system and the system of
@@ -876,63 +890,3 @@
   '(define-syntax whoa
      (syntax-rules ()
        ((whoa) #t)))))
-
-
-
-
-(load "~~/lib/module/build")
-(use (std spork/widget))
-
-(define-syntax one
-  (syntax-rules ()
-    ((_ body)
-     (begin body))))
-
-(define-syntax two
-  (syntax-rules ()
-    ((_ body)
-     (one body))))
-
-(two `head)
-
-(letrec-syntax
-    ((one
-      (syntax-rules ()
-        ((_ body)
-         (begin body))))
-     (two
-      (syntax-rules ()
-        ((_ body)
-         (one body)))))
-  (two `head))
-
-(letrec-syntax
-    ((one
-      (syntax-rules ()
-        ((_ body)
-         (begin body))))
-     (two
-      (sc-macro-transformer
-       (lambda (form env)
-         `(one ,(make-syntactic-closure env '() (cadr form)))))))
-  (two `head))
-
-(expand-macro
- (capture-syntactic-environment
-  (lambda (e)
-    `(let-syntax
-         ((one
-           (syntax-rules ()
-             ((_ body)
-              (begin body)))))
-       (one ,(make-syntactic-closure e '() '`head))))))
-
-(expand-macro
- (capture-syntactic-environment
-  (lambda (e)
-    `(let-syntax
-         ((one
-           (sc-macro-transformer
-            (lambda (form env)
-              `(begin ,(make-syntactic-closure env '() (cadr form)))))))
-       (one ,(make-syntactic-closure e '() '`head))))))

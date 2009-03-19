@@ -667,7 +667,14 @@
              source
              (m code)))))))
      
-     (else (expand-synclosure code env)))))
+     (else
+      (expand-synclosure
+       code
+       env
+       (lambda (code env)
+         (hyg-expand-macro-quasiquote env
+                                      code
+                                      level)))))))
 
 (define (synclosure-extract-form sc)
   (if (syntactic-closure? sc)
@@ -803,7 +810,7 @@
      (else
       form))))
 
-(define (expand-synclosure source env)
+(define (expand-synclosure source env #!optional expand-function)
   (let ((code (expr*:value source)))
     (cond
      ((syntactic-closure? code)
@@ -827,11 +834,12 @@
                             (let ((val (environment-top-ns-macro-get env x)))
                               (and val (cons x val)))))
                       ids)))))
-        (expand-macro (syntactic-closure-form code)
-                      new-env)))
+        ((or expand-function expand-macro)
+         (syntactic-closure-form code)
+         new-env)))
      
      ((syntactic-capture? code)
-      (expand-macro
+      ((or expand-function expand-macro)
        ((syntactic-capture-proc code) env)
        env))
      
