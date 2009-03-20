@@ -870,6 +870,7 @@
              module-deps
              module-compile/deps!
              module-clean/deps!
+             module-generate-export-list
              
              loader
              build-loader))
@@ -952,9 +953,8 @@
         (build . ,(make-singleton-module-resolver
                    build-loader))
         (std . ,(package-module-resolver "~~/lib/module/std/"))
-        ;;(termite . ,(make-singleton-module-resolver
-        ;;             termite-loader))
-        ))
+        (termite . ,(make-singleton-module-resolver
+                     termite-loader))))
 
 ;; Fill in with default values
 (set! *global-includes*

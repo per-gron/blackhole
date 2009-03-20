@@ -68,3 +68,9 @@
 
 (define (module-clean/deps! mod #!optional continue-on-error port)
   (for-each module-clean! (cons mod (module-deps mod #t))))
+
+(define (module-generate-export-list mod)
+  (cons 'export
+        (append
+         (reverse (module-info-defines (module-info mod)))
+         (reverse (module-info-macros (module-info mod))))))
