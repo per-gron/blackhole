@@ -545,11 +545,9 @@
   (let ((fn
          (make-module-util-function
           (lambda (mod)
-            (let ((path (module-path mod)))
-              (and path
-                   (string-append
-                    ((loader-module-name (module-loader mod)) mod)
-                    "#")))))))
+            (string-append
+             ((loader-module-name (module-loader mod)) mod)
+             "#")))))
     (lambda (mod)
       ;; This function might be called with #f as argument
       (if mod (fn mod) ""))))
@@ -597,15 +595,31 @@
        ;;          modules))
        (void)))))
 
-(define module-module
-  (make-module-util-function
-   (lambda (mod)
-     `(begin
-        (use ,mod)
-        (##namespace (,(module-namespace mod)))
-        ,@*global-includes*
-        (use ,@(module-info-uses (module-info mod)))))))
+;; for use by module-module
+(define repl-environment #f)
 
+(define module-module
+  (let ((fn (make-module-util-function
+             (lambda (mod)
+               (for-each (lambda (args)
+                           (apply load-once args))
+                         (module-load mod))
+               (if (not (environment-module (top-environment)))
+                   (set! repl-environment (top-environment)))
+               (top-environment (make-top-environment mod))
+               `(begin
+                  (##namespace (,(module-namespace mod)))
+                  ,@*global-includes*
+                  (use ,@(module-info-uses (module-info mod))))))))
+    (lambda (mod)
+      ;; This function might be called with #f as argument
+      (if mod
+          (fn mod)
+          (begin
+            (top-environment repl-environment)
+            `(begin
+               (##namespace (""))
+               ,@*global-includes*))))))
 
 ;;;; ---------- Loader utility functions ----------
 
