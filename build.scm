@@ -60,6 +60,9 @@
 ;; The module system core
 (##include "module.scm")
 
+;; Some utilities, for instance module-compile/deps!
+(##include "extras.scm")
+
 
 ;; Add the hooks =)
 

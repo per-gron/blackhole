@@ -786,6 +786,10 @@
                     module-use
                     module-module
 
+                    module-deps
+                    module-compile/deps!
+                    module-clean/deps!
+
                     loader
                     build-loader)))
    ;; load
