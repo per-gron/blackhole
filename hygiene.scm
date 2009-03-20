@@ -88,18 +88,26 @@
 
 (define environment-top-ns env-top-ns)
 
-(define (environment-top-ns-add env exported-name actual-name str)
+(define (environment-top-ns-add env exported-name actual-name)
   (table-set! (environment-top-ns env)
               exported-name
-              (list str actual-name)))
+              actual-name))
 
 (define (environment-top-ns-get env name)
   (table-ref (environment-top-ns env) name #f))
 
 (define environment-top-ns-macro env-top-ns-macro)
 
-(define (environment-top-ns-macro-add env name fun m-env)
-  (table-set! (environment-top-ns-macro env) name (list fun m-env)))
+(define (environment-top-ns-macro-add env
+                                      exported-name
+                                      imported-name
+                                      fun
+                                      m-env)
+  (table-set! (environment-top-ns-macro env)
+              exported-name
+              (list imported-name
+                    fun
+                    m-env)))
 
 (define (environment-top-ns-macro-get env name)
   (table-ref (environment-top-ns-macro env) name #f))
@@ -235,12 +243,19 @@
 (define (environment-add-macro-fun name fun env)
   (let ((fn
          (lambda (name env)
-           (environment-top-ns-macro-add env name fun env)
-           (string->symbol
-            (string-append
-             (module-namespace (environment-module env))
-             (symbol->string name)
-             "|||macro|||")))))
+           (let ((sym (string->symbol
+                       (string-append
+                        (module-namespace
+                         (environment-module env))
+                        (symbol->string name)
+                        "|||macro|||"))))
+             (environment-top-ns-macro-add
+              env
+              name ;; The exported name
+              sym ;; The imported name
+              fun
+              env)
+             sym))))
     (cond
      ((symbol? name)
       (fn name env))
@@ -258,6 +273,13 @@
 
 ;; Names is a list of symbols or pairs, where the car
 ;; is the symbol and the cdr is its namespace.
+;;
+;; Because of an unexpected change in the data structure of
+;; environment-inner-ns, this code is right now a hideous mess. I'm
+;; sorry. If you are trying to understand how it works, I can only say
+;; GLHF.
+;;
+;; TODO Clean up.
 (define (environment-add-defines env names thunk)
   (parameterize
    ((scope-level (scope-level)))
@@ -267,38 +289,46 @@
                             (list (car x) (cdr x) new-env)
                             (begin
                               (scope-level (+ (scope-level) 1))
-                              (list x (generate-namespace) new-env))))
+                              (list x
+                                    (generate-namespace) new-env))))
                       names))
           (reset-funs '()))
      (dynamic-wind
          (lambda ()
            (environment-inner-ns-set!
             new-env
-            (filter
+            (map
              (lambda (n)
-               (if (syntactic-closure? (car n))
-                   (begin
-                     (let* ((sc (car n))
-                            (sc-env (syntactic-closure-env sc))
-                            (old-ns (environment-inner-ns
-                                     sc-env)))
-                       (environment-inner-ns-set!
-                        sc-env
-                        (cons (cons (synclosure-extract-form sc)
-                                    (cdr n))
-                              old-ns))
-                       (set! reset-funs
-                             (cons
-                              (lambda ()
-                                (environment-inner-ns-set!
-                                 sc-env
-                                 old-ns))
-                              reset-funs)))
-                     #f)
-                   (not (string-contains
-                         (symbol->string (car n))
-                         #\#))))
-             lists)))
+               (list (car n)
+                     (gen-symbol (cadr n) (car n))
+                     (caddr n)))
+             (filter
+              (lambda (n)
+                (if (syntactic-closure? (car n))
+                    (begin
+                      (let* ((sc (car n))
+                             (sc-env (syntactic-closure-env sc))
+                             (old-ns (environment-inner-ns
+                                      sc-env)))
+                        (environment-inner-ns-set!
+                         sc-env
+                         (let ((name (synclosure-extract-form sc)))
+                           (cons (list name
+                                       (gen-symbol (cadr n) name)
+                                       (caddr n))
+                                 old-ns)))
+                        (set! reset-funs
+                              (cons
+                               (lambda ()
+                                 (environment-inner-ns-set!
+                                  sc-env
+                                  old-ns))
+                               reset-funs)))
+                      #f)
+                    (not (string-contains
+                          (symbol->string (car n))
+                          #\#))))
+              lists))))
          (lambda ()
            (thunk new-env lists))
          (lambda ()
@@ -334,10 +364,10 @@
                 ""
                 (generate-namespace))))
     (if top
-        (environment-top-ns-add env name name ns)
+        (environment-top-ns-add env name (gen-symbol ns name))
         (environment-inner-ns-set!
          env
-         (cons (list name ns env)
+         (cons (list (gen-symbol ns name) env)
                (environment-inner-ns env))))))
 
 ;; Macs is a list of lists where car is name, cadr is the sexp
@@ -824,10 +854,12 @@
                 (filter
                  (lambda (x) x)
                  (map (lambda (x)
-                        (let ((val (or (environment-inner-ns-get env x)
-                                       (environment-top-ns-get env x))))
-                          (and val
-                               (cons x val))))
+                        (let ((inner-val (environment-inner-ns-get env x))
+                              (top-val (environment-top-ns-get env x)))
+                          (or (and inner-val
+                                   (cons x val))
+                              (and top-val
+                                   (list x top-val env)))))
                       ids))
                 (filter
                  (lambda (x) #f)
@@ -877,7 +909,7 @@
                  ;; being expanded if we didn't wrap it in something.
                  (list
                   (cons (expr*:value-set (car code)
-                                         (gen-symbol (car val) hd))
+                                         (car val))
                         (dotted-map (lambda (x)
                                       (expand-macro x env))
                                     (cdr code)))))
@@ -893,52 +925,26 @@
              
              ((and
                (symbol? hd)
-               (let ((symstr (symbol->string hd)))
-                 (cond
-                  ;; This entire clause is a temporary hack that I do
-                  ;; before I actually implement relative module names.
-                  ;;
-                  ;; This code doesn't work right now and is disabled.
-                  ((and #f
-                        (not (string-begins-with symstr "#"))
-                        (string-contains symstr #\#)) =>
-                        (lambda (idx)
-                          (let* ((sym (string->symbol
-                                       (substring symstr
-                                                  (+ idx 1)
-                                                  (string-length symstr))))
-                                 (mod-sym (string->symbol
-                                           (substring symstr 0 idx)))
-                                 (env (with-exception-catcher
-                                       (lambda (e) #f)
-                                       (lambda ()
-                                         (module-info-environment
-                                          (module-info mod-sym))))))
-                            (and env
-                                 (environment-top-ns-macro-get env sym)))))
-                  
-                  (else
-                   (or (environment-top-ns-macro-get search-env hd)
-                       (and (calcing)
-                            (environment-top-ns-macro-get load-environment hd))
-                       (environment-top-ns-macro-get builtin-environment hd)))))) =>
-                       (lambda (mac)
-                         (parameterize
-                          ((inside-letrec (and (inside-letrec) (eq? hd 'begin))))
-                          ((car mac) ;; Macro function
-                           source
-                           env ;; TODO I'm not sure if this should be search-env
-                           ;; Macro namespace
-                           (cadr mac)))))
+               (or (environment-top-ns-macro-get search-env hd)
+                   (and (calcing)
+                        (environment-top-ns-macro-get load-environment hd))
+                   (environment-top-ns-macro-get builtin-environment hd))) =>
+                   (lambda (mac)
+                     (parameterize
+                      ((inside-letrec (and (inside-letrec) (eq? hd 'begin))))
+                      ((cadr mac) ;; Macro function
+                       source
+                       env ;; TODO I'm not sure if this should be search-env
+                       (caddr mac))))) ;; Macro environment
              
-             ((memq hd '(##let
-                            ##let*
-                          ##letrec
-                          ##lambda
-                          ##define
-                          ##namespace
-                          ##case
-                          ##define-macro))
+             ((memq hd '(##namespace
+                         ##let
+                         ##let*
+                         ##letrec
+                         ##lambda
+                         ##define
+                         ##case
+                         ##define-macro))
               (expr*:value-set code
                                (cons (expr*:value-set (car code)
                                                       hd)
@@ -957,8 +963,7 @@
       (cond
        ((environment-inner-ns-get env code) =>
         (lambda (def)
-          (expr*:value-set source
-                           (gen-symbol (car def) code))))
+          (expr*:value-set source (car def))))
        
        ((string-contains (symbol->string code) #\#)
         source)
@@ -970,11 +975,10 @@
        (else
         (expr*:value-set
          source
-         (apply gen-symbol
-                (or (environment-top-ns-get env code)
-                    (environment-top-ns-get builtin-environment
-                                            code)
-                    (list "" code)))))))
+         (or (environment-top-ns-get env code)
+             (environment-top-ns-get builtin-environment
+                                     code)
+             code)))))
      
      (else source))))
 
@@ -1034,12 +1038,11 @@
          (one (environment-inner-ns-get env1 id1))
          (one-pair ;; Pair of (symbol . environment)
           (if one
-              (cons (gen-symbol (car one) id1)
+              (cons (car one)
                     (cadr one))
               (let ((top (environment-top-ns-get env1 id1)))
                 (if top
-                    (cons (apply gen-symbol top)
-                          #f)
+                    (cons top #f)
                     (cons id1 #f)))))
          (strip2 (strip-synclosure env2 id2))
          (id2 (car strip2))
@@ -1047,12 +1050,11 @@
          (two (environment-inner-ns-get env2 id2))
          (two-pair ;; Pair of (symbol . environment)
           (if two
-              (cons (gen-symbol (car two) id2)
+              (cons (car two)
                     (cadr two))
               (let ((top (environment-top-ns-get env2 id2)))
                 (if top
-                    (cons (apply gen-symbol top)
-                          #f)
+                    (cons top #f)
                     (cons id2 #f))))))
     (and
      ;; Compare symbols
@@ -1081,14 +1083,20 @@
 ;; Core macros
 
 (##define-macro (define-env name prefix names macs)
-  (let ((macro-names
-         (map (lambda (mac)
-                (string->symbol
-                 (string-append
-                  prefix
-                  (symbol->string (car mac))
-                  "|||macro|||")))
-              macs)))
+  (let* ((gen-symbol
+          (lambda (ns sym)
+            (string->symbol
+             (string-append
+              ns
+              (symbol->string sym)))))
+         (macro-names
+          (map (lambda (mac)
+                 (string->symbol
+                  (string-append
+                   prefix
+                   (symbol->string (car mac))
+                   "|||macro|||")))
+               macs)))
     `(begin
        ,@(map (lambda (mac name)
                 `(define ,name
@@ -1102,13 +1110,14 @@
                '()
                (list->table
                 ',(map (lambda (name)
-                         (list name prefix name))
+                         (cons name (gen-symbol prefix name)))
                        names))
                (list->table
                 (list
                  ,@(map (lambda (mac mac-name)
                           (list 'list
                                 `',(car mac)
+                                `',mac-name
                                 mac-name
                                 name))
                         macs macro-names))))))))

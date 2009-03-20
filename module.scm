@@ -92,9 +92,10 @@
        (let* ((src (transform-to-lambda (cdr code)))
               (sym (synclosure-extract-form (car src))))
          (environment-top-ns-add (top-environment)
-                                 sym ;; Public (exported) name
-                                 sym ;; Private (actual) name
-                                 (module-namespace (current-module)))
+                                 sym
+                                 (gen-symbol
+                                  (module-namespace (current-module))
+                                  sym))
          (*build-loadenv-defines*
           (cons sym (*build-loadenv-defines*)))
          (void))))
@@ -229,11 +230,14 @@
             (cond
              ((environment-top-ns-macro-get env name) =>
               (lambda (mac)
-                (list as name 'mac (car mac) (cadr mac))))
+                (list as ;; exported name
+                      'mac
+                      (car mac) ;; imported name
+                      (caddr mac)))) ;; macro environment
 
              ((environment-top-ns-get env name) =>
               (lambda (def)
-                (list as name 'def (car def))))
+                (list as 'def def)))
 
              (else
               (error "Name can't be exported because it isn't defined"
@@ -260,17 +264,16 @@
               exps))
         (let ((ns (module-namespace module)))
           (append (map (lambda (name)
-                         (list name name 'def ns))
+                         (list name 'def (gen-symbol ns name)))
                        (*build-loadenv-defines*))
                   (map (lambda (name)
                          (let ((mac (environment-top-ns-macro-get
                                      env
                                      name)))
-                           (list name
-                                 name
+                           (list name ;; exported name
                                  'mac
-                                 (car mac)
-                                 (cadr mac))))
+                                 (car mac) ;; imported name
+                                 (caddr mac)))) ;; macro environment
                        (*build-loadenv-macros*)))))))
 
 (define (module-info-calculate module #!optional filename)
@@ -300,6 +303,9 @@
         env)))))
 
 ;;;; ---------- Module paths ----------
+
+;; TODO This isn't used right now. I don't remove it, becuase it might
+;; be useful when implementing the lib/wget/http thing.
 
 ;; A module path is a symbol, for instance /srfi/1
 
@@ -563,35 +569,29 @@
                   (modstr (module-namespace module)))
               (for-each
                (lambda (x)
-                 (if (eq? 'def (caddr x))
+                 (if (eq? 'def (cadr x))
                      ;; Regular define
                      (environment-top-ns-add
                       te
                       (car x) ;; The name it's imported as
-                      (cadr x) ;; The name it's imported from
-                      (cadddr x)) ;; The namespace the variable is defined
+                      (caddr x)) ;; The name it's imported from
                      ;; Macro
                      (environment-top-ns-macro-add
                       te
                       ;; The name it's imported as
                       (car x)
-                      ;; The macro procedure. eval is used and not the
-                      ;; procedure in the x structure to ensure that
-                      ;; we use the compiled macro if it is compiled.
-                      (eval-no-hook (string->symbol
-                                     (string-append
-                                      modstr
-                                      (symbol->string
-                                       ;; (cadr x) is the name of the
-                                       ;; macro as it was defined
-                                       ;; originally
-                                       (cadr x))
-                                      "|||macro|||")))
+                      ;; The name it's imported from
+                      (caddr x)
+                      ;; The macro procedure. eval is used and not
+                      ;; the procedure in the x structure to ensure
+                      ;; that we use the compiled macro if it is
+                      ;; compiled.
+                      (eval-no-hook (caddr x))
                       ;; The macro's environment
-                      (cadddr (cdr x)))))
+                      (cadddr x))))
                (module-info-exports info))))
           modules))
-       ;;`(begin  TODO Remove this
+       ;;`(begin  TODO Remove this. Why is it needed?
        ;;   ,@(map (lambda (module)
        ;;            (module-include module))
        ;;          modules))
@@ -823,7 +823,7 @@
      (make-module-info
       '() '()
       (map (lambda (x)
-             (list x x 'def "build#"))
+             (list x 'def (gen-symbol "build#" x)))
            '(make-loader
              loader-include
              loader-load
