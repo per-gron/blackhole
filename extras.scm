@@ -67,4 +67,4 @@
   (recompile-modules (cons mod (module-deps mod #t)) continue-on-error port))
 
 (define (module-clean/deps! mod #!optional continue-on-error port)
-  (for-each module-clean! (module-deps mod #t)))
+  (for-each module-clean! (cons mod (module-deps mod #t))))

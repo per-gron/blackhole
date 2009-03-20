@@ -33,12 +33,13 @@
       (test))))
 
 ;; Test macro invocations with syntactic closures as the name
-(expand-macro
- `(let-syntax ((mac (syntax-rules () ((mac) #t))))
-    ,(capture-syntactic-environment
-      (lambda (env)
-        (let ((mac (make-syntactic-closure env '() 'mac)))
-          `(,mac))))))
+(eval
+ (expand-macro
+  `(let-syntax ((mac (syntax-rules () ((mac) #t))))
+     ,(capture-syntactic-environment
+       (lambda (env)
+         (let ((mac (make-syntactic-closure env '() 'mac)))
+           `(,mac)))))))
 
 ;; Test let's independence
 (eq? (eval
@@ -175,22 +176,25 @@
           `(lambda (a #!key ,a)
              ,a))))))
 
-(expand-macro `(let ((ifa 3))
-                 ,(make-syntactic-closure
-                   build#empty-environment
-                   '()
-                   'ifa)))
+(expand-macro
+ `(let ((ifa 3))
+    ,(make-syntactic-closure
+      build#empty-environment
+      '()
+      'ifa)))
 
-(expand-macro (capture-syntactic-environment
-               (lambda (e)
-                 `(let ((a 3))
-                    ,(make-syntactic-closure e '() 'a)))))
+(expand-macro
+ (capture-syntactic-environment
+  (lambda (e)
+    `(let ((a 3))
+       ,(make-syntactic-closure e '() 'a)))))
 
-(expand-macro `(let ((a 3))
-                 ,(capture-syntactic-environment
-                   (lambda (e)
-                     `(let ((a 4))
-                        ,(make-syntactic-closure e '() 'a))))))
+(expand-macro
+ `(let ((a 3))
+    ,(capture-syntactic-environment
+      (lambda (e)
+        `(let ((a 4))
+           ,(make-syntactic-closure e '() 'a))))))
 
 (expand-macro
  '(let-syntax ((when (sc-macro-transformer
@@ -268,71 +272,80 @@
     (define-macro (hej) #t)
     (hej)))
 
-;; Correct
-(expand-macro
- '(let ()
-    (define-syntax hej (sc-macro-transformer
-                        (lambda _ 3)))
-    (hej)))
+
+(eq? 3
+     (eval
+      (expand-macro
+       '(let ()
+          (define-syntax hej (sc-macro-transformer
+                              (lambda _ 3)))
+          (hej)))))
 
 ;; Test define-syntax within a transform-to-letrec scope
 ;; where a define uses a macro.
-(expand-macro
- '(let ()
-    (define-syntax test
-      (syntax-rules ()
-        ((test) 4)))
-    
-    (define hej (test))
-
-    hej))
+(eq? 4
+     (eval
+      (expand-macro
+       '(let ()
+          (define-syntax test
+            (syntax-rules ()
+              ((test) 4)))
+          
+          (define hej (test))
+          
+          hej))))
 
 ;; Pretty much same as above, but with some more quirks
 ;; to test for double-colorings.
-(expand-macro
- '(let ()
-    (define-syntax test
-      (syntax-rules ()
-        ((test) 3)
-        
-        ((test var) (lambda (x) (+ x var)))))
-    
-    (define (hej var) (test var))
-
-    (hej (test))))
+(eq? 5 ((eval
+         (expand-macro
+          '(let ()
+             (define-syntax test
+               (syntax-rules ()
+                 ((test) 3)
+                 
+                 ((test var) (lambda (x) (+ x var)))))
+             
+             (define (hej var) (test var))
+             
+             (hej (test)))))
+        2))
 
 ;; Basic test for identifier=?
 (let ((e build#empty-environment))
   (identifier=? e 'a e 'a))
 
 ;; Basic test for identifier=?
-(let ((e build#empty-environment))
-  (identifier=? e 'a e 'b))
+(not (let ((e build#empty-environment))
+       (identifier=? e 'a e 'b)))
 
-;; Correct (#t #f)
-(let-syntax
-    ((foo
-      (sc-macro-transformer
-       (lambda (form env)
-         (capture-syntactic-environment
-          (lambda (transformer-env)
-            (identifier=? transformer-env 'x
-                          env 'x)))))))
-  (list (foo)
-        (let ((x 3))
-          (foo))))
+(equal? '(#t #f)
+        (let-syntax
+            ((foo
+              (sc-macro-transformer
+               (lambda (form env)
+                 (capture-syntactic-environment
+                  (lambda (transformer-env)
+                    (identifier=? transformer-env 'x
+                                  env 'x)))))))
+          (list (foo)
+                (let ((x 3))
+                  (foo)))))
 
 
 
-(expand-macro
- '(let-syntax ((swap
-                (syntax-rules ()
-                  ((swap a b) (let ((tmp b))
-                                (set! b a)
-                                (set! a tmp))))))
-    (let ((one 1)
-          (two 2))
-      (swap one two))))
+(eq? 1
+     (eval
+      (expand-macro
+       '(let-syntax ((swap
+                      (syntax-rules ()
+                        ((swap a b) (let ((tmp b))
+                                      (set! b a)
+                                      (set! a tmp))))))
+          (let ((one 1)
+                (two 2))
+            (swap one two)
+            two)))))
 
 (expand-macro
  '(let-syntax ((test (syntax-rules (a)
@@ -347,10 +360,12 @@
       (test a)
       (test 5))))
 
-(expand-macro
- '(let-syntax ((test (syntax-rules ()
-                       ((test) 'YeY))))
-    (test)))
+(eq? 'YeY
+     (eval
+      (expand-macro
+       '(let-syntax ((test (syntax-rules ()
+                             ((test) 'YeY))))
+          (test)))))
 
 (expand-macro
  '(let-syntax ((test

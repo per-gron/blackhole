@@ -88,8 +88,10 @@
 
 (define environment-top-ns env-top-ns)
 
-(define (environment-top-ns-add env name str)
-  (table-set! (environment-top-ns env) name str))
+(define (environment-top-ns-add env exported-name actual-name str)
+  (table-set! (environment-top-ns env)
+              exported-name
+              (list str actual-name)))
 
 (define (environment-top-ns-get env name)
   (table-ref (environment-top-ns env) name #f))
@@ -332,7 +334,7 @@
                 ""
                 (generate-namespace))))
     (if top
-        (environment-top-ns-add env name ns)
+        (environment-top-ns-add env name name ns)
         (environment-inner-ns-set!
          env
          (cons (list name ns env)
@@ -896,7 +898,7 @@
                   ;; This entire clause is a temporary hack that I do
                   ;; before I actually implement relative module names.
                   ;;
-                  ;; This code doesn't work right now.
+                  ;; This code doesn't work right now and is disabled.
                   ((and #f
                         (not (string-begins-with symstr "#"))
                         (string-contains symstr #\#)) =>
@@ -968,11 +970,11 @@
        (else
         (expr*:value-set
          source
-         (gen-symbol (or (environment-top-ns-get env code)
-                         (environment-top-ns-get builtin-environment
-                                                 code)
-                         "")
-                     code)))))
+         (apply gen-symbol
+                (or (environment-top-ns-get env code)
+                    (environment-top-ns-get builtin-environment
+                                            code)
+                    (list "" code)))))))
      
      (else source))))
 
@@ -1036,7 +1038,7 @@
                     (cadr one))
               (let ((top (environment-top-ns-get env1 id1)))
                 (if top
-                    (cons (gen-symbol top id1)
+                    (cons (apply gen-symbol top)
                           #f)
                     (cons id1 #f)))))
          (strip2 (strip-synclosure env2 id2))
@@ -1049,7 +1051,7 @@
                     (cadr two))
               (let ((top (environment-top-ns-get env2 id2)))
                 (if top
-                    (cons (gen-symbol top id2)
+                    (cons (apply gen-symbol top)
                           #f)
                     (cons id2 #f))))))
     (and
@@ -1100,7 +1102,7 @@
                '()
                (list->table
                 ',(map (lambda (name)
-                         (cons name prefix))
+                         (list name prefix name))
                        names))
                (list->table
                 (list
@@ -1339,11 +1341,7 @@
                ,(cadr src)))
             env)))))
    
-   (private
-    (lambda (code env mac-env)
-      (void)))
-   
-   (/private
+   (export
     (lambda (code env mac-env)
       (void)))
    

@@ -1,3 +1,11 @@
+;; TODO
+;; only
+;; except
+;; add-prefix
+;; rename
+;; for
+
+
 ;;;  --------------------------------------------------------------  ;;;
 ;;;                                                                  ;;;
 ;;;                       The actual system                          ;;;
@@ -43,8 +51,7 @@
 
   (defines read-only:)
   (macros read-only:)
-  (private-defines read-only:)
-  (private-macros read-only:)
+  (exports read-only:)
   (uses read-only:)
   (options read-only:)
   (cc-options read-only:)
@@ -55,13 +62,13 @@
 
 (define empty-module-info
   (make-module-info
-   '() '() '() '() '() '() "" "" "" #f builtin-environment))
+   '() '() '() '() '() "" "" "" #f builtin-environment))
 
 ;; True when a calculating info for a module
 (define calcing (make-parameter #f))
 
 ;; The placement of this code is a little counterintuitive. It is
-;; here, because this is the code that actually does the
+;; here, because this is the code that actually does thea
 ;; calc-info. But it's the calcing dynamic variable that actually
 ;; triggers its use, which is in hygiene.scm.
 (define-env load-environment
@@ -84,22 +91,19 @@
      (lambda (code env mac-env)
        (let* ((src (transform-to-lambda (cdr code)))
               (sym (synclosure-extract-form (car src))))
-         (let ((var (if (<= 0 (*build-loadenv-private*))
-                        *build-loadenv-defines*
-                        *build-loadenv-private-defines*)))
-           (environment-top-ns-add (top-environment)
-                                   sym
-                                   (module-namespace (current-module)))
-           (var (cons sym (var))))
+         (environment-top-ns-add (top-environment)
+                                 sym ;; Public (exported) name
+                                 sym ;; Private (actual) name
+                                 (module-namespace (current-module)))
+         (*build-loadenv-defines*
+          (cons sym (*build-loadenv-defines*)))
          (void))))
    
    (define-macro-register
      (lambda (form env mac-env)
-       (let ((src (transform-to-lambda (cdr form)))
-             (var (if (<= 0 (*build-loadenv-private*))
-                      *build-loadenv-macros*
-                      *build-loadenv-private-macros*)))
-         (var (cons (car src) (var))))
+       (let ((src (transform-to-lambda (cdr form))))
+         (*build-loadenv-macros*
+          (cons (car src) (*build-loadenv-macros*))))
        (void)))
    
    (let
@@ -117,16 +121,20 @@
    (private
     (nh-macro-transformer
      (lambda ()
-       (*build-loadenv-private*
-        (- (*build-loadenv-private*) 1))
+       (pp (list "private is deprecated" (top-environment)))
        (void))))
    
    (/private
     (nh-macro-transformer
      (lambda ()
-       (*build-loadenv-private*
-        (+ (*build-loadenv-private*) 1))
+       (pp (list "/private is deprecated" (top-environment)))
        (void))))
+   
+   (export
+    (lambda (code env mac-env)
+      (*build-loadenv-exports*
+       (append (cdr (extract-synclosure-crawler code))
+               (or (*build-loadenv-exports*) '())))))
    
    (compile-options
     (nh-macro-transformer
@@ -201,15 +209,69 @@
 
 (make-loadenv-vars (defines '())
                    (macros '())
-                   (private-defines '())
-                   (private-macros '())
+                   (exports #f)
                    (uses '())
                    (options '())
                    (cc-options "")
                    (ld-options-prelude "")
                    (ld-options "")
-                   (force-compile #f)
-                   (private 0))
+                   (force-compile #f))
+
+(define (interpret-loadenv-exports module env)
+  (let* ((exps (*build-loadenv-exports*))
+         (err (lambda ()
+                (error "Invalid exports declaration" x module)))
+         (export
+          (lambda (name as)
+            (if (not (and (symbol? name)
+                          (symbol? as)))
+                (err))
+            (cond
+             ((environment-top-ns-macro-get env name) =>
+              (lambda (mac)
+                (list as name 'mac (car mac) (cadr mac))))
+
+             ((environment-top-ns-get env name) =>
+              (lambda (def)
+                (list as name 'def (car def))))
+
+             (else
+              (error "Name can't be exported because it isn't defined"
+                     name))))))
+    (if exps
+        (apply
+         append
+         (map (lambda (x)
+                (cond
+                 ((symbol? x)
+                  (list (export x x)))
+                 
+                 ((and (list? x)
+                       (eq? 'rename (car x)))
+                  (map (lambda (x)
+                         (if (not (and (list? x)
+                                       (= (length x) 2)))
+                             (err))
+                         (apply export x))
+                       (cdr x)))
+                 
+                 (else
+                  (err))))
+              exps))
+        (let ((ns (module-namespace module)))
+          (append (map (lambda (name)
+                         (list name name 'def ns))
+                       (*build-loadenv-defines*))
+                  (map (lambda (name)
+                         (let ((mac (environment-top-ns-macro-get
+                                     env
+                                     name)))
+                           (list name
+                                 name
+                                 'mac
+                                 (car mac)
+                                 (cadr mac))))
+                       (*build-loadenv-macros*)))))))
 
 (define (module-info-calculate module #!optional filename)
   (with-build-loadenv
@@ -225,17 +287,17 @@
               (file-read-as-expr filename)))
             (set! env (top-environment))))
        
-       (make-module-info (*build-loadenv-defines*)
-                         (*build-loadenv-macros*)
-                         (*build-loadenv-private-defines*)
-                         (*build-loadenv-private-macros*)
-                         (*build-loadenv-uses*)
-                         (*build-loadenv-options*)
-                         (*build-loadenv-cc-options*)
-                         (*build-loadenv-ld-options-prelude*)
-                         (*build-loadenv-ld-options*)
-                         (*build-loadenv-force-compile*)
-                         env)))))
+       (make-module-info
+        (*build-loadenv-defines*)
+        (*build-loadenv-macros*)
+        (interpret-loadenv-exports module env)
+        (*build-loadenv-uses*)
+        (*build-loadenv-options*)
+        (*build-loadenv-cc-options*)
+        (*build-loadenv-ld-options-prelude*)
+        (*build-loadenv-ld-options*)
+        (*build-loadenv-force-compile*)
+        env)))))
 
 ;;;; ---------- Module paths ----------
 
@@ -501,27 +563,39 @@
                   (modstr (module-namespace module)))
               (for-each
                (lambda (x)
-                 (environment-top-ns-add te
-                                         x
-                                         modstr))
-               (module-info-defines info))
-              (for-each
-               (lambda (x)
-                 (environment-top-ns-macro-add
-                  te
-                  x
-                  (eval-no-hook (string->symbol
-                                 (string-append
-                                  modstr
-                                  (symbol->string x)
-                                  "|||macro|||")))
-                  (module-info-environment info)))
-               (module-info-macros info))))
+                 (if (eq? 'def (caddr x))
+                     ;; Regular define
+                     (environment-top-ns-add
+                      te
+                      (car x) ;; The name it's imported as
+                      (cadr x) ;; The name it's imported from
+                      (cadddr x)) ;; The namespace the variable is defined
+                     ;; Macro
+                     (environment-top-ns-macro-add
+                      te
+                      ;; The name it's imported as
+                      (car x)
+                      ;; The macro procedure. eval is used and not the
+                      ;; procedure in the x structure to ensure that
+                      ;; we use the compiled macro if it is compiled.
+                      (eval-no-hook (string->symbol
+                                     (string-append
+                                      modstr
+                                      (symbol->string
+                                       ;; (cadr x) is the name of the
+                                       ;; macro as it was defined
+                                       ;; originally
+                                       (cadr x))
+                                      "|||macro|||")))
+                      ;; The macro's environment
+                      (cadddr (cdr x)))))
+               (module-info-exports info))))
           modules))
-       `(begin
-          ,@(map (lambda (module)
-                   (module-include module))
-                 modules))))))
+       ;;`(begin  TODO Remove this
+       ;;   ,@(map (lambda (module)
+       ;;            (module-include module))
+       ;;          modules))
+       (void)))))
 
 (define module-module
   (make-module-util-function
@@ -741,61 +815,65 @@
   (make-loader
    ;; include
    (lambda (mod)
-     '(##namespace ("build#"
-                    make-loader
-                    loader-include
-                    loader-load
-                    loader-calculate-info
-                    loader-needs-compile?
-                    loader-clean!
-                    loader-compile!
-
-                    make-module-info
-                    module-info-defines
-                    module-info-macros
-                    module-info-private-defines
-                    module-info-private-macros
-                    module-info-uses
-                    module-info-options
-                    module-info-cc-options
-                    module-info-ld-options-prelude
-                    module-info-ld-options
-                    module-info-force-compile?
-                    module-info-environment
-                    module-info-calculate
-
-                    resolve-module
-                    resolve-modules
-                    resolve-one-module
-
-                    current-module
-                    current-loader
-
-                    with-module-cache
-
-                    make-module
-                    module-loader
-                    module-path
-                    module-info
-                    module-include
-                    module-load
-                    module-needs-compile?
-                    module-compile!
-                    module-clean!
-                    module-namespace
-                    module-use
-                    module-module
-
-                    module-deps
-                    module-compile/deps!
-                    module-clean/deps!
-
-                    loader
-                    build-loader)))
+     '(##begin))
    ;; load
    (lambda (mod) '())
    ;; calculate-info
-   (lambda (mod) empty-module-info)
+   (lambda (mod)
+     (make-module-info
+      '() '()
+      (map (lambda (x)
+             (list x x 'def "build#"))
+           '(make-loader
+             loader-include
+             loader-load
+             loader-calculate-info
+             loader-needs-compile?
+             loader-clean!
+             loader-compile!
+             
+             make-module-info
+             module-info-defines
+             module-info-macros
+             module-info-exports
+             module-info-uses
+             module-info-options
+             module-info-cc-options
+             module-info-ld-options-prelude
+             module-info-ld-options
+             module-info-force-compile?
+             module-info-environment
+             module-info-calculate
+             
+             resolve-module
+             resolve-modules
+             resolve-one-module
+             
+             current-module
+             current-loader
+             
+             with-module-cache
+             
+             make-module
+             module-loader
+             module-path
+             module-info
+             module-include
+             module-load
+             module-needs-compile?
+             module-compile!
+             module-clean!
+             module-namespace
+             module-use
+             module-module
+             
+             module-deps
+             module-compile/deps!
+             module-clean/deps!
+             
+             loader
+             build-loader))
+      '() '() "" "" "" #f builtin-environment))
    ;; path-absolutize
    (lambda (path #!optional ref) #f)
    ;; module-name
