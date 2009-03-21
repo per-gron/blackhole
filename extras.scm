@@ -72,8 +72,8 @@
 (define (module-generate-export-list mod)
   (cons 'export
         (append
-         (reverse (module-info-defines (module-info mod)))
-         (reverse (module-info-macros (module-info mod))))))
+         (map car (module-info-symbols
+                   (module-info mod))))))
 
 
 

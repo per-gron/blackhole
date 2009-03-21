@@ -1133,10 +1133,14 @@
    sc-macro-transformer
    rsc-macro-transformer
    nh-macro-transformer)
-  ((use
+  ((import
     (nh-macro-transformer
      (lambda pkgs
-       (apply module-use pkgs))))
+       (call-with-values
+           (lambda ()
+             (resolve-imports
+              (extract-synclosure-crawler pkgs)))
+         module-import))))
    
    (module
     (nh-macro-transformer

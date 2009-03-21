@@ -5,48 +5,49 @@
 ;; rename
 ;; for
 
-(export splice
-        (rename: (splice-data unsplice))
-        (re-export: ../srfi/1)
-        )
- 
-(import ../srfi/1
-        (here ../srfi/1)
-        "http://pereckerdal.com/code/spork/core.scm"
-        (lib "http://pereckerdal.com/code/spork/core.scm")
-        (only core goto show)
-        (except core goto show)
-        (add-prefix core spork/)
-        (add-prefix (only core goto) spork/)
-        (add-prefix (only (here core) goto) spork/)
-        (rename)
-        (for core expand)
-        )
-
-(import ../srfi/1
-        (here ../srfi/1)
-        "http://pereckerdal.com/code/spork/core.scm"
-        (lib "http://pereckerdal.com/code/spork/core.scm")
-        (only: core goto show)
-        (except: core goto show)
-        (prefix: core spork/)
-        (prefix: (only: core goto) spork/)
-        (prefix: (only: (here core) goto) spork/)
-        (rename:)
-        (for: core expand)
-        )
-
-
-here
-lib
-only
-except
-add-prefix
-for
-rename
-std
-build
-termite
+;;(export splice
+;;        (rename: (splice-data unsplice))
+;;        (re-export: ../srfi/1)
+;;        (re-export: (prefix: ../srfi/1 srfi1/))
+;;        )
+;; 
+;;(import ../srfi/1
+;;        (here ../srfi/1)
+;;        "http://pereckerdal.com/code/spork/core.scm"
+;;        (lib "http://pereckerdal.com/code/spork/core.scm")
+;;        (only core goto show)
+;;        (except core goto show)
+;;        (add-prefix core spork/)
+;;        (add-prefix (only core goto) spork/)
+;;        (add-prefix (only (here core) goto) spork/)
+;;        (rename)
+;;        (for core expand)
+;;        )
+;; 
+;;(import ../srfi/1
+;;        (here ../srfi/1)
+;;        "http://pereckerdal.com/code/spork/core.scm"
+;;        (lib "http://pereckerdal.com/code/spork/core.scm")
+;;        (only: core goto show)
+;;        (except: core goto show)
+;;        (prefix: core spork/)
+;;        (prefix: (only: core goto) spork/)
+;;        (prefix: (only: (here core) goto) spork/)
+;;        (rename:)
+;;        (for: core expand)
+;;        )
+;; 
+;; 
+;;here
+;;lib
+;;only
+;;except
+;;add-prefix
+;;for
+;;rename
+;;std
+;;build
+;;termite
 
 ;;;  --------------------------------------------------------------  ;;;
 ;;;                                                                  ;;;
@@ -91,9 +92,9 @@ termite
 (define-type module-info
   id: 726DB40B-AB18-4396-A570-BB715B602DB9
 
-  (defines read-only:)
-  (macros read-only:)
+  (symbols read-only:)
   (exports read-only:)
+  (imports read-only:)
   (uses read-only:)
   (options read-only:)
   (cc-options read-only:)
@@ -116,14 +117,20 @@ termite
 (define-env load-environment
   "build-loadenv#"
   ()
-  ((use
+  ((import
     (nh-macro-transformer
      (lambda pkgs
-       (if (*build-loadenv-uses*)
+       (call-with-values
+           (lambda () (resolve-imports
+                       (extract-synclosure-crawler pkgs)))
+         (lambda (def mod)
            (*build-loadenv-uses*
             (append (*build-loadenv-uses*)
-                    (resolve-modules pkgs))))
-       (apply module-use pkgs))))
+                    mod))
+           (*build-loadenv-imports*
+            (append (*build-loadenv-imports*)
+                    def))
+           (module-import def mod))))))
 
    (module
     (lambda (code env mac-env)
@@ -138,15 +145,15 @@ termite
                                  (gen-symbol
                                   (module-namespace (current-module))
                                   sym))
-         (*build-loadenv-defines*
-          (cons sym (*build-loadenv-defines*)))
+         (*build-loadenv-symbols*
+          (cons (cons sym 'def) (*build-loadenv-symbols*)))
          (void))))
    
    (define-macro-register
      (lambda (form env mac-env)
        (let ((src (transform-to-lambda (cdr form))))
-         (*build-loadenv-macros*
-          (cons (car src) (*build-loadenv-macros*))))
+         (*build-loadenv-symbols*
+          (cons (cons (car src) 'mac) (*build-loadenv-symbols*))))
        (void)))
    
    (let
@@ -160,18 +167,6 @@ termite
    (lambda
        (lambda (code env mac-env)
          #f))
-   
-   (private
-    (nh-macro-transformer
-     (lambda ()
-       (pp (list "private is deprecated" (top-environment)))
-       (void))))
-   
-   (/private
-    (nh-macro-transformer
-     (lambda ()
-       (pp (list "/private is deprecated" (top-environment)))
-       (void))))
    
    (export
     (lambda (code env mac-env)
@@ -250,9 +245,9 @@ termite
                 defaults)
           (thunk))))))
 
-(make-loadenv-vars (defines '())
-                   (macros '())
+(make-loadenv-vars (symbols '())
                    (exports #f)
+                   (imports '())
                    (uses '())
                    (options '())
                    (cc-options "")
@@ -263,7 +258,7 @@ termite
 (define (interpret-loadenv-exports module env)
   (let* ((exps (*build-loadenv-exports*))
          (err (lambda ()
-                (error "Invalid exports declaration" x module)))
+                (error "Invalid exports declaration" exps module)))
          (export
           (lambda (name as)
             (if (not (and (symbol? name)
@@ -305,18 +300,19 @@ termite
                   (err))))
               exps))
         (let ((ns (module-namespace module)))
-          (append (map (lambda (name)
-                         (list name 'def (gen-symbol ns name)))
-                       (*build-loadenv-defines*))
-                  (map (lambda (name)
-                         (let ((mac (environment-top-ns-macro-get
-                                     env
-                                     name)))
-                           (list name ;; exported name
-                                 'mac
-                                 (car mac) ;; imported name
-                                 (caddr mac)))) ;; macro environment
-                       (*build-loadenv-macros*)))))))
+          (map (lambda (pair)
+                 (let ((name (car pair))
+                       (type (cdr pair)))
+                 (if (eq? 'def type)
+                     (list name 'def (gen-symbol ns name))
+                     (let ((mac (environment-top-ns-macro-get
+                                 env
+                                 name)))
+                       (list name ;; exported name
+                             'mac
+                             (car mac) ;; imported name
+                             (caddr mac))))))
+               (*build-loadenv-symbols*))))))
 
 (define (module-info-calculate module #!optional filename)
   (with-build-loadenv
@@ -333,9 +329,9 @@ termite
             (set! env (top-environment))))
        
        (make-module-info
-        (*build-loadenv-defines*)
-        (*build-loadenv-macros*)
+        (reverse (*build-loadenv-symbols*))
         (interpret-loadenv-exports module env)
+        (*build-loadenv-imports*)
         (*build-loadenv-uses*)
         (*build-loadenv-options*)
         (*build-loadenv-cc-options*)
@@ -444,42 +440,46 @@ termite
 (define *import-resolvers* '())
 
 (define (resolve-import val #!optional cm)
-  (cond
-   ((and (pair? val)
-         (keyword? (car val)))
-    (let* ((resolver-id (car val))
-           (resolver (let ((pair (assq resolver-id
-                                       *import-resolvers*)))
-                       (and pair (cdr pair)))))
-      (if (not resolver)
-          (error "Import resolver not found:" resolver-id)
-          (apply resolver
-                 (cons (or cm (current-module))
-                       (cdr val))))))
-
-   (else
-    (let ((mods (resolve-module val cm)))
-      (values (apply
-               append
-               (map (lambda (mod)
-                      (module-info-exports
-                       (module-info mod)))
-                    mods))
-              mods)))))
+  (with-module-cache
+   (lambda ()
+     (cond
+      ((and (pair? val)
+            (keyword? (car val)))
+       (let* ((resolver-id (car val))
+              (resolver (let ((pair (assq resolver-id
+                                          *import-resolvers*)))
+                          (and pair (cdr pair)))))
+         (if (not resolver)
+             (error "Import resolver not found:" resolver-id)
+             (apply resolver
+                    (cons (or cm (current-module))
+                          (cdr val))))))
+      
+      (else
+       (let ((mods (resolve-module val cm)))
+         (values (apply
+                  append
+                  (map (lambda (mod)
+                         (module-info-exports
+                          (module-info mod)))
+                       mods))
+                 mods)))))))
 
 (define (resolve-imports vals #!optional cm)
-  (let ((defs '())
-        (mods '()))
-    (for-each (lambda (val)
-                (call-with-values
-                    (lambda ()
-                      (resolve-import val cm))
-                  (lambda (def mod)
-                    (set! defs (cons def defs))
-                    (set! mods (cons mod mods)))))
-              vals)
-    (values (flatten1 defs)
-            (flatten1 mods))))
+  (with-module-cache
+   (lambda ()
+     (let ((defs '())
+           (mods '()))
+       (for-each (lambda (val)
+                   (call-with-values
+                       (lambda ()
+                         (resolve-import val cm))
+                     (lambda (def mod)
+                       (set! defs (cons def defs))
+                       (set! mods (cons mod mods)))))
+                 vals)
+       (values (flatten1 defs)
+               (flatten1 mods))))))
 
 (define (only-resolver cm mod . names)
   (call-with-values
@@ -563,6 +563,99 @@ termite
 
 
 
+;;;; ---------- Export resolvers ----------
+
+;; Export resolvers are the export equivalent of import
+;; resolvers. They parse forms like (rename: (from to)), (re-export:
+;; srfi/1). Similar to import resolvers, they take the current
+;; environment and a list as arguments. Similar to import resolvers,
+;; they return two values: the symbols to be exported, and modules
+;; that need to loaded to use this export. (This is to make it
+;; possible to implement re-export:)
+
+(define *export-resolvers* '())
+
+(define (export-helper env name as)
+  (if (not (and (symbol? name)
+                (symbol? as)))
+      (error "Invalid exports declaration" name as))
+  (cond
+   ((environment-top-ns-macro-get env name) =>
+    (lambda (mac)
+      (list as ;; exported name
+            'mac
+            (car mac) ;; imported name
+            (caddr mac)))) ;; macro environment
+   
+   ((environment-top-ns-get env name) =>
+    (lambda (def)
+      (list as 'def def)))
+   
+   (else
+    (error "Name can't be exported because it isn't defined"
+           name))))
+
+;; TODO This code is very similar to resolve-import, which is bad.
+(define (resolve-export val env)
+  (with-module-cache
+   (lambda ()
+     (cond
+      ((and (pair? val)
+            (keyword? (car val)))
+       (let* ((resolver-id (car val))
+              (resolver (let ((pair (assq resolver-id
+                                          *export-resolvers*)))
+                          (and pair (cdr pair)))))
+         (if (not resolver)
+             (error "Export resolver not found:" resolver-id)
+             (apply resolver
+                    (cons env (cdr val))))))
+      
+      ((symbol? val)
+       (values (list (export-helper env val val))
+               '()))
+
+      (else
+       (error "Invalid exports declaration" val))))))
+
+;; TODO This code is pretty much a copy/pase of resolve-imports, which
+;; is bad.
+(define (resolve-exports vals env)
+  (with-module-cache
+   (lambda ()
+     (let ((defs '())
+           (mods '()))
+       (for-each (lambda (val)
+                   (call-with-values
+                       (lambda ()
+                         (resolve-export val env))
+                     (lambda (def mod)
+                       (set! defs (cons def defs))
+                       (set! mods (cons mod mods)))))
+                 vals)
+       (values (flatten1 defs)
+               (flatten1 mods))))))
+
+(define (rename-export-resolver env . renames)
+  (values (map (lambda (rename)
+                 (if (not (and (list? rename)
+                               (eq? 2 (length rename))))
+                     (error "Invalid exports declaration"
+                            rename))
+                 (export-helper env
+                                (car rename)
+                                (cadr rename)))
+               renames)
+          '()))
+
+(define (re-export-export-resolver env . import-decls)
+  (resolve-imports import-decls (environment-module env)))
+
+(set! *export-resolvers*
+      `((rename: . ,rename-export-resolver)
+        (re-export: . ,re-export-export-resolver)))
+
+
 ;;;; ---------- Module utility functions ----------
 
 (define (current-module)
@@ -635,6 +728,8 @@ termite
    (lambda (mod)
      ((loader-clean! (module-loader mod)) mod))))
 
+;; TODO This function should rename modules with name h[number] to not
+;; clash with the hygiene.
 (define module-namespace
   (let ((fn
          (make-module-util-function
@@ -646,65 +741,58 @@ termite
       ;; This function might be called with #f as argument
       (if mod (fn mod) ""))))
 
-(define (module-use . modules)
-  (let ((modules (resolve-modules modules)))
-    (with-module-cache
-     (lambda ()
-       (let* ((te (top-environment)))
-         (for-each
-          (lambda (module)
-            (for-each (lambda (args)
-                        (apply load-once args))
-                      (module-load module))
-            
-            (let ((info (module-info module))
-                  (modstr (module-namespace module)))
-              (for-each
-               (lambda (x)
-                 (if (eq? 'def (cadr x))
-                     ;; Regular define
-                     (environment-top-ns-add
-                      te
-                      (car x) ;; The name it's imported as
-                      (caddr x)) ;; The name it's imported from
-                     ;; Macro
-                     (environment-top-ns-macro-add
-                      te
-                      ;; The name it's imported as
-                      (car x)
-                      ;; The name it's imported from
-                      (caddr x)
-                      ;; The macro procedure. eval is used and not
-                      ;; the procedure in the x structure to ensure
-                      ;; that we use the compiled macro if it is
-                      ;; compiled.
-                      (eval-no-hook (caddr x))
-                      ;; The macro's environment
-                      (cadddr x))))
-               (module-info-exports info))))
-          modules))
-       ;;`(begin  TODO Remove this. Why is it needed?
-       ;;   ,@(map (lambda (module)
-       ;;            (module-include module))
-       ;;          modules))
-       (void)))))
+(define (module-import defs modules)
+  (with-module-cache
+   (lambda ()
+     (let* ((te (top-environment)))
+       (for-each
+        (lambda (module)
+          (for-each (lambda (args)
+                      (apply load-once args))
+                    (module-load module)))
+        modules)
 
-;; for use by module-module
-(define repl-environment #f)
+       (for-each
+        (lambda (def)
+          (if (eq? 'def (cadr def))
+              ;; Regular define
+              (environment-top-ns-add
+               te
+               (car def) ;; The name it's imported as
+               (caddr def)) ;; The name it's imported from
+              ;; Macro
+              (environment-top-ns-macro-add
+               te
+               ;; The name it's imported as
+               (car def)
+               ;; The name it's imported from
+               (caddr def)
+               ;; The macro procedure. eval is used and not
+               ;; the procedure in the x structure to ensure
+               ;; that we use the compiled macro if it is
+               ;; compiled.
+               (eval-no-hook (caddr def))
+               ;; The macro's environment
+               (cadddr def))))
+        defs))
+     (void))))
 
 (define module-module
-  (let ((fn (make-module-util-function
-             (lambda (mod)
-               (for-each (lambda (args)
-                           (apply load-once args))
-                         (module-load mod))
-               (if (not (environment-module (top-environment)))
-                   (set! repl-environment (top-environment)))
-               (top-environment (make-top-environment mod))
-               `(begin
-                  (##namespace (,(module-namespace mod)))
-                  ,@*global-includes*
-                  (use ,@(module-info-uses (module-info mod))))))))
+  (let* ((repl-environment #f)
+         (fn (make-module-util-function
+              (lambda (mod)
+                (for-each (lambda (args)
+                            (apply load-once args))
+                          (module-load mod))
+                (if (not (environment-module (top-environment)))
+                    (set! repl-environment (top-environment)))
+                (top-environment (make-top-environment mod))
+                (let ((info (module-info mod)))
+                  (module-import (module-info-imports info)
+                                 (module-info-uses info)))
+                `(begin
+                   (##namespace (,(module-namespace mod)))
+                   ,@*global-includes*)))))
     (lambda (mod)
       ;; This function might be called with #f as argument
       (if mod
@@ -854,11 +942,10 @@ termite
    ;; include
    (lambda (mod)
      (let* ((info (module-info mod))
-            (syms (append (module-info-defines info)
-                          (module-info-macros info))))
+            (syms (map car (module-info-symbols info))))
        `(begin
           ;; Don't include the namespace directive if no symbols are
-          ;; declared; it will mean an entierly other thing then.
+          ;; declared; it will mean an entierly different thing then.
           ,@(if (null? syms)
                 '()
                 `((##namespace (,(module-namespace mod)
@@ -929,7 +1016,7 @@ termite
    ;; calculate-info
    (lambda (mod)
      (make-module-info
-      '() '()
+      '()
       (map (lambda (x)
              (list x 'def (gen-symbol "build#" x)))
            '(make-loader
@@ -941,8 +1028,7 @@ termite
              loader-compile!
              
              make-module-info
-             module-info-defines
-             module-info-macros
+             module-info-symbols
              module-info-exports
              module-info-uses
              module-info-options
@@ -972,7 +1058,6 @@ termite
              module-compile!
              module-clean!
              module-namespace
-             module-use
              module-module
              
              module-deps
@@ -982,7 +1067,7 @@ termite
              
              loader
              build-loader))
-      '() '() "" "" "" #f builtin-environment))
+      '() '() '() "" "" "" #f builtin-environment))
    ;; path-absolutize
    (lambda (path #!optional ref) #f)
    ;; module-name
@@ -1008,32 +1093,6 @@ termite
    (lambda (path #!optional ref) #f)
    ;; module-name
    (lambda (mod) "termite")
-   ;; needs-compile?
-   (lambda (mod) #f)
-   ;; clean!
-   (lambda (mod) #f)
-   ;; compile!
-   (lambda (mod) #f)))
-
-(define ssax-sxml-loader
-  (make-loader
-   ;; include
-   (lambda (mod)
-     '(##namespace ("ssax-sxml#"
-                    ssax:xml->sxml
-                    srl:sxml->xml
-                    srl:sxml->html
-                    sxpath
-                    ssax:multi-parser)))
-   ;; load
-   (lambda (mod)
-     '(("~~/lib/ssax-sxml/ssax-sxml")))
-   ;; calculate-info
-   (lambda (mod) empty-module-info)
-   ;; path-absolutize
-   (lambda (path #!optional ref) #f)
-   ;; module-name
-   (lambda (mod) "ssax-sxml")
    ;; needs-compile?
    (lambda (mod) #f)
    ;; clean!
