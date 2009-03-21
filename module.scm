@@ -255,64 +255,28 @@
                    (ld-options "")
                    (force-compile #f))
 
-(define (interpret-loadenv-exports module env)
-  (let* ((exps (*build-loadenv-exports*))
-         (err (lambda ()
-                (error "Invalid exports declaration" exps module)))
-         (export
-          (lambda (name as)
-            (if (not (and (symbol? name)
-                          (symbol? as)))
-                (err))
-            (cond
-             ((environment-top-ns-macro-get env name) =>
-              (lambda (mac)
-                (list as ;; exported name
-                      'mac
-                      (car mac) ;; imported name
-                      (caddr mac)))) ;; macro environment
-
-             ((environment-top-ns-get env name) =>
-              (lambda (def)
-                (list as 'def def)))
-
-             (else
-              (error "Name can't be exported because it isn't defined"
-                     name))))))
+;; This function makes use of the build-loadenv dynamic environment.
+(define (interpret-loadenv-exports env)
+  (let* ((exps (*build-loadenv-exports*)))
     (if exps
-        (apply
-         append
-         (map (lambda (x)
-                (cond
-                 ((symbol? x)
-                  (list (export x x)))
-                 
-                 ((and (list? x)
-                       (eq? 'rename (car x)))
-                  (map (lambda (x)
-                         (if (not (and (list? x)
-                                       (= (length x) 2)))
-                             (err))
-                         (apply export x))
-                       (cdr x)))
-                 
-                 (else
-                  (err))))
-              exps))
-        (let ((ns (module-namespace module)))
-          (map (lambda (pair)
-                 (let ((name (car pair))
-                       (type (cdr pair)))
-                 (if (eq? 'def type)
-                     (list name 'def (gen-symbol ns name))
-                     (let ((mac (environment-top-ns-macro-get
-                                 env
-                                 name)))
-                       (list name ;; exported name
-                             'mac
-                             (car mac) ;; imported name
-                             (caddr mac))))))
-               (*build-loadenv-symbols*))))))
+        (resolve-exports exps env)
+        (values
+         (let ((ns (module-namespace
+                    (environment-module env))))
+           (map (lambda (pair)
+                  (let ((name (car pair))
+                        (type (cdr pair)))
+                    (if (eq? 'def type)
+                        (list name 'def (gen-symbol ns name))
+                        (let ((mac (environment-top-ns-macro-get
+                                    env
+                                    name)))
+                          (list name ;; exported name
+                                'mac
+                                (car mac) ;; imported name
+                                (caddr mac))))))
+                (*build-loadenv-symbols*)))
+           '()))))
 
 (define (module-info-calculate module #!optional filename)
   (with-build-loadenv
@@ -327,18 +291,26 @@
              (expr*:strip-locationinfo
               (file-read-as-expr filename)))
             (set! env (top-environment))))
-       
-       (make-module-info
-        (reverse (*build-loadenv-symbols*))
-        (interpret-loadenv-exports module env)
-        (*build-loadenv-imports*)
-        (*build-loadenv-uses*)
-        (*build-loadenv-options*)
-        (*build-loadenv-cc-options*)
-        (*build-loadenv-ld-options-prelude*)
-        (*build-loadenv-ld-options*)
-        (*build-loadenv-force-compile*)
-        env)))))
+
+       (call-with-values
+           (lambda () (interpret-loadenv-exports env))
+         (lambda (exports export-uses)
+           ;; TODO Add something to check for duplicate imports and
+           ;; exports.
+           (make-module-info
+            (reverse (*build-loadenv-symbols*))
+            exports
+            (*build-loadenv-imports*)
+            (remove-duplicates ;; TODO This is an n^2 algorithm = sloow
+             (append export-uses
+                     (*build-loadenv-uses*))
+             equal?)
+            (*build-loadenv-options*)
+            (*build-loadenv-cc-options*)
+            (*build-loadenv-ld-options-prelude*)
+            (*build-loadenv-ld-options*)
+            (*build-loadenv-force-compile*)
+            env)))))))
 
 ;;;; ---------- Module objects ----------
 

@@ -234,3 +234,17 @@
          (eval a) ;; throws exception if unbound
          #t))
       (error "Expected symbol argument" a)))
+
+;; Beware of n^2 algorithms
+(define (remove-duplicates list #!optional (predicate eq?))
+  (cond
+   ((null? list) '())
+   ((pair? list)
+    (let ((e (car list)))
+      (cons e
+            (remove-duplicates
+             (filter (lambda (x)
+                       (not (predicate x e)))
+                     (cdr list))
+             predicate))))
+   (else (raise "Argument to remove-duplicates must be a list"))))
