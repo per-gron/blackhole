@@ -499,17 +499,27 @@ termite
       (let ((def-clone (map (lambda (x) x) defs)))
         (for-each
          (lambda (name)
-           (set! def-clone
-                 (remove! (lambda (x)
-                            (eq? (car x) name))
-                          def-clone)))
+           (let ((found? #f))
+             (set! def-clone
+                   (remove!
+                    (lambda (x)
+                      (and (eq? (car x) name)
+                           (begin
+                             (set! found? #t)
+                             #t)))
+                    def-clone))
+             (if (not found?)
+                 (error "except: Symbol not defined" name mod))))
          names)
         (values def-clone modules)))))
 
-(define (prefix-resolver cm prefix . mods)
-  (let ((prefix-str (symbol->string prefix)))
+(define (prefix-resolver cm mod prefix)
+  (let ((prefix-str
+         (if (symbol? prefix)
+             (symbol->string prefix)
+             (error "prefix: prefix must be a symbol" prefix))))
     (call-with-values
-        (lambda () (resolve-imports mods cm))
+        (lambda () (resolve-import mod cm))
       (lambda (defs modules)
         (values
          (map (lambda (def)
@@ -521,18 +531,35 @@ termite
               defs)
          modules)))))
 
+(define (rename-resolver cm mod . renames)
+  (call-with-values
+      (lambda () (resolve-import mod cm))
+    (lambda (defs modules)
+      (let ((def-clone (map (lambda (x) x) defs)))
+        (for-each
+         (lambda (rename)
+           (if (not (and (list? rename)
+                         (eq? 2 (length rename))
+                         (symbol? (car rename))
+                         (symbol? (cadr rename))))
+               (error "rename: Invalid rename form" rename))
+
+           (let ((pair (assq (car rename)
+                             def-clone)))
+             (if pair
+                 (if (assq (cadr rename) def-clone)
+                     (error "rename: Symbol already in set"
+                            (cadr rename))
+                     (set-car! pair (cadr rename)))
+                 (error "rename: Symbol not found" (car rename)))))
+         renames)
+        (values def-clone modules)))))
+
 (set! *import-resolvers*
       `((only: . ,only-resolver)
         (except: . ,except-resolver)
-        (prefix: . ,prefix-resolver)))
-
-
-(resolve-import '(except:
-                  (prefix:
-                   pre/
-                   (only: (std misc/splice misc/al)
-                          splice al))
-                  pre/splice))
+        (prefix: . ,prefix-resolver)
+        (rename: . ,rename-resolver)))
 
 
 
