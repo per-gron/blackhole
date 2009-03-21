@@ -5,6 +5,48 @@
 ;; rename
 ;; for
 
+(export splice
+        (rename: (splice-data unsplice))
+        (re-export: ../srfi/1)
+        )
+ 
+(import ../srfi/1
+        (here ../srfi/1)
+        "http://pereckerdal.com/code/spork/core.scm"
+        (lib "http://pereckerdal.com/code/spork/core.scm")
+        (only core goto show)
+        (except core goto show)
+        (add-prefix core spork/)
+        (add-prefix (only core goto) spork/)
+        (add-prefix (only (here core) goto) spork/)
+        (rename)
+        (for core expand)
+        )
+
+(import ../srfi/1
+        (here ../srfi/1)
+        "http://pereckerdal.com/code/spork/core.scm"
+        (lib "http://pereckerdal.com/code/spork/core.scm")
+        (only: core goto show)
+        (except: core goto show)
+        (prefix: core spork/)
+        (prefix: (only: core goto) spork/)
+        (prefix: (only: (here core) goto) spork/)
+        (rename:)
+        (for: core expand)
+        )
+
+
+here
+lib
+only
+except
+add-prefix
+for
+rename
+std
+build
+termite
 
 ;;;  --------------------------------------------------------------  ;;;
 ;;;                                                                  ;;;
@@ -302,87 +344,6 @@
         (*build-loadenv-force-compile*)
         env)))))
 
-;;;; ---------- Module paths ----------
-
-;; TODO This isn't used right now. I don't remove it, becuase it might
-;; be useful when implementing the lib/wget/http thing.
-
-;; A module path is a symbol, for instance /srfi/1
-
-(define (module-path-absolute? p)
-  (let ((str (symbol->string p)))
-    (and (positive? (string-length str))
-         (char=? #\/ (string-ref str 0)))))
-
-
-;; Removes extraneous "./" and "../" in a URI path. Copied from the
-;; uri module
-(define (remove-dot-segments str)
-  (let* ((in-len (string-length str))
-         (res (make-string in-len)))
-    ;; i is where we are in the source string,
-    ;; j is where we are in the result string,
-    ;; segs is a list, used as a stack, of the indices of the
-    ;; previously encountered path segments in the result string.
-    (letrec
-        ((new-segment
-          (lambda (i j segs)
-            (let* ((segment-start (car segs))
-                   (segment-length (- j segment-start 1)))
-              (cond
-               ;; Check for .
-               ((and (= 1 segment-length)
-                     (char=? #\. (string-ref res segment-start)))
-                (loop (+ 1 i) segment-start segs))
- 
-               ;; Check for ..
-               ((and (= 2 segment-length)
-                     (char=? #\. (string-ref res segment-start))
-                     (char=? #\. (string-ref res (+ 1 segment-start))))
-                (cond
-                 ;; Take care of the "/../something" special case; it
-                 ;; should return "/something" and not "something".
-                 ((and (= 1 segment-start)
-                       (char=? #\/ (string-ref res 0)))
-                  (loop (+ 1 i) 1 '(1)))
-                 
-                 ;; This is needed because the code in the else clause
-                 ;; assumes that segs is a list of length >= 2
-                 ((zero? segment-start)
-                  (loop (+ 1 i) 0 segs))
- 
-                 (else
-                  (loop (+ 1 i) (cadr segs) (cdr segs)))))
-               
-               ;; Check for the end of the string
-               ((>= (+ 1 i) in-len)
-                j)
- 
-               (else
-                (loop (+ 1 i) j (cons j segs)))))))
-         (loop
-          (lambda (i j segs)
-            (if (>= i in-len)
-                (new-segment i j segs)
-                (let ((chr (string-ref str i)))
-                  (string-set! res j chr)
-                  (if (char=? chr #\/)
-                      (new-segment i (+ 1 j) segs)
-                      (loop (+ 1 i) (+ 1 j) segs)))))))
-      (let ((idx (loop 0 0 '(0))))
-        (substring res 0 idx)))))
-
-(define (module-path-absolutize p #!optional ref)
-  (if (module-path-absolute? p)
-      p
-      (string->symbol
-       (remove-dot-segments
-        (if ref
-            (string-append (symbol->string ref)
-                           "/../"
-                           (symbol->string p))
-            (string-append "/" (symbol->string p)))))))
-
 ;;;; ---------- Module objects ----------
 
 ;; A module object consists of the loader and the module path
@@ -467,6 +428,112 @@
             (not (null? (cdr res))))
         (error "Module identifier must refer to one module only:" name)
         (car res))))
+
+
+
+;;;; ---------- Import resolvers ----------
+
+;; Import resolvers are the implementation of (only: [mod] names),
+;; add-prefix:, and similar features. They are functions that take the
+;; current module, and their arguments ((only: [mod] names ...) would
+;; give the arguments '([mod] names ...) to the only: resolver) and
+;; return two values: the imported symbols (in the same format as
+;; module-info-exports) and a list of the modules that this import
+;; depends on.
+
+(define *import-resolvers* '())
+
+(define (resolve-import val #!optional cm)
+  (cond
+   ((and (pair? val)
+         (keyword? (car val)))
+    (let* ((resolver-id (car val))
+           (resolver (let ((pair (assq resolver-id
+                                       *import-resolvers*)))
+                       (and pair (cdr pair)))))
+      (if (not resolver)
+          (error "Import resolver not found:" resolver-id)
+          (apply resolver
+                 (cons (or cm (current-module))
+                       (cdr val))))))
+
+   (else
+    (let ((mods (resolve-module val cm)))
+      (values (apply
+               append
+               (map (lambda (mod)
+                      (module-info-exports
+                       (module-info mod)))
+                    mods))
+              mods)))))
+
+(define (resolve-imports vals #!optional cm)
+  (let ((defs '())
+        (mods '()))
+    (for-each (lambda (val)
+                (call-with-values
+                    (lambda ()
+                      (resolve-import val cm))
+                  (lambda (def mod)
+                    (set! defs (cons def defs))
+                    (set! mods (cons mod mods)))))
+              vals)
+    (values (flatten1 defs)
+            (flatten1 mods))))
+
+(define (only-resolver cm mod . names)
+  (call-with-values
+      (lambda () (resolve-import mod cm))
+    (lambda (defs modules)
+      (values
+       (map (lambda (name)
+              (or (assq name defs)
+                  (error "only: Symbol not defined" name mod)))
+            names)
+       modules))))
+
+(define (except-resolver cm mod . names)
+  (call-with-values
+      (lambda () (resolve-import mod cm))
+    (lambda (defs modules)
+      (let ((def-clone (map (lambda (x) x) defs)))
+        (for-each
+         (lambda (name)
+           (set! def-clone
+                 (remove! (lambda (x)
+                            (eq? (car x) name))
+                          def-clone)))
+         names)
+        (values def-clone modules)))))
+
+(define (prefix-resolver cm prefix . mods)
+  (let ((prefix-str (symbol->string prefix)))
+    (call-with-values
+        (lambda () (resolve-imports mods cm))
+      (lambda (defs modules)
+        (values
+         (map (lambda (def)
+                (cons (string->symbol
+                       (string-append
+                        prefix-str
+                        (symbol->string (car def))))
+                      (cdr def)))
+              defs)
+         modules)))))
+
+(set! *import-resolvers*
+      `((only: . ,only-resolver)
+        (except: . ,except-resolver)
+        (prefix: . ,prefix-resolver)))
+
+
+(resolve-import '(except:
+                  (prefix:
+                   pre/
+                   (only: (std misc/splice misc/al)
+                          splice al))
+                  pre/splice))
+
 
 
 ;;;; ---------- Module utility functions ----------

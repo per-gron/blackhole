@@ -60,14 +60,47 @@
 (define (is-directory? dir)
   (file-exists? (string-append dir "/")))
 
+;; TODO This is probably very slow
 (define (flatten list)
   (cond ((null? list) '())
-        ((list? (car list))
+        ((pair? (car list))
          (append (flatten (car list))
                  (flatten (cdr list))))
         (else
          (cons (car list)
                (flatten (cdr list))))))
+
+;; TODO This is probably very slow
+(define (flatten1 list)
+  (cond
+   ((null? list)
+    '())
+   (else
+    (append (car list)
+            (flatten1 (cdr list))))))
+
+(define (remove! pred list)
+  (cond
+   ((null? list) '())
+
+   (else
+    (if (pred (car list))
+        (remove! pred (cdr list))
+        (let ((return list))
+          (let loop ((list list))
+            (cond
+             ((null? list)
+              return)
+             
+             ((and (pair? (cdr list))
+                   (pred (cadr list)))
+              (set-cdr! list
+                        (cddr list))
+              (loop (cdr list)))
+             
+             (else
+              (loop (cdr list))))))))))
+           
 
 ;; Recursively search directories after files with a certain extension
 (define (find-files-with-ext ext dir #!optional prefix)
