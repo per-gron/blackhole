@@ -36,6 +36,7 @@
   (clean! unprintable: equality-skip: read-only:)
   (compile! unprintable: equality-skip: read-only:))
 
+
 ;;;; ---------- Module info ----------
 
 (define-type module-info
@@ -52,220 +53,6 @@
   (force-compile? read-only:)
   (environment read-only:))
 
-(define empty-module-info
-  (make-module-info
-   '() '() '() '() '() "" "" "" #f builtin-environment))
-
-;; True when a calculating info for a module
-(define calcing (make-parameter #f))
-
-;; The placement of this code is a little counterintuitive. It is
-;; here, because this is the code that actually does thea
-;; calc-info. But it's the calcing dynamic variable that actually
-;; triggers its use, which is in hygiene.scm.
-(define-env load-environment
-  "build-loadenv#"
-  ()
-  ((import
-    (nh-macro-transformer
-     (lambda pkgs
-       (with-module-cache
-        (lambda ()
-          (call-with-values
-              (lambda () (resolve-imports
-                          (extract-synclosure-crawler pkgs)))
-            (lambda (def mod)
-              (*build-loadenv-uses*
-               (append (*build-loadenv-uses*)
-                       mod))
-              (*build-loadenv-imports*
-               (append (*build-loadenv-imports*)
-                       def))
-              ;; (module-import def mod) TODO Remove this. It
-              ;; shouldn't be here, but right now I'm not 100% sure I
-              ;; can take it away.
-              (void))))))))
-   
-   (module
-    (lambda (code env mac-env)
-      (error "Ill-placed module form" code)))
-   
-   (define
-     (lambda (code env mac-env)
-       (let* ((src (transform-to-lambda (cdr code)))
-              (sym (synclosure-extract-form (car src))))
-         (environment-top-ns-add (top-environment)
-                                 sym
-                                 (gen-symbol
-                                  (module-namespace (current-module))
-                                  sym))
-         (*build-loadenv-symbols*
-          (cons (cons sym 'def) (*build-loadenv-symbols*)))
-         (void))))
-   
-   (define-macro-register
-     (lambda (form env mac-env)
-       (let ((src (transform-to-lambda (cdr form))))
-         (*build-loadenv-symbols*
-          (cons (cons (car src) 'mac)
-                (*build-loadenv-symbols*))))
-       (void)))
-   
-   (let
-       (lambda (code env mac-env)
-         #f))
-   
-   (letrec
-       (lambda (code env mac-env)
-         #f))
-   
-   (lambda
-       (lambda (code env mac-env)
-         #f))
-   
-   (export
-    (lambda (code env mac-env)
-      (*build-loadenv-exports*
-       (append (cdr (extract-synclosure-crawler code))
-               (or (*build-loadenv-exports*) '())))))
-   
-   (compile-options
-    (nh-macro-transformer
-     (lambda (#!key options
-                    cc-options
-                    ld-options-prelude
-                    ld-options
-                    force-compile)
-       (if options
-           (*build-loadenv-options*
-            options))
-       (if cc-options
-           (*build-loadenv-cc-options*
-            cc-options))
-       (if ld-options-prelude
-           (*build-loadenv-ld-options-prelude*
-            ld-options-prelude))
-       (if ld-options
-           (*build-loadenv-ld-options*
-            ld-options))
-       (if force-compile
-           (*build-loadenv-force-compile*
-            force-compile))
-       (void))))
-   
-   (c-declare
-    (lambda args
-      (*build-loadenv-force-compile* #t)
-      (void)))
-   
-   (c-initialize
-    (lambda args
-      (*build-loadenv-force-compile* #t)
-      (void)))
-   
-   (c-define-type
-    (lambda args
-      (*build-loadenv-force-compile* #t)
-      (void)))
-   
-   (c-lambda
-    (lambda args
-      (*build-loadenv-force-compile* #t)
-      (void)))
-   
-   (c-define
-    (lambda args
-      (*build-loadenv-force-compile* #t)
-      (void)))))
-
-(define-macro (make-loadenv-vars . vars)
-  (let ((syms (map (lambda (var)
-                     (string->symbol
-                      (string-append
-                       "*build-loadenv-"
-                       (symbol->string (car var))
-                       "*")))
-                   vars))
-        (defaults (map cadr vars)))
-    `(begin
-       ,@(map (lambda (sym)
-                `(define ,sym (make-parameter #f)))
-              syms)
-       
-       (define (with-build-loadenv thunk)
-         (parameterize
-          ,(map (lambda (sym default)
-                  `(,sym ,default))
-                syms
-                defaults)
-          (thunk))))))
-
-(make-loadenv-vars (symbols '())
-                   (exports #f)
-                   (imports '())
-                   (uses '())
-                   (options '())
-                   (cc-options "")
-                   (ld-options-prelude "")
-                   (ld-options "")
-                   (force-compile #f))
-
-;; This function makes use of the build-loadenv dynamic environment.
-(define (interpret-loadenv-exports env)
-  (let* ((exps (*build-loadenv-exports*)))
-    (if exps
-        (resolve-exports exps env)
-        (values
-         (let ((ns (module-namespace
-                    (environment-module env))))
-           (map (lambda (pair)
-                  (let ((name (car pair))
-                        (type (cdr pair)))
-                    (if (eq? 'def type)
-                        (list name 'def (gen-symbol ns name))
-                        (let ((mac (environment-top-ns-macro-get
-                                    env
-                                    name)))
-                          (list name ;; exported name
-                                'mac
-                                (car mac) ;; imported name
-                                (caddr mac))))))
-                (*build-loadenv-symbols*)))
-           '()))))
-
-(define (module-info-calculate module #!optional filename)
-  (with-build-loadenv
-   (lambda ()
-     (let ((env #f))
-       (if filename
-           (parameterize
-            ((top-environment (make-top-environment
-                               (resolve-one-module module)))
-             (calcing #t))
-            (expand-macro
-             (expr*:strip-locationinfo
-              (file-read-as-expr filename)))
-            (set! env (top-environment))))
-
-       (call-with-values
-           (lambda () (interpret-loadenv-exports env))
-         (lambda (exports export-uses)
-           ;; TODO Add something to check for duplicate imports and
-           ;; exports.
-           (make-module-info
-            (reverse (*build-loadenv-symbols*))
-            exports
-            (*build-loadenv-imports*)
-            (remove-duplicates ;; TODO This is an n^2 algorithm = sloow
-             (append export-uses
-                     (*build-loadenv-uses*))
-             equal?)
-            (*build-loadenv-options*)
-            (*build-loadenv-cc-options*)
-            (*build-loadenv-ld-options-prelude*)
-            (*build-loadenv-ld-options*)
-            (*build-loadenv-force-compile*)
-            env)))))))
 
 ;;;; ---------- Module objects ----------
 
@@ -278,6 +65,7 @@
   (loader read-only:)
   ;; The absolute module path. It must be a hashable object.
   (path read-only:))
+
 
 ;;;; ---------- Module resolvers ----------
 
@@ -581,6 +369,225 @@
 (set! *export-resolvers*
       `((rename: . ,rename-export-resolver)
         (re-export: . ,re-export-export-resolver)))
+
+
+
+;;;; ---------- Module info utilities ----------
+
+(define empty-module-info
+  (make-module-info
+   '() '() '() '() '() "" "" "" #f builtin-environment))
+
+;; True when a calculating info for a module
+(define calcing (make-parameter #f))
+
+;; The placement of this code is a little counterintuitive. It is
+;; here, because this is the code that actually does thea
+;; calc-info. But it's the calcing dynamic variable that actually
+;; triggers its use, which is in hygiene.scm.
+(define-env load-environment
+  "build-loadenv#"
+  ()
+  ((import
+    (nh-macro-transformer
+     (lambda pkgs
+       (with-module-cache
+        (lambda ()
+          (call-with-values
+              (lambda () (resolve-imports
+                          (extract-synclosure-crawler pkgs)))
+            (lambda (def mod)
+              (*build-loadenv-uses*
+               (append (*build-loadenv-uses*)
+                       mod))
+              (*build-loadenv-imports*
+               (append (*build-loadenv-imports*)
+                       def))
+              ;; (module-import def mod) TODO Remove this. It
+              ;; shouldn't be here, but right now I'm not 100% sure I
+              ;; can take it away.
+              (void))))))))
+   
+   (module
+    (lambda (code env mac-env)
+      (error "Ill-placed module form" code)))
+   
+   (define
+     (lambda (code env mac-env)
+       (let* ((src (transform-to-lambda (cdr code)))
+              (sym (synclosure-extract-form (car src))))
+         (environment-top-ns-add (top-environment)
+                                 sym
+                                 (gen-symbol
+                                  (module-namespace (current-module))
+                                  sym))
+         (*build-loadenv-symbols*
+          (cons (cons sym 'def) (*build-loadenv-symbols*)))
+         (void))))
+   
+   (define-macro-register
+     (lambda (form env mac-env)
+       (let ((src (transform-to-lambda (cdr form))))
+         (*build-loadenv-symbols*
+          (cons (cons (car src) 'mac)
+                (*build-loadenv-symbols*))))
+       (void)))
+   
+   (let
+       (lambda (code env mac-env)
+         #f))
+   
+   (letrec
+       (lambda (code env mac-env)
+         #f))
+   
+   (lambda
+       (lambda (code env mac-env)
+         #f))
+   
+   (export
+    (lambda (code env mac-env)
+      (*build-loadenv-exports*
+       (append (cdr (extract-synclosure-crawler code))
+               (or (*build-loadenv-exports*) '())))))
+   
+   (compile-options
+    (nh-macro-transformer
+     (lambda (#!key options
+                    cc-options
+                    ld-options-prelude
+                    ld-options
+                    force-compile)
+       (if options
+           (*build-loadenv-options*
+            options))
+       (if cc-options
+           (*build-loadenv-cc-options*
+            cc-options))
+       (if ld-options-prelude
+           (*build-loadenv-ld-options-prelude*
+            ld-options-prelude))
+       (if ld-options
+           (*build-loadenv-ld-options*
+            ld-options))
+       (if force-compile
+           (*build-loadenv-force-compile*
+            force-compile))
+       (void))))
+   
+   (c-declare
+    (lambda args
+      (*build-loadenv-force-compile* #t)
+      (void)))
+   
+   (c-initialize
+    (lambda args
+      (*build-loadenv-force-compile* #t)
+      (void)))
+   
+   (c-define-type
+    (lambda args
+      (*build-loadenv-force-compile* #t)
+      (void)))
+   
+   (c-lambda
+    (lambda args
+      (*build-loadenv-force-compile* #t)
+      (void)))
+   
+   (c-define
+    (lambda args
+      (*build-loadenv-force-compile* #t)
+      (void)))))
+
+(define-macro (make-loadenv-vars . vars)
+  (let ((syms (map (lambda (var)
+                     (string->symbol
+                      (string-append
+                       "*build-loadenv-"
+                       (symbol->string (car var))
+                       "*")))
+                   vars))
+        (defaults (map cadr vars)))
+    `(begin
+       ,@(map (lambda (sym)
+                `(define ,sym (make-parameter #f)))
+              syms)
+       
+       (define (with-build-loadenv thunk)
+         (parameterize
+          ,(map (lambda (sym default)
+                  `(,sym ,default))
+                syms
+                defaults)
+          (thunk))))))
+
+(make-loadenv-vars (symbols '())
+                   (exports #f)
+                   (imports '())
+                   (uses '())
+                   (options '())
+                   (cc-options "")
+                   (ld-options-prelude "")
+                   (ld-options "")
+                   (force-compile #f))
+
+;; This function makes use of the build-loadenv dynamic environment.
+(define (interpret-loadenv-exports env)
+  (let* ((exps (*build-loadenv-exports*)))
+    (if exps
+        (resolve-exports exps env)
+        (values
+         (let ((ns (module-namespace
+                    (environment-module env))))
+           (map (lambda (pair)
+                  (let ((name (car pair))
+                        (type (cdr pair)))
+                    (if (eq? 'def type)
+                        (list name 'def (gen-symbol ns name))
+                        (let ((mac (environment-top-ns-macro-get
+                                    env
+                                    name)))
+                          (list name ;; exported name
+                                'mac
+                                (car mac) ;; imported name
+                                (caddr mac))))))
+                (*build-loadenv-symbols*)))
+           '()))))
+
+(define (module-info-calculate module #!optional filename)
+  (with-build-loadenv
+   (lambda ()
+     (let ((env #f))
+       (if filename
+           (parameterize
+            ((top-environment (make-top-environment
+                               (resolve-one-module module)))
+             (calcing #t))
+            (expand-macro
+             (expr*:strip-locationinfo
+              (file-read-as-expr filename)))
+            (set! env (top-environment))))
+
+       (call-with-values
+           (lambda () (interpret-loadenv-exports env))
+         (lambda (exports export-uses)
+           ;; TODO Add something to check for duplicate imports and
+           ;; exports.
+           (make-module-info
+            (reverse (*build-loadenv-symbols*))
+            exports
+            (*build-loadenv-imports*)
+            (remove-duplicates ;; TODO This is an n^2 algorithm = sloow
+             (append export-uses
+                     (*build-loadenv-uses*))
+             equal?)
+            (*build-loadenv-options*)
+            (*build-loadenv-cc-options*)
+            (*build-loadenv-ld-options-prelude*)
+            (*build-loadenv-ld-options*)
+            (*build-loadenv-force-compile*)
+            env)))))))
 
 
 ;;;; ---------- Module utility functions ----------

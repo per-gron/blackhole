@@ -46,15 +46,15 @@
 
 (define-type env
   id: A8981FB8-BC38-47BA-8707-5A3F5962D610
-  (parent unprintable:)
-  module
-  ;; It is unprintable because it often contains cyclic data
+  (parent unprintable: read-only:)
+  (module read-only:)
+  ;; These are unprintable because it often contains cyclic data
   ;; structures, which in practise crashes gambit when prettyprinting
   ;; it, which is a huge pain.
   (inner-ns unprintable:)
   (inner-ns-macro unprintable:)
-  (top-ns unprintable:)
-  (top-ns-macro unprintable:))
+  (top-ns unprintable: read-only:)
+  (top-ns-macro unprintable: read-only:))
 
 (define (make-environment parent
                           #!optional
@@ -83,8 +83,7 @@
 
 (define environment-parent env-parent)
 
-(define (environment-module env)
-  (env-module env))
+(define environment-module env-module)
 
 (define environment-top-ns env-top-ns)
 
@@ -948,7 +947,16 @@
                        source
                        env ;; TODO I'm not sure if this should be search-env
                        (caddr mac))))) ;; Macro environment
-             
+
+             ;; It's tempting to add ##begin to this list, it would
+             ;; after all make ##begin a useful construct for
+             ;; bypassing the macro expansion anywhere you want, but
+             ;; it's not possible to do that (at least without other
+             ;; modifications also), because the forms that are passed
+             ;; to the expand-source callbacks contain ##begin as a
+             ;; top-level container, so adding ##begin to this list
+             ;; effectively disables macro expansion while compiling
+             ;; and loading files.
              ((memq hd '(##namespace
                          ##let
                          ##let*
@@ -1227,7 +1235,6 @@
                                           ;; env
                                           builtin-environment
                                           )))
-                      (_ (pp fun))
                       (fn-name (environment-add-macro-fun
                                 before-name
                                 (eval-no-hook fun)
