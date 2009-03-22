@@ -1,54 +1,3 @@
-;; TODO
-;; only
-;; except
-;; add-prefix
-;; rename
-;; for
-
-;;(export splice
-;;        (rename: (splice-data unsplice))
-;;        (re-export: ../srfi/1)
-;;        (re-export: (prefix: ../srfi/1 srfi1/))
-;;        )
-;; 
-;;(import ../srfi/1
-;;        (here ../srfi/1)
-;;        "http://pereckerdal.com/code/spork/core.scm"
-;;        (lib "http://pereckerdal.com/code/spork/core.scm")
-;;        (only core goto show)
-;;        (except core goto show)
-;;        (add-prefix core spork/)
-;;        (add-prefix (only core goto) spork/)
-;;        (add-prefix (only (here core) goto) spork/)
-;;        (rename)
-;;        (for core expand)
-;;        )
-;; 
-;;(import ../srfi/1
-;;        (here ../srfi/1)
-;;        "http://pereckerdal.com/code/spork/core.scm"
-;;        (lib "http://pereckerdal.com/code/spork/core.scm")
-;;        (only: core goto show)
-;;        (except: core goto show)
-;;        (prefix: core spork/)
-;;        (prefix: (only: core goto) spork/)
-;;        (prefix: (only: (here core) goto) spork/)
-;;        (rename:)
-;;        (for: core expand)
-;;        )
-;; 
-;; 
-;;here
-;;lib
-;;only
-;;except
-;;add-prefix
-;;for
-;;rename
-;;std
-;;build
-;;termite
-
 ;;;  --------------------------------------------------------------  ;;;
 ;;;                                                                  ;;;
 ;;;                       The actual system                          ;;;
@@ -120,18 +69,23 @@
   ((import
     (nh-macro-transformer
      (lambda pkgs
-       (call-with-values
-           (lambda () (resolve-imports
-                       (extract-synclosure-crawler pkgs)))
-         (lambda (def mod)
-           (*build-loadenv-uses*
-            (append (*build-loadenv-uses*)
-                    mod))
-           (*build-loadenv-imports*
-            (append (*build-loadenv-imports*)
-                    def))
-           (module-import def mod))))))
-
+       (with-module-cache
+        (lambda ()
+          (call-with-values
+              (lambda () (resolve-imports
+                          (extract-synclosure-crawler pkgs)))
+            (lambda (def mod)
+              (*build-loadenv-uses*
+               (append (*build-loadenv-uses*)
+                       mod))
+              (*build-loadenv-imports*
+               (append (*build-loadenv-imports*)
+                       def))
+              ;; (module-import def mod) TODO Remove this. It
+              ;; shouldn't be here, but right now I'm not 100% sure I
+              ;; can take it away.
+              (void))))))))
+   
    (module
     (lambda (code env mac-env)
       (error "Ill-placed module form" code)))
@@ -153,7 +107,8 @@
      (lambda (form env mac-env)
        (let ((src (transform-to-lambda (cdr form))))
          (*build-loadenv-symbols*
-          (cons (cons (car src) 'mac) (*build-loadenv-symbols*))))
+          (cons (cons (car src) 'mac)
+                (*build-loadenv-symbols*))))
        (void)))
    
    (let

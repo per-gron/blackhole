@@ -183,6 +183,18 @@
 
 (define (make-syntactic-closure env ids form)
   (cond
+   ;; Forms that are not symbols, pairs, vectors or syntactic closures
+   ;; (for instance null, numbers or strings) don't need to be wrapped
+   ;; in a syntactic closure, because their meaning is independent of
+   ;; lexical context.
+   ((not (or (symbol? form)
+             (pair? form)
+             (vector? form)
+             (syntactic-closure? form)))
+    form)
+   
+   ;; If form already is a fully closed syntactic closure, there is no
+   ;; need to wrap it again.
    ((and (syntactic-closure? form)
          (null?
           (syntactic-closure-ids form)))
@@ -1136,11 +1148,13 @@
   ((import
     (nh-macro-transformer
      (lambda pkgs
-       (call-with-values
-           (lambda ()
-             (resolve-imports
-              (extract-synclosure-crawler pkgs)))
-         module-import))))
+       (with-module-cache
+        (lambda ()
+          (call-with-values
+              (lambda ()
+                (resolve-imports
+                 (extract-synclosure-crawler pkgs)))
+            module-import))))))
    
    (module
     (nh-macro-transformer
@@ -1205,7 +1219,15 @@
            (if (top-level)
                (let* ((fun (parameterize
                             ((calcing #f))
-                            (expand-macro trans env)))
+                            (expand-macro trans
+                                          ;; TODO This should be the
+                                          ;; macro execution
+                                          ;; environment
+                                          ;;
+                                          ;; env
+                                          builtin-environment
+                                          )))
+                      (_ (pp fun))
                       (fn-name (environment-add-macro-fun
                                 before-name
                                 (eval-no-hook fun)
@@ -1356,6 +1378,10 @@
    
    (export
     (lambda (code env mac-env)
+      (if (or (not (top-level))
+              (not (environment-module env)))
+          (error "Incorrectly placed export form"
+                 (expr*:strip-locationinfo code)))
       (void)))
    
    (compile-options
