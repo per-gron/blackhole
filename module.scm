@@ -403,10 +403,7 @@
               (*build-loadenv-imports*
                (append (*build-loadenv-imports*)
                        def))
-              ;; (module-import def mod) TODO Remove this. It
-              ;; shouldn't be here, but right now I'm not 100% sure I
-              ;; can take it away.
-              (void))))))))
+              (module-add-defs-to-env def))))))))
    
    (module
     (lambda (code env mac-env)
@@ -675,17 +672,20 @@
       ;; This function might be called with #f as argument
       (if mod (fn mod) ""))))
 
-(define (module-import defs modules)
+(define (module-load-list modules)
+  (with-module-cache
+   (lambda ()
+     (for-each
+      (lambda (module)
+        (for-each (lambda (args)
+                    (apply load-once args))
+                  (module-load module)))
+      modules))))
+
+(define (module-add-defs-to-env defs)
   (with-module-cache
    (lambda ()
      (let* ((te (top-environment)))
-       (for-each
-        (lambda (module)
-          (for-each (lambda (args)
-                      (apply load-once args))
-                    (module-load module)))
-        modules)
-
        (for-each
         (lambda (def)
           (if (eq? 'def (cadr def))
@@ -708,8 +708,17 @@
                (eval-no-hook (caddr def))
                ;; The macro's environment
                (cadddr def))))
-        defs))
-     (void))))
+        defs)))))
+
+(define (module-import . import-list)
+  (with-module-cache
+   (lambda ()
+     (call-with-values
+         (lambda ()
+           (resolve-imports import-list))
+       (lambda (defs modules)
+         (module-load-list modules)
+         (module-add-defs-to-env defs))))))
 
 (define module-module
   (let* ((repl-environment #f)
@@ -722,8 +731,8 @@
                     (set! repl-environment (top-environment)))
                 (top-environment (make-top-environment mod))
                 (let ((info (module-info mod)))
-                  (module-import (module-info-imports info)
-                                 (module-info-uses info)))
+                  (module-add-defs-to-env (module-info-imports info))
+                  (module-load-list (module-info-uses info)))
                 `(begin
                    (##namespace (,(module-namespace mod)))
                    ,@*global-includes*)))))

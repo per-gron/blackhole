@@ -1156,13 +1156,8 @@
   ((import
     (nh-macro-transformer
      (lambda pkgs
-       (with-module-cache
-        (lambda ()
-          (call-with-values
-              (lambda ()
-                (resolve-imports
-                 (extract-synclosure-crawler pkgs)))
-            module-import))))))
+       (apply module-import
+              (extract-synclosure-crawler pkgs)))))
    
    (module
     (nh-macro-transformer

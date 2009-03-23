@@ -3,16 +3,20 @@
 ;; * Den kompilerar inte om dependencies när det behövs (pga
 ;;   makro-expansion)
 ;; * Stöd för att kompilera till annan mapp
-;; * Lägg till så att man kan importera utan att
-;;   importera alla symboler till namespacet
 ;; * Gör en funktion som söker och visar vilka moduler som
 ;;   definierar en viss symbol
 ;; * Lägg till stöd för att detektera namespace-konflikter
-;; * Bättre saker för att styra visibility
-;; * do, time, parameterize form för hygiensystemet
-;; * (let-syntax ((blah ...)) (define-syntax ...)) fungerar inte
-;;   när det inre makrot använder blah.
 ;; * Jag borde nästan helt kasta expr.scm
+;; * Kolla möjligheten att implementera kompatibilitetslager för R6RS
+;; * Ändra så att inget som krävs för runtime i build är exporterat by
+;;   default i moduler. Däremot ska allt vara importerat by default i
+;;   REPLen.
+;;
+;; Enkel TODO
+;; * Implementera lib
+;; * Källkodsplatser
+;; * do, time, parameterize form för hygiensystemet
+;; * byt namn build => module
 
 ;; Design limitations
 ;; * Just nu om man har en fil som kräver kompilering kommer
@@ -27,15 +31,6 @@
 
 ;; Feature requests
 ;; * Something to be able to work around #!key parameter hygiene
-
-;; Filer som använder namespaces
-;; * lib/typecheck
-;; * lib/profiler
-;; * lib/dbi
-;; * siim/lib
-;; * db/atom-db
-
-;; black hole
 
 (##namespace ("build#"))
 
