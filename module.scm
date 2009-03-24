@@ -299,8 +299,8 @@
     (lambda (mac)
       (list as ;; exported name
             'mac
-            (car mac) ;; imported name
-            (caddr mac)))) ;; macro environment
+            (car mac) ;; macro procedure
+            (cadr mac)))) ;; macro environment
    
    ((environment-top-ns-get env name) =>
     (lambda (def)
@@ -410,8 +410,9 @@
       (error "Ill-placed module form" code)))
    
    (define
-     (lambda (code env mac-env)
-       (let* ((src (transform-to-lambda (cdr code)))
+     (lambda (source env mac-env)
+       (let* ((code (expr*:value source))
+              (src (transform-to-lambda (cdr code)))
               (sym (synclosure-extract-form (car src))))
          (environment-top-ns-add (top-environment)
                                  sym
@@ -529,27 +530,31 @@
                    (ld-options "")
                    (force-compile #f))
 
+(define (loadenv-symbol-defs symbols env)
+  (let ((ns (module-namespace
+             (environment-module env))))
+    (map (lambda (pair)
+           (let ((name (car pair))
+                 (type (cdr pair)))
+             (if (eq? 'def type)
+                 (list name 'def (gen-symbol ns name))
+                 (let ((mac (environment-top-ns-macro-get
+                             env
+                             name)))
+                   (list name ;; exported name
+                         'mac
+                         (car mac) ;; macro procedure
+                         (cadr mac))))))
+         symbols)))
+
 ;; This function makes use of the build-loadenv dynamic environment.
 (define (interpret-loadenv-exports env)
   (let* ((exps (*build-loadenv-exports*)))
     (if exps
         (resolve-exports exps env)
         (values
-         (let ((ns (module-namespace
-                    (environment-module env))))
-           (map (lambda (pair)
-                  (let ((name (car pair))
-                        (type (cdr pair)))
-                    (if (eq? 'def type)
-                        (list name 'def (gen-symbol ns name))
-                        (let ((mac (environment-top-ns-macro-get
-                                    env
-                                    name)))
-                          (list name ;; exported name
-                                'mac
-                                (car mac) ;; imported name
-                                (caddr mac))))))
-                (*build-loadenv-symbols*)))
+         (loadenv-symbol-defs (*build-loadenv-symbols*)
+                              env)
            '()))))
 
 (define (module-info-calculate module #!optional filename)
@@ -682,57 +687,42 @@
                   (module-load module)))
       modules))))
 
-(define (module-add-defs-to-env defs)
+(define (module-add-defs-to-env defs #!optional (te (top-environment)))
   (with-module-cache
    (lambda ()
-     (let* ((te (top-environment)))
-       (for-each
-        (lambda (def)
-          (if (eq? 'def (cadr def))
-              ;; Regular define
-              (environment-top-ns-add
-               te
-               (car def) ;; The name it's imported as
-               (caddr def)) ;; The name it's imported from
-              ;; Macro
-              (environment-top-ns-macro-add
-               te
-               ;; The name it's imported as
-               (car def)
-               ;; The name it's imported from
-               (caddr def)
-               ;; The macro procedure. eval is used and not
-               ;; the procedure in the x structure to ensure
-               ;; that we use the compiled macro if it is
-               ;; compiled.
-               (eval-no-hook (caddr def))
-               ;; The macro's environment
-               (cadddr def))))
-        defs)))))
-
-(define (module-import . import-list)
-  (with-module-cache
-   (lambda ()
-     (call-with-values
-         (lambda ()
-           (resolve-imports import-list))
-       (lambda (defs modules)
-         (module-load-list modules)
-         (module-add-defs-to-env defs))))))
+     (for-each
+      (lambda (def)
+        (if (eq? 'def (cadr def))
+            ;; Regular define
+            (environment-top-ns-add
+             te
+             (car def) ;; The name it's imported as
+             (caddr def)) ;; The name it's imported from
+            ;; Macro
+            (environment-top-ns-macro-add
+             te
+             ;; The name it's imported as
+             (car def)
+             ;; The macro procedure
+             (caddr def)
+             ;; The macro's environment
+             (cadddr def))))
+      defs))))
 
 (define module-module
   (let* ((repl-environment #f)
          (fn (make-module-util-function
               (lambda (mod)
-                (for-each (lambda (args)
-                            (apply load-once args))
-                          (module-load mod))
                 (if (not (environment-module (top-environment)))
                     (set! repl-environment (top-environment)))
                 (top-environment (make-top-environment mod))
                 (let ((info (module-info mod)))
+                  (module-load-list
+                   (cons mod (module-info-uses info)))
                   (module-add-defs-to-env (module-info-imports info))
-                  (module-load-list (module-info-uses info)))
+                  (module-add-defs-to-env
+                   (loadenv-symbol-defs (module-info-symbols info)
+                                        (module-info-environment info))))
                 `(begin
                    (##namespace (,(module-namespace mod)))
                    ,@*global-includes*)))))

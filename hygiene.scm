@@ -46,8 +46,23 @@
 
 (define-type env
   id: A8981FB8-BC38-47BA-8707-5A3F5962D610
+  ;; The parent environment. This is how lexical scope is implemented;
+  ;; a number means that it is a top-level environment, an environment
+  ;; means that the scope above this one is that environment.
+  ;;
+  ;; If the environment is top-level, this should be a number, which
+  ;; is the phase of the environment. This is part of the
+  ;; implementation of separation between run-time and compile-time.
+  ;; The first phase is 0.
   (parent unprintable: read-only:)
+  ;; The module of this environment. #f if REPL.
   (module read-only:)
+  ;; The next phase environment. This is part of the implementation of
+  ;; proper separation between run-time and compile-time. When an
+  ;; environment is created, this is set to #f, and is then lazily
+  ;; initialized to an environment object when it is asked for.
+  (next-phase unprintable:)
+  
   ;; These are unprintable because it often contains cyclic data
   ;; structures, which in practise crashes gambit when prettyprinting
   ;; it, which is a huge pain.
@@ -62,22 +77,51 @@
                           (inner-ns-macro '())
                           (top-ns (environment-top-ns parent))
                           (top-ns-macro (environment-top-ns-macro parent)))
-  (make-env (and (env? parent) parent)
+  (make-env (if (env? parent)
+                parent
+                0)
             (if (env? parent)
                 (environment-module parent)
                 parent)
+            #f
             inner-ns
             inner-ns-macro
             top-ns
             top-ns-macro))
 
 (define (environment-clone env)
-  (make-env (environment-parent env)
-            (environment-module env)
-            (environment-inner-ns env)
-            (environment-inner-ns-macro env)
-            (environment-top-ns env)
-            (environment-top-ns-macro)))
+  (make-env (env-parent env)
+            (env-module env)
+            (env-next-phase env)
+            (env-inner-ns env)
+            (env-inner-ns-macro env)
+            (env-top-ns env)
+            (env-top-ns-macro)))
+
+(define (environment-find-top env)
+  (if (environment? (environment-parent env))
+      (environment-find-top env)
+      env))
+
+(define (environment-phase env)
+  (env-parent (environment-find-top env)))
+
+(define (environment-next-phase env)
+  (or (env-next-phase env)
+      (if (env? (env-parent env))
+          ;; Non-top-level environment.
+          (make-environment
+            (environment-next-phase
+             (environment-find-top env)))
+          (let ((val (make-env (+ 1 (env-parent env))
+                               (env-module env)
+                               #f
+                               '()
+                               '()
+                               (make-table)
+                               (make-table))))
+            (env-next-phase-set! env val)
+            val))))
 
 (define environment? env?)
 
@@ -99,13 +143,11 @@
 
 (define (environment-top-ns-macro-add env
                                       exported-name
-                                      imported-name
                                       fun
                                       m-env)
   (table-set! (environment-top-ns-macro env)
               exported-name
-              (list imported-name
-                    fun
+              (list fun
                     m-env)))
 
 (define (environment-top-ns-macro-get env name)
@@ -121,7 +163,7 @@
      (p (cdr p))
 
      ((let ((ep (environment-parent env)))
-        (and (not (string? ep)) ep)) =>
+        (and (environment? ep) ep)) =>
       (lambda (parent)
         (environment-inner-ns-get parent name)))
 
@@ -137,7 +179,7 @@
      (p (cdr p))
 
      ((let ((ep (environment-parent env)))
-        (and (not (string? ep)) ep)) =>
+        (and (environment? ep) ep)) =>
       (lambda (parent)
         (environment-inner-ns-macro-get parent name)))
 
@@ -165,7 +207,7 @@
       (def-found (cdr pair))))
 
    ((let ((ep (environment-parent env)))
-      (and (not (string? ep)) ep)) =>
+      (and (environment? ep) ep)) =>
     (lambda (parent)
       (environment-inner-ns-search parent name def-found macro-found)))
 
@@ -231,8 +273,8 @@
 (define (capture-syntactic-environment proc)
   (make-syntactic-capture proc))
 
-(define (make-top-environment ns)
-  (make-environment ns
+(define (make-top-environment module)
+  (make-environment module
                     '()
                     '()
                     (make-table)
@@ -247,23 +289,34 @@
 
 (define (generate-namespace)
   (string-append
-   "h"
    (number->string (scope-level))
    "#"))
+
+(define (environment-namespace env)
+  (let ((phase (environment-phase env))
+        (ns (module-namespace
+             (environment-module env))))
+    (if (zero? phase)
+        ns
+        (string-append
+         (substring ns 0 (max 0 (- (string-length ns) 1)))
+         "~"
+         (if (> phase 1)
+             (number->string phase)
+             "")
+         "#"))))
 
 (define (environment-add-macro-fun name fun env)
   (let ((fn
          (lambda (name env)
            (let ((sym (string->symbol
                        (string-append
-                        (module-namespace
-                         (environment-module env))
+                        (environment-namespace env)
                         (symbol->string name)
                         "|||macro|||"))))
              (environment-top-ns-macro-add
               env
               name ;; The exported name
-              sym ;; The imported name
               fun
               env)
              sym))))
@@ -369,17 +422,23 @@
 
 (define (environment-add-define! env name)
   (let* ((top (top-level))
-         (ns (if (or (string-contains (symbol->string name)
-                                     #\#)
-                     top)
-                ""
-                (generate-namespace))))
+         (ns (cond
+              ((string-contains (symbol->string name)
+                                #\#)
+               "")
+              
+              (top
+               (environment-namespace env))
+
+              (else
+               (generate-namespace)))))
     (if top
         (environment-top-ns-add env name (gen-symbol ns name))
         (environment-inner-ns-set!
          env
          (cons (list (gen-symbol ns name) env)
-               (environment-inner-ns env))))))
+               (environment-inner-ns env))))
+    ns))
 
 ;; Macs is a list of lists where car is name, cadr is the sexp
 ;; of the macro transformer
@@ -676,7 +735,7 @@
          ((eq? hd 'quasiquote)
           (expr*:value-set
            source
-           (list 'quasiquote
+           (list (car code)
                  (hyg-expand-macro-quasiquote
                   env
                   (cadr code)
@@ -943,10 +1002,10 @@
                    (lambda (mac)
                      (parameterize
                       ((inside-letrec (and (inside-letrec) (eq? hd 'begin))))
-                      ((cadr mac) ;; Macro function
+                      ((car mac) ;; Macro function
                        source
                        env ;; TODO I'm not sure if this should be search-env
-                       (caddr mac))))) ;; Macro environment
+                       (cadr mac))))) ;; Macro environment
 
              ;; It's tempting to add ##begin to this list, it would
              ;; after all make ##begin a useful construct for
@@ -1137,7 +1196,6 @@
                  ,@(map (lambda (mac mac-name)
                           (list 'list
                                 `',(car mac)
-                                `',mac-name
                                 mac-name
                                 name))
                         macs macro-names))))))))
@@ -1154,10 +1212,18 @@
    rsc-macro-transformer
    nh-macro-transformer)
   ((import
-    (nh-macro-transformer
-     (lambda pkgs
-       (apply module-import
-              (extract-synclosure-crawler pkgs)))))
+    (lambda (source env mac-env)
+      (let ((code (expr*:strip-locationinfo source)))
+        (with-module-cache
+         (lambda ()
+           (call-with-values
+               (lambda ()
+                 (resolve-imports
+                  (extract-synclosure-crawler
+                   (cdr code))))
+             (lambda (defs modules)
+               (module-load-list modules)
+               (module-add-defs-to-env defs env))))))))
    
    (module
     (nh-macro-transformer
@@ -1176,7 +1242,7 @@
              (list
               (hyg-expand-macro-quasiquote
                env
-               (expr*:cadr code)))))))
+               (cadr (expr*:value code))))))))
    
    (define
      (lambda (code env mac-env)
@@ -1192,16 +1258,16 @@
                       (def-env (if (syntactic-closure? name-form)
                                    (syntactic-closure-env name-form)
                                    env))
-                      (name (expand-synclosure name-form env)))
-                 (environment-add-define! def-env (expr*:value name))
+                      (name (expand-synclosure name-form env))
+                      (ns (environment-add-define! def-env
+                                                   (expr*:value name))))
                  (expr*:value-set
                   code
-                  `(##begin
-                     (##namespace (,(module-namespace
-                                     (environment-module def-env))
-                                   ,name))
-                     (##define ,name
-                       ,(expand-macro (cadr (expr*:value src)) env))))))
+                  `(##define ,(expr*:value-set
+                               name
+                               (gen-symbol ns
+                                           (expr*:value name)))
+                     ,(expand-macro (cadr (expr*:value src)) env)))))
              
              ;; This is to make transform-to-letrec work. It needs that
              ;; defines are not expanded.
@@ -1222,14 +1288,9 @@
            (if (top-level)
                (let* ((fun (parameterize
                             ((calcing #f))
-                            (expand-macro trans
-                                          ;; TODO This should be the
-                                          ;; macro execution
-                                          ;; environment
-                                          ;;
-                                          ;; env
-                                          builtin-environment
-                                          )))
+                            (expand-macro
+                             trans
+                             (environment-next-phase env))))
                       (fn-name (environment-add-macro-fun
                                 before-name
                                 (eval-no-hook fun)
@@ -1246,6 +1307,15 @@
      (lambda (form env mac-env)
        (void)))
 
+   (syntax-begin
+    (lambda (code env mac-env)
+      ;; The loop is here to return the last value.
+      (parameterize
+       ((calcing #f))
+       (eval-no-hook
+        (expand-macro `(begin ,@(cdr (expr*:value code)))
+                      (environment-next-phase env))))))
+   
    (begin
      (lambda (code env mac-env)
        ;; This is to make transform-to-letrec work. It needs that
