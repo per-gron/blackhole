@@ -1,5 +1,4 @@
 ;; TODO
-;; * Det saknas macro-use
 ;; * Den kompilerar inte om dependencies när det behövs (pga
 ;;   makro-expansion)
 ;; * Stöd för att kompilera till annan mapp
@@ -16,7 +15,6 @@
 ;; * Implementera lib
 ;; * Källkodsplatser
 ;; * do, time, parameterize form för hygiensystemet
-;; * byt namn build => module
 
 ;; Design limitations
 ;; * Just nu om man har en fil som kräver kompilering kommer

@@ -666,12 +666,23 @@
 
 ;; TODO This function should rename modules with name h[number] to not
 ;; clash with the hygiene.
+
+(define (namespace-rename-reserved str)
+  (cond
+   ((or (string->number str)
+        (string-contains str #\~))
+    (string-append str "_"))
+
+   (else
+    str)))
+
 (define module-namespace
   (let ((fn
          (make-module-util-function
           (lambda (mod)
             (string-append
-             ((loader-module-name (module-loader mod)) mod)
+             (namespace-rename-reserved
+              ((loader-module-name (module-loader mod)) mod))
              "#")))))
     (lambda (mod)
       ;; This function might be called with #f as argument
@@ -939,7 +950,7 @@
             (if (not result)
                 (error "Compilation failed")))))))))
 
-(define module-loader
+(define module-module-loader
   (make-loader
    ;; include
    (lambda (mod)
@@ -1018,7 +1029,7 @@
               module-generate-export-list
               
               loader
-              module-loader)))
+              module-module-loader)))
       '() '() '() "" "" "" #f builtin-environment))
    ;; path-absolutize
    (lambda (path #!optional ref) #f)
@@ -1070,7 +1081,7 @@
 (set! *module-resolvers*
       `((here . ,current-module-resolver)
         (module . ,(make-singleton-module-resolver
-                   module-loader))
+                    module-module-loader))
         (std . ,(package-module-resolver "~~/lib/module/std/"))
         (termite . ,(make-singleton-module-resolver
                      termite-loader))))
