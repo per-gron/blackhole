@@ -214,10 +214,13 @@
 
 (define (eval-no-hook expr)
   (let ((hook ##expand-source))
-    (set! ##expand-source (lambda (src) src))
-    (let ((ret (eval expr)))
-      (set! ##expand-source hook)
-      ret)))
+    (dynamic-wind
+        (lambda ()
+          (set! ##expand-source (lambda (src) src)))
+        (lambda ()
+          (eval expr))
+        (lambda ()
+          (set! ##expand-source hook)))))
 
 ;; Taken from Christian Jaeger
 (define (defined? a)

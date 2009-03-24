@@ -947,59 +947,78 @@
    ;; load
    (lambda (mod) '())
    ;; calculate-info
+   ;; TODO Add syntax-rules to here, too.
    (lambda (mod)
      (make-module-info
       '()
-      (map (lambda (x)
-             (list x 'def (gen-symbol "build#" x)))
-           '(make-loader
-             loader-include
-             loader-load
-             loader-calculate-info
-             loader-needs-compile?
-             loader-clean!
-             loader-compile!
-             
-             make-module-info
-             module-info-symbols
-             module-info-exports
-             module-info-uses
-             module-info-options
-             module-info-cc-options
-             module-info-ld-options-prelude
-             module-info-ld-options
-             module-info-force-compile?
-             module-info-environment
-             module-info-calculate
-             
-             resolve-module
-             resolve-modules
-             resolve-one-module
-             
-             current-module
-             current-loader
-             
-             with-module-cache
-             
-             make-module
-             module-loader
-             module-path
-             module-info
-             module-include
-             module-load
-             module-needs-compile?
-             module-compile!
-             module-clean!
-             module-namespace
-             module-module
-             
-             module-deps
-             module-compile/deps!
-             module-clean/deps!
-             module-generate-export-list
-             
-             loader
-             build-loader))
+      (cons
+       (list 'syntax-rules
+             'mac
+             (lambda (code env mac-env)
+               `(build#sc-macro-transformer
+                 (apply build#syntax-rules-proc
+                        ',(expr*:cdr code))))
+             builtin-environment)
+       (map (lambda (x)
+              (list x 'def (gen-symbol "build#" x)))
+            '(expand-macro
+              make-syntactic-closure
+              capture-syntactic-environment
+              extract-syntactic-closure-list
+              identifier?
+              identifier=?
+              sc-macro-transformer
+              rsc-macro-transformer
+              nh-macro-transformer
+              
+              make-loader
+              loader-include
+              loader-load
+              loader-calculate-info
+              loader-needs-compile?
+              loader-clean!
+              loader-compile!
+              
+              make-module-info
+              module-info-symbols
+              module-info-exports
+              module-info-uses
+              module-info-options
+              module-info-cc-options
+              module-info-ld-options-prelude
+              module-info-ld-options
+              module-info-force-compile?
+              module-info-environment
+              module-info-calculate
+              
+              resolve-module
+              resolve-modules
+              resolve-one-module
+              
+              current-module
+              current-loader
+              
+              with-module-cache
+              
+              make-module
+              module-loader
+              module-path
+              module-info
+              module-include
+              module-load
+              module-needs-compile?
+              module-compile!
+              module-clean!
+              module-namespace
+              module-module
+              
+              module-deps
+              module-compile/deps!
+              module-clean/deps!
+              module-generate-export-list
+              
+              loader
+              build-loader)))
       '() '() '() "" "" "" #f builtin-environment))
    ;; path-absolutize
    (lambda (path #!optional ref) #f)

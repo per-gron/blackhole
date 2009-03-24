@@ -867,13 +867,15 @@
 ;; macros.
 (eval
  (expand-macro
-  `(let-syntax
-       ((,(make-syntactic-closure (build#top-environment)
-                                  '()
-                                  'xx)
-         (syntax-rules ()
-           ((xx) #t))))
-     (xx))))
+  `(let ((xx (lambda () #t)))
+     (let-syntax
+         ((,(make-syntactic-closure (build#top-environment)
+                                    '()
+                                    'xx)
+           (syntax-rules ()
+             ((xx) #f))))
+       (xx)))))
+
 
 
 

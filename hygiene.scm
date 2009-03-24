@@ -99,9 +99,10 @@
             (env-top-ns-macro)))
 
 (define (environment-find-top env)
-  (if (environment? (environment-parent env))
-      (environment-find-top env)
-      env))
+  (let ((parent (environment-parent env)))
+    (if (environment? parent)
+        (environment-find-top parent)
+        env)))
 
 (define (environment-phase env)
   (env-parent (environment-find-top env)))
@@ -454,10 +455,12 @@
                   (parameterize
                    ((calcing #f))
                    (eval-no-hook
-                    (make-macro-fun (if rec
-                                        new-env
-                                        env)
-                                    (expand-macro (cadr m) env))))))
+                    (make-macro-fun
+                     (if rec
+                         new-env
+                         env)
+                     (expand-macro (cadr m)
+                                   (environment-next-phase env)))))))
           macs))
     new-env))
 
@@ -1058,6 +1061,9 @@
              (environment-top-ns-get builtin-environment
                                      code)
              code)))))
+
+     ((null? code)
+      (error "Ill-formed expression" code))
      
      (else source))))
 
@@ -1202,15 +1208,7 @@
 
 (define-env builtin-environment
   "build#"
-  (expand-macro
-   make-syntactic-closure
-   capture-syntactic-environment
-   extract-syntactic-closure-list
-   identifier?
-   identifier=?
-   sc-macro-transformer
-   rsc-macro-transformer
-   nh-macro-transformer)
+  ()
   ((import
     (lambda (source env mac-env)
       (let ((code (expr*:strip-locationinfo source)))
@@ -1224,6 +1222,14 @@
              (lambda (defs modules)
                (module-load-list modules)
                (module-add-defs-to-env defs env))))))))
+
+   (export
+    (lambda (code env mac-env)
+      (if (or (not (top-level))
+              (not (environment-module env)))
+          (error "Incorrectly placed export form"
+                 (expr*:strip-locationinfo code)))
+      (void)))
    
    (module
     (nh-macro-transformer
@@ -1381,12 +1387,6 @@
                  env)))
             (cdr code)))))
 
-   (syntax-rules
-       (lambda (code env mac-env)
-         `(build#sc-macro-transformer
-           (apply build#syntax-rules-proc
-                  ',(expr*:cdr code)))))
-
    (define-macro
      (lambda (code env mac-env)
        ;; TODO This doesn't generate source code locations correctly
@@ -1447,14 +1447,6 @@
                ',(car src)
                ,(cadr src)))
             env)))))
-   
-   (export
-    (lambda (code env mac-env)
-      (if (or (not (top-level))
-              (not (environment-module env)))
-          (error "Incorrectly placed export form"
-                 (expr*:strip-locationinfo code)))
-      (void)))
    
    (compile-options
     (nh-macro-transformer
