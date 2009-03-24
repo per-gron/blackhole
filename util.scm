@@ -196,7 +196,7 @@
                  r)))))
    (else exp)))
 
-;; Helper for the define-type macro in build#.scm
+;; Helper for the define-type macro
 (define (expand . args)
   (let* ((exp (cdr (apply ##define-type-expand args))))
     `(begin
@@ -206,7 +206,7 @@
                           (if (eq? (caaddr x)
                                    '##define-type-expand)
                               `(,(cadr x)
-                                (build#expand
+                                (module#expand
                                  ,@(cdaddr x)))
                               (cdr x)))
                     x))

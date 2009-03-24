@@ -179,7 +179,7 @@
 (expand-macro
  `(let ((ifa 3))
     ,(make-syntactic-closure
-      build#empty-environment
+      module#empty-environment
       '()
       'ifa)))
 
@@ -312,11 +312,11 @@
         2))
 
 ;; Basic test for identifier=?
-(let ((e build#empty-environment))
+(let ((e module#empty-environment))
   (identifier=? e 'a e 'a))
 
 ;; Basic test for identifier=?
-(not (let ((e build#empty-environment))
+(not (let ((e module#empty-environment))
        (identifier=? e 'a e 'b)))
 
 (equal? '(#t #f)
@@ -760,7 +760,7 @@
   (one #t))
 
 ;; Test syntactic closures in head position on macro
-;; invocations. (This expression should return #t)
+;; invocations.
 (eval
  (capture-syntactic-environment
   (lambda (env)
@@ -770,7 +770,7 @@
        a))))
 
 ;; Test define-syntax that overrides another variable within a
-;; scope. (This expression should return #t)
+;; scope.
 (eval
  `(let ((test (lambda () #f)))
     (define-syntax test
@@ -779,11 +779,11 @@
     (test)))
 
 ;; Test to define a macro using define-syntax with a syntactic closure
-;; where define-syntax is shadowed. (This expression should return #t)
+;; where define-syntax is shadowed.
 (eval
  `(let ((define-syntax (lambda args #f))
         (test (lambda () #f)))
-    (,(make-syntactic-closure build#builtin-environment
+    (,(make-syntactic-closure module#builtin-environment
                               '()
                               'define-syntax)
      test
@@ -841,7 +841,7 @@
 (begin
   (expand-macro
    `(define-syntax
-      ,(make-syntactic-closure (build#top-environment)
+      ,(make-syntactic-closure (module#top-environment)
                                '()
                                'xx)
       (syntax-rules ()
@@ -869,7 +869,7 @@
  (expand-macro
   `(let ((xx (lambda () #t)))
      (let-syntax
-         ((,(make-syntactic-closure (build#top-environment)
+         ((,(make-syntactic-closure (module#top-environment)
                                     '()
                                     'xx)
            (syntax-rules ()
@@ -902,7 +902,7 @@
 ;; there is only one top level per environment tree.
 (expand-macro
  (make-syntactic-closure
-  (build#make-environment (build#top-environment))
+  (module#make-environment (module#top-environment))
   '()
   '(define-syntax whoa
      (syntax-rules ()

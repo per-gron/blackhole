@@ -32,7 +32,7 @@
 ;; Feature requests
 ;; * Something to be able to work around #!key parameter hygiene
 
-(##namespace ("build#"))
+(##namespace ("module#"))
 
 (##include "~~/lib/gambit#.scm")
 
@@ -61,12 +61,12 @@
 
 ;; Add the hooks =)
 
-(define build-hook (make-parameter (lambda (src compiling?) src)))
+(define module-hook (make-parameter (lambda (src compiling?) src)))
 
 (let ((hook (lambda (compiling?)
               (lambda (src)
                 (let ((ret (expr:deep-fixup
-                            ((build-hook)
+                            ((module-hook)
                              (expand-macro src)
                              compiling?))))
                   ;; Useful when debugging

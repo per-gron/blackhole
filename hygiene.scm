@@ -416,7 +416,7 @@
          (gs (gensym)))
     (expand-macro
      `(,lambda-sc ,gs
-                  (build#expand-macro
+                  (module#expand-macro
                    (,apply-sc ,trans ,gs)
                    ',env))
      env)))
@@ -1103,7 +1103,7 @@
   ;; However, even if the symbols are the same, they could be
   ;; different identifiers. This can only happen if the symbols are of
   ;; the form h[number]#name. If it is an absolute namespace like
-  ;; build#, then the symbols must be the same.  This is an example:
+  ;; module#, then the symbols must be the same.  This is an example:
   ;;
   ;; (let ()
   ;;   (let (x) x)
@@ -1207,7 +1207,7 @@
                         macs macro-names))))))))
 
 (define-env builtin-environment
-  "build#"
+  "module#"
   ()
   ((import
     (lambda (source env mac-env)
@@ -1398,7 +1398,7 @@
                 '()
                 'define-syntax)
               ,(car src)
-              (build#nh-macro-transformer ,(cadr src)))
+              (module#nh-macro-transformer ,(cadr src)))
             env)))))
 
    (case
@@ -1443,7 +1443,7 @@
               (,(make-syntactic-closure builtin-environment
                                         '()
                                         'if)
-               (build#defined? ',(car src))
+               (module#defined? ',(car src))
                ',(car src)
                ,(cadr src)))
             env)))))
