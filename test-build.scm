@@ -161,20 +161,26 @@
      5)
 
 ;; Rest parameters as syntactic closures in lambda
-(expand-macro
- (capture-syntactic-environment
-  (lambda (env)
-    `(lambda (a #!rest ,(make-syntactic-closure env '() 'a))
-       a))))
+((eval
+  (expand-macro
+   (capture-syntactic-environment
+    (lambda (env)
+      `(lambda (a #!rest ,(make-syntactic-closure env '() 'a))
+         a)))))
+ #t
+ #f)
 
 ;; Key parameters as syntactic closures in lambda
-(expand-macro
- `(let ((a #f))
-    ,(capture-syntactic-environment
-      (lambda (env)
-        (let ((a (make-syntactic-closure env '() 'a)))
-          `(lambda (a #!key ,a)
-             ,a))))))
+((eval
+  (expand-macro
+   `(let ((a #f))
+      ,(capture-syntactic-environment
+        (lambda (env)
+          (let ((a (make-syntactic-closure env '() 'a)))
+            `(lambda (a #!key ,a)
+               ,a)))))))
+ #f
+ a: #t)
 
 (expand-macro
  `(let ((ifa 3))
@@ -189,46 +195,50 @@
     `(let ((a 3))
        ,(make-syntactic-closure e '() 'a)))))
 
-(expand-macro
- `(let ((a 3))
-    ,(capture-syntactic-environment
-      (lambda (e)
-        `(let ((a 4))
-           ,(make-syntactic-closure e '() 'a))))))
+(eq? 3
+     (eval
+      (expand-macro
+       `(let ((a 3))
+          ,(capture-syntactic-environment
+            (lambda (e)
+              `(let ((a 4))
+                 ,(make-syntactic-closure e '() 'a))))))))
 
-(expand-macro
- '(let-syntax ((when (sc-macro-transformer
-                      (lambda (form env)
-                        `(if ,(make-syntactic-closure env '() (cadr form))
-                             (begin
-                               ,@(cddr
-                                  (map (lambda (x)
-                                         (make-syntactic-closure env '() x))
-                                       form))))))))
-    (let ((if #t))
-      (when if (set! if 'now))
-      if)))
 
-(expand-macro
- '(let ()
+(eq? 'now
+     (eval
+      (expand-macro
+       '(let-syntax
+            ((when (sc-macro-transformer
+                    (lambda (form env)
+                      `(if ,(make-syntactic-closure env '() (cadr form))
+                           (begin
+                             ,@(cddr
+                                (map (lambda (x)
+                                       (make-syntactic-closure env '() x))
+                                     form))))))))
+          (let ((if #t))
+            (when if (set! if 'now))
+            if)))))
+
+(eq? 4 (let ()
+         (define (a) 4)
+         (a)))
+
+(eq? 4 (letrec ()
+         (define (a) 4)
+         (a)))
+
+(begin
+  (define (x)
     (define (a) 4)
-    (a)))
+    (a))
+  (eq? 4 (x)))
 
-(expand-macro
- '(letrec ()
-    (define (a) 4)
-    (a)))
-
-(expand-macro
- '(define (x)
-    (define (a) 4)
-    (a)))
-
-(expand-macro
- '(let* ((a 4)
-         (b 5))
-    (define (c) 4)
-    (c)))
+(eq? 4 (let* ((a 4)
+              (b 5))
+         (define (c) 4)
+         (c)))
 
 (expand-macro
  '(let-syntax ((test-a (sc-macro-transformer
@@ -243,17 +253,17 @@
     (test-a)
     (test-b)))
 
-(expand-macro
- '(let ((x 'outer))
-    (let-syntax ((m (sc-macro-transformer
-                     (lambda (form env)
-                       'x))))
-      (let ((x 'inner))
-        (m)))))
+(eq? 'outer
+     (let ((x 'outer))
+       (let-syntax ((m (sc-macro-transformer
+                        (lambda (form env)
+                          'x))))
+         (let ((x 'inner))
+           (m)))))
 
-(expand-macro
- '(let ((=> #f))
-    (cond (#t => 'ok))))
+(eq? 'ok
+     (let ((=> #f))
+       (cond (#t => 'ok))))
 
 ;; Test macro recursion with letrec-syntax
 (eval
@@ -347,18 +357,18 @@
             (swap one two)
             two)))))
 
-(expand-macro
- '(let-syntax ((test (syntax-rules (a)
-                       ((test a) 'a!)
-                       ((test 5) 'five!)
-                       ((test 5 var) var)
-                       ((test) 'Hoo)
-                       ((test other ...) 'x))))
-    (test a)
-    (test 5 'hej)
-    (let ((a #f))
-      (test a)
-      (test 5))))
+(equal? '(a! hej (x . five!))
+        (let-syntax ((test (syntax-rules (a)
+                             ((test a) 'a!)
+                             ((test 5) 'five!)
+                             ((test 5 var) var)
+                             ((test) 'Hoo)
+                             ((test other ...) 'x))))
+          (list (test a)
+                (test 5 'hej)
+                (let ((a #f))
+                  (cons (test a)
+                        (test 5))))))
 
 (eq? 'YeY
      (eval
@@ -389,20 +399,19 @@
     (test 1 2 3 4 5)))
 
 ;; Test that syntax-rules ... rules can take empty parameters
-(expand-macro
- '(let-syntax ((test
-                (syntax-rules ()
-                  ((test a ...)
-                   (begin a ...)))))
-    (test)
-    #f))
+(let-syntax ((test
+              (syntax-rules ()
+                ((test a ...)
+                 (begin a ...)))))
+  (test)
+  #t)
 
-(expand-macro
- '(let-syntax ((test
-                (syntax-rules ()
-                  ((test (a . b) c)
-                   b))))
-    (test (hej alla idioter) 44)))
+(equal? '(alla idioter)
+        (let-syntax ((test
+                      (syntax-rules ()
+                        ((test (a . b) c)
+                         'b))))
+          (test (hej alla idioter) 44)))
 
 (expand-macro
  '(let-syntax ((test
@@ -441,26 +450,27 @@
     (test (1 2 3) (4 5))))
 
 ;; Test letrec-syntax
-(expand-macro
- '(letrec-syntax ((test
-                   (sc-macro-transformer
-                    (lambda (form env)
-                      (if (eq? (cadr form) 1)
-                          ''YaY
-                          `(test ,(- (cadr form) 1)))))))
-    (test 10)))
+(eq? 'YaY
+     (letrec-syntax ((test
+                      (sc-macro-transformer
+                       (lambda (form env)
+                         (if (eq? (cadr form) 1)
+                             ''YaY
+                             `(test ,(- (cadr form) 1)))))))
+       (test 10)))
 
 ;; Test letrec-syntax and syntax-rules together
-(expand-macro
- '(letrec-syntax ((test
-                   (syntax-rules ()
-                     ((test 3)
-                      (test 2))
-                     ((test 2)
-                      (test 1))
-                     ((test 1)
-                      'YaY))))
-    (test 3)))
+(eq? 'YaY
+     (letrec-syntax
+         ((test
+           (syntax-rules ()
+             ((test 3)
+              (test 2))
+             ((test 2)
+              (test 1))
+             ((test 1)
+              'YaY))))
+       (test 3)))
 
 
 ;; Test syntactic closures within quasiquotes. (Previously there was a
@@ -479,90 +489,94 @@
 
 ;; This is REALLY a corner case
 ;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
-;; says that this should return 2, but this system and the system of
-;; SISC returns 1.
-(let ((x 1))
-  (let-syntax
-      ((foo (syntax-rules ()
-              ((_ y)
-               (let-syntax
-                   ((bar (syntax-rules ()
-                           ((_) (let ((x 2)) y)))))
-                 (bar))))))
-    (foo x)))
+;; says that this should return 2, but SISC returns 1.
+(eq? 2
+     (let ((x 1))
+       (let-syntax
+           ((foo (syntax-rules ()
+                   ((_ y)
+                    (let-syntax
+                        ((bar (syntax-rules ()
+                                ((_) (let ((x 2)) y)))))
+                      (bar))))))
+         (foo x))))
 
 ;; This is REALLY a corner case
 ;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
-;; says that this should return 2, but this system and the system of
-;; SISC returns 1.
-(let ((x 1))
-  (let-syntax
-      ((foo (syntax-rules ()
-              ((_ y)
-               (let-syntax
-                   ((bar (syntax-rules ()
-                           ((_ x) y))))
-                 (bar 2))))))
-    (foo x)))
+;; says that this should return 2, but SISC and Gauche returns 1.
+(eq? 2
+     (let ((x 1))
+       (let-syntax
+           ((foo (syntax-rules ()
+                   ((_ y)
+                    (let-syntax
+                        ((bar (syntax-rules ()
+                                ((_ x) y))))
+                      (bar 2))))))
+         (foo x))))
 
 ;; SISC supports this syntax. My interpretation of R5RS
 ;; supports this syntax. This implementation does.
 ;; Gauche does not, however.
-(expand-macro
- '(let-syntax
-      ((test (syntax-rules ()
-               ((test (a ...) ...)
-                (+ a ... ...)))))
-    (test (1 2) (3 4))))
+(eq? 10
+     (let-syntax
+         ((test (syntax-rules ()
+                  ((test (a ...) ...)
+                   (+ a ... ...)))))
+       (test (1 2) (3 4))))
 
 ;; Test syntax-rules that leaks scope
-(expand-macro
- '(let-syntax
-      ((test (syntax-rules ()
-               ((test a form)
-                (let ((a 1))
-                  form)))))
-    (test c (+ c c))))
+(eq? 2
+     (let-syntax
+         ((test (syntax-rules ()
+                  ((test a form)
+                   (let ((a 1))
+                     form)))))
+       (test c (+ c c))))
 
 ;; Same as above, but with lambda
-(expand-macro
- '(let-syntax
-      ((test (syntax-rules ()
-               ((test a form)
-                (lambda (a)
-                  form)))))
-    (test c (+ c c))))
+(eq? 4
+     ((let-syntax
+          ((test (syntax-rules ()
+                   ((test a form)
+                    (lambda (a)
+                      form)))))
+        (test c (+ c c)))
+      2))
 
 ;; As a counter-test to the two above, test
 ;; syntax-rules that doesn't leak scope.
-(expand-macro
- '(let-syntax
-      ((test (syntax-rules ()
-                ((test form)
-                (let ((a 5))
-                  (+ a form))))))
-    (let ((a 1))
-      (test (+ a a)))))
+(eq? 7
+     (let-syntax
+         ((test (syntax-rules ()
+                  ((test form)
+                   (let ((a 5))
+                     (+ a form))))))
+       (let ((a 1))
+         (test (+ a a)))))
 
 ;; Test mutually recursive functions
 ;; defined with define within a scope
-(expand-macro
- '(let ()
-    (define (a) (b))
-    (define (b) (a))
-    (a)))
+(let ()
+  (define (a x)
+    (b (- x 1)))
+  (define (b x)
+    (if (negative? x)
+        x
+        (a (- x 1))))
+  (a 12))
 
 ;; Test syntax-rules macros that take
 ;; syntactic closures as parameters where
 ;; the pattern has to parse it.
-(expand-macro
- '(letrec-syntax ((one (syntax-rules ()
-                         ((one (a b))
-                          (+ a b))))
-                  (two (syntax-rules ()
-                         ((two x)
-                          (one x)))))
-    (two (1 2))))
+(eq? 3
+     (letrec-syntax ((one (syntax-rules ()
+                            ((one (a b))
+                             (+ a b))))
+                     (two (syntax-rules ()
+                            ((two x)
+                             (one x)))))
+       (two (1 2))))
 
 ;; Test let with the parameter list as syntactic closure
 (expand-macro
@@ -572,27 +586,31 @@
        #f))))
 
 ;; Test let* with the parameter list as syntactic closure
-(expand-macro
- (capture-syntactic-environment
-  (lambda (env)
-    `(let* ,(make-syntactic-closure env '() '((a 3)))
-       #f))))
+(eval
+ (expand-macro
+  (capture-syntactic-environment
+   (lambda (env)
+     `(let* ,(make-syntactic-closure env '() '((a 3)))
+        #t)))))
 
 ;; Test let loop with name as syntactic closure
-(expand-macro
- (capture-syntactic-environment
-  (lambda (env)
-    (let ((loop (make-syntactic-closure env '() 'loop)))
-      `(let ,loop ()
-            loop
-            ,loop)))))
+(procedure?
+ (eval
+  (expand-macro
+   (capture-syntactic-environment
+    (lambda (env)
+      (let ((loop (make-syntactic-closure env '() 'loop)))
+        `(let ,loop ()
+              loop
+              ,loop)))))))
 
 ;; Test let with one parameter as syntactic closure
-(expand-macro
- (capture-syntactic-environment
-  (lambda (env)
-    `(let (,(make-syntactic-closure env '() '(a 3)))
-       #f))))
+(eval
+ (expand-macro
+  (capture-syntactic-environment
+   (lambda (env)
+     `(let (,(make-syntactic-closure env '() '(a 3)))
+        #t)))))
 
 ;; Test lambda with the parameter list as syntactic closure
 (expand-macro
@@ -603,23 +621,27 @@
        ,(make-syntactic-closure env '() 'a)))))
 
 ;; Test lambda with defaulting parameter name as syntactic closure
-(expand-macro
- (capture-syntactic-environment
-  (lambda (env)
-    `(lambda (#!optional (,(make-syntactic-closure env '() 'a) 5))
-       #f))))
+((eval
+  (expand-macro
+   (capture-syntactic-environment
+    (lambda (env)
+      `(lambda (#!optional (,(make-syntactic-closure env '() 'a) 5))
+         #t))))))
 
 ;; Test lambda with a defaulting parameter as a syntactic closure
-(expand-macro
- (capture-syntactic-environment
-  (lambda (env)
-    `(lambda (#!optional ,(make-syntactic-closure env '() '(a 5)))
-       #f))))
+((eval
+  (expand-macro
+   (capture-syntactic-environment
+    (lambda (env)
+      `(lambda (#!optional ,(make-syntactic-closure env '() '(a 5)))
+         #t))))))
 
 ;; Test lambda with a defaulting parameter
 ;; that macro-expands
-(expand-macro
- '(lambda (#!optional (x (let ((a 4)) (+ a a)))) x))
+(eq? 8
+     ((eval
+       (expand-macro
+        '(lambda (#!optional (x (let ((a 4)) (+ a a)))) x)))))
 
 ;; Test transform-to-lambda with a syntactic closure
 ;; as parameter
@@ -627,17 +649,19 @@
  (capture-syntactic-environment
   (lambda (env)
     `(define ,(make-syntactic-closure env '() '(fun args))
-       #f))))
+       #t))))
 
 ;; Test define with a syntactic closure as name
-(expand-macro
- (capture-syntactic-environment
-  (lambda (env)
-    (let ((x (make-syntactic-closure env '() 'x)))
-    `(let ((x #t))
-       (define ,x #f)
-       x
-       ,x)))))
+(equal? '(#t . #f)
+        (eval
+         (expand-macro
+          (capture-syntactic-environment
+           (lambda (env)
+             (let ((x (make-syntactic-closure env '() 'x)))
+               `(let ((x #t))
+                  (define ,x #f)
+                  (cons x
+                        ,x))))))))
 
 ;; Test macros that defines macros
 (eval
@@ -683,37 +707,35 @@
 ;; (one test) got expanded to (one h1#test) before the invocation
 ;; of the macro, which yielded an incorrect return value of
 ;; 'h1#test.
-(expand-macro
- '(let ((test #f))
-    (define-macro (one x)
-      `',x)
-    (one test)))
+(eq? 'test
+     (eval
+      (expand-macro
+       '(let ((test #f))
+          (define-macro (one x)
+            `',x)
+          (one test)))))
 
 
 ;; Test macros that define variables
-;; TODO This doesn't work
-(expand-macro
- '(let ((test #f))
-    (let-syntax
-        ((one
-          (nh-macro-transformer
-           (lambda ()
-             `(define test #t)))))
-      (one)
-      test)))
+(let ((test #f))
+  (let-syntax
+      ((one
+        (nh-macro-transformer
+         (lambda ()
+           `(define test #t)))))
+    (one)
+    test))
 
 ;; Test macros that define variables that shouldn't leak
-;; TODO This doesn't work
-(expand-macro
- '(let ((test #t))
-    (let-syntax
-        ((one
-          (syntax-rules ()
-            ((one) (begin
-                     (define test #f)
-                     #f)))))
-      (one)
-      test)))
+(let ((test #t))
+  (let-syntax
+      ((one
+        (syntax-rules ()
+          ((one) (begin
+                   (define test #f)
+                   #f)))))
+    (one)
+    test))
 
 ;; A more intricate test of mutually recursive macros
 (eval
@@ -725,23 +747,22 @@
     (b)))
 
 ;; Test to define top-level stuff inside a scope
-(expand-macro
- '(let-syntax
-      ((one (syntax-rules ()
-              ((one) (define x #f)))))
-    (let ((x #t))
-      (one)
-      x)))
-
-;; Both references to x should be to the later one.
-(expand-macro
- `(let ((x #f))
-    (begin
-      (define x #t)
-      x)
+(let-syntax
+    ((one (syntax-rules ()
+            ((one) (define x #f)))))
+  (let ((x #t))
+    (one)
     x))
 
-;; This should return #t
+;; Both references to x should be to the later one.
+(call/cc
+ (lambda (k)
+   (let ((x (lambda () (k #f))))
+     (begin
+       (define (x) #t)
+       (x))
+     (x))))
+
 (eval
  `(let ((x #f))
     ,(capture-syntactic-environment
@@ -781,16 +802,17 @@
 ;; Test to define a macro using define-syntax with a syntactic closure
 ;; where define-syntax is shadowed.
 (eval
- `(let ((define-syntax (lambda args #f))
-        (test (lambda () #f)))
-    (,(make-syntactic-closure module#builtin-environment
-                              '()
-                              'define-syntax)
-     test
-     (sc-macro-transformer
-      (lambda (form env)
-        #t)))
-    (test)))
+ (expand-macro
+  `(let ((define-syntax (lambda args #f))
+         (test (lambda () #f)))
+     (,(make-syntactic-closure module#builtin-environment
+                               '()
+                               'define-syntax)
+      test
+      (sc-macro-transformer
+       (lambda (form env)
+         #t)))
+     (test))))
 
 ;; Test that inner ns macros that expand into #f actually get
 ;; expanded. (Yes, I had problems with this once)
@@ -800,14 +822,17 @@
                         ((test) #f))))
      (test))))
 
-;; Don't remember what this test was for..
-(expand-macro
- '(let ()
-    (define-macro (one)
-      `(define (fun) 'x))
-    (one)
-    (define (two) 'two)
-    (two)))
+;; Test defining a macro that defines a function, and then after that
+;; continuing with defining things.
+(eq? 'two
+     (eval
+      (expand-macro
+       '(let ()
+          (define-macro (one)
+            `(define (fun) 'x))
+          (one)
+          (define (two) 'two)
+          (two)))))
 
 ;; This should expand into a non-macro expanded form
 (equal? ''(lambda (x) #f)
@@ -817,24 +842,26 @@
             `',(make-syntactic-closure env '() '(lambda (x) #f))))))
 
 ;; This should expand into a non-macro expanded form
-(equal? ''(lambda (x) #f)
-        (expand-macro
-         (capture-syntactic-environment
-          (lambda (env)
-            (make-syntactic-closure env '() ''(lambda (x) #f))))))
+(equal? '(lambda (x) #f)
+        (eval
+         (expand-macro
+          (capture-syntactic-environment
+           (lambda (env)
+             (make-syntactic-closure env '() ''(lambda (x) #f)))))))
 
 ;; Test that quotes' contents don't get expanded
-(equal? '(##begin '(lambda (x) #t))
-        (expand-macro
-         '(letrec-syntax
-              ((one
-                (syntax-rules ()
-                  ((one a) 'a)))
-               (two
-                (syntax-rules ()
-                  ((two a) (one a)))))
-            
-            (two (lambda (x) #t)))))
+(equal? '(lambda (x) #t)
+        (eval
+         (expand-macro
+          '(letrec-syntax
+               ((one
+                 (syntax-rules ()
+                   ((one a) 'a)))
+                (two
+                 (syntax-rules ()
+                   ((two a) (one a)))))
+             
+             (two (lambda (x) #t))))))
 
 ;; Test that define-syntax can take syntactic closures as the first
 ;; parameter.
@@ -876,34 +903,191 @@
              ((xx) #f))))
        (xx)))))
 
-
-
-
-
-;; This currently doesn't work; The xx inside the syntax-rules macro
-;; leaks.
+;; This is a quirky case. I don't know exactly what the results of
+;; this one should be. let-syntax does not generate a new scope like
+;; let does, so I think it should leak.
 (let-syntax
     ((mac
       (syntax-rules ()
         ((mac)
          (define-syntax xx
            (syntax-rules ()
-             ((xx) #f)))))))
+             ((xx) #t)))))))
   (define-syntax xx
     (syntax-rules ()
-      ((xx) #t)))
+      ((xx) #f)))
   (mac)
   (xx))
 
-;; When evaluating this, whoa gets exported as macro to the top
-;; level. (See above) I think this is related to the fact that top
-;; level stuff is stored with a hashtable that is not cloned when
-;; making sub-environments. That is: An incorrent assumption that
-;; there is only one top level per environment tree.
+;; Test macros that generate define-syntax forms that should not leak.
+(let-syntax
+    ((mac
+      (syntax-rules ()
+        ((mac)
+         (define-syntax xx
+           (syntax-rules ()
+             ((_) #f)))))))
+  (let ((xx (lambda () #t)))
+    (mac)
+    (xx)))
+
+;; Test macros that generate define forms that should not leak.
+(let-syntax
+    ((mac
+      (syntax-rules ()
+        ((mac)
+         (define (xx) #f)))))
+  (let ((xx (lambda () #t)))
+    (mac)
+    (xx)))
+
+;; Test that this nonsensical expression generates an error.
+(with-exception-catcher
+ (lambda (e) #t)
+ (lambda ()
+   (expand-macro
+    (make-syntactic-closure
+     (module#make-environment (module#top-environment))
+     '()
+     '(define-syntax whoa
+        (syntax-rules ()
+          ((whoa) #t)))))
+   #f))
+
+;; Test that this nonsensical expression generates an error.
+(with-exception-catcher
+ (lambda (e) #t)
+ (lambda ()
+   (expand-macro
+    (make-syntactic-closure
+     (module#make-environment (module#top-environment))
+     '()
+     '(define whoa #f)))
+   #f))
+
+
+
+
+
+
+
+
+;;; Problematic things:
+
+
+
+
+
+
+(begin
+  (import (module))
+  (syntax-begin (import (module))))
+
+
+;; Test lambda with the parameter list as syntactic closure
 (expand-macro
- (make-syntactic-closure
-  (module#make-environment (module#top-environment))
-  '()
-  '(define-syntax whoa
-     (syntax-rules ()
-       ((whoa) #t)))))
+ `(let ((a 0))
+    ,(capture-syntactic-environment
+      (lambda (env)
+        `(lambda ,(make-syntactic-closure env '() '(a))
+           a
+           ,(make-syntactic-closure env '() 'a))))))
+
+;; Test macros that define variables
+(parameterize
+ ((module#top-level #f))
+ (expand-macro
+  '(let-syntax
+       ((one
+         (sc-macro-transformer
+          (lambda (form env)
+            (pp `(e ,env))
+            (make-syntactic-closure
+             env
+             '()
+             `(define test #t))))))
+     (one))))
+
+(parameterize
+ ((module#top-level #f))
+ (module#let/letrec-syntax-helper
+  #f
+  '(let-syntax
+       ((one
+         (sc-macro-transformer
+          (lambda (form env)
+            (pp `(e ,env))
+            (make-syntactic-closure
+             env
+             '()
+             `(define test #t))))))
+     (one))
+  (module#top-environment)))
+
+(pp (list
+     (module#top-environment)
+     (parameterize
+      ((module#top-level #f)
+       (module#inside-letrec #t))
+      (expand-macro
+       (make-syntactic-closure
+        (module#top-environment)
+        '()
+        `(define test #t))
+       (module#top-environment)))))
+
+(begin
+  (import (module))
+  (syntax-begin (import (module))))
+
+(expand-macro
+ '(let ()
+    (let-syntax
+        ((one
+          (syntax-rules ()
+            ((_ test)
+             (define test #t)))))
+      (one test)
+      test)))
+
+
+
+
+(parameterize
+ ((module#top-level #f))
+ (expand-macro
+  '(let ()
+     (let-syntax
+         ((one
+           (sc-macro-transformer
+            (lambda (form env)
+              (pp `(e ,env))
+              (make-syntactic-closure
+               env
+               '()
+               `(define test #t))))))
+       (one)
+       test))))
+
+;; A more intricate test of mutually recursive macros
+(eval
+ (expand-macro
+  '(let ()
+     (define a #t)
+     (define (b) (two #f))
+     (define-macro (one n) (if n 'a '(two #t)))
+     (define-macro (two n) `(one ,n))
+     (b))))
+
+;; Test mutually recursive functions
+;; defined with define within a scope
+
+(begin
+  (import (module))
+  (syntax-begin (import (module))))
+
+(expand-macro
+ `(let ()
+    (define a b)
+    (define b a)
+    #f))

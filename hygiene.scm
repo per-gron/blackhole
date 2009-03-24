@@ -56,7 +56,7 @@
   ;; The first phase is 0.
   (parent unprintable: read-only:)
   ;; The module of this environment. #f if REPL.
-  (module read-only:)
+  (module unprintable: read-only:)
   ;; The next phase environment. This is part of the implementation of
   ;; proper separation between run-time and compile-time. When an
   ;; environment is created, this is set to #f, and is then lazily
@@ -107,13 +107,12 @@
 (define (environment-phase env)
   (env-parent (environment-find-top env)))
 
+(define (environment-top? env)
+  (not (env? (env-parent env))))
+
 (define (environment-next-phase env)
   (or (env-next-phase env)
-      (if (env? (env-parent env))
-          ;; Non-top-level environment.
-          (make-environment
-            (environment-next-phase
-             (environment-find-top env)))
+      (if (environment-top? env)
           (let ((val (make-env (+ 1 (env-parent env))
                                (env-module env)
                                #f
@@ -122,7 +121,11 @@
                                (make-table)
                                (make-table))))
             (env-next-phase-set! env val)
-            val))))
+            val)
+          ;; Non-top-level environment.
+          (make-environment
+            (environment-next-phase
+             (environment-find-top env))))))
 
 (define environment? env?)
 
@@ -336,70 +339,6 @@
      (else
       (error "Name must be an identifier" name)))))
 
-;; Names is a list of symbols or pairs, where the car
-;; is the symbol and the cdr is its namespace.
-;;
-;; Because of an unexpected change in the data structure of
-;; environment-inner-ns, this code is right now a hideous mess. I'm
-;; sorry. If you are trying to understand how it works, I can only say
-;; GLHF.
-;;
-;; TODO Clean up.
-(define (environment-add-defines env names thunk)
-  (parameterize
-   ((scope-level (scope-level)))
-   (let* ((new-env (make-environment env))
-          (lists (map (lambda (x)
-                        (if (pair? x)
-                            (list (car x) (cdr x) new-env)
-                            (begin
-                              (scope-level (+ (scope-level) 1))
-                              (list x
-                                    (generate-namespace) new-env))))
-                      names))
-          (reset-funs '()))
-     (dynamic-wind
-         (lambda ()
-           (environment-inner-ns-set!
-            new-env
-            (map
-             (lambda (n)
-               (list (car n)
-                     (gen-symbol (cadr n) (car n))
-                     (caddr n)))
-             (filter
-              (lambda (n)
-                (if (syntactic-closure? (car n))
-                    (begin
-                      (let* ((sc (car n))
-                             (sc-env (syntactic-closure-env sc))
-                             (old-ns (environment-inner-ns
-                                      sc-env)))
-                        (environment-inner-ns-set!
-                         sc-env
-                         (let ((name (synclosure-extract-form sc)))
-                           (cons (list name
-                                       (gen-symbol (cadr n) name)
-                                       (caddr n))
-                                 old-ns)))
-                        (set! reset-funs
-                              (cons
-                               (lambda ()
-                                 (environment-inner-ns-set!
-                                  sc-env
-                                  old-ns))
-                               reset-funs)))
-                      #f)
-                    (not (string-contains
-                          (symbol->string (car n))
-                          #\#))))
-              lists))))
-         (lambda ()
-           (thunk new-env lists))
-         (lambda ()
-           (for-each (lambda (x) (x))
-                     (reverse reset-funs)))))))
-
 (define (make-macro-fun env trans)
   (let* ((lambda-sc (make-syntactic-closure
                      builtin-environment
@@ -441,28 +380,121 @@
                (environment-inner-ns env))))
     ns))
 
+
+;; Helper function for environment-add-defines and
+;; environment-add-macros. It takes:
+;;
+;; * an environment
+;; * a getter function (environment-inner-ns or
+;;   environment-inner-ns-macro)
+;; * a setter function (environment-inner-ns-set! or
+;;   environment-inner-ns-macro-set!)
+;; * a list of pairs, where car is an identifier that is to be bound,
+;;   and cdr is an arbitrary object, to be used by the list->val
+;;   function
+;; * a function that takes a pair from the list mentioned above and
+;;   returns the object that should be passed to set-fn.
+;; * a thunk that takes the "return value" of this function.
+;;
+;; This function is in CPS to be able to undo the side effects that it
+;; might cause, after thunk has returned.
+;;
+;; The problem that it addresses is that in any let and its flavours,
+;; there might be a syntactic closure as the name in the binding
+;; list. This makes things rather complicated (I might have missed the
+;; easy solution to this)
+(define (environment-add-to-ns env get-fn set-fn lists list->val thunk)
+  (let ((reset-funs '()))
+    (dynamic-wind
+        (lambda ()
+          (let ((vals
+                 (map
+                  list->val
+                  (filter
+                   (lambda (n)
+                     (if (syntactic-closure? (car n))
+                         (let* ((sc (car n))
+                                (sc-env (syntactic-closure-env sc))
+                                (old-ns (get-fn sc-env)))
+                           (set-fn
+                            sc-env
+                            (let ((name (syntactic-closure-form sc)))
+                              (cons (list->val
+                                     (cons name (cdr n)))
+                                    old-ns)))
+                           (set! reset-funs
+                                 (cons
+                                  (lambda ()
+                                    (set-fn sc-env
+                                            old-ns))
+                                  reset-funs))
+                           #f)
+                         #t))
+                   lists))))
+            (set-fn
+             env
+             (append vals
+                     (get-fn env)))))
+        (lambda ()
+          (thunk env lists))
+        (lambda ()
+          (for-each (lambda (x) (x))
+                    (reverse reset-funs))))))
+
+;; Names is a list of symbols or pairs, where the car
+;; is the symbol and the cdr is its namespace.
+(define (environment-add-defines! new-env names thunk)
+  (parameterize
+   ((scope-level (scope-level)))
+   (environment-add-to-ns
+    new-env
+    environment-inner-ns
+    environment-inner-ns-set!
+    (map (lambda (x)
+           (if (pair? x)
+               (list (car x) (cdr x) new-env)
+               (begin
+                 (scope-level (+ (scope-level) 1))
+                 (list x
+                       (generate-namespace) new-env))))
+         names)
+    (lambda (n)
+      (list (car n)
+            (gen-symbol (cadr n) (car n))
+            (caddr n)))
+    thunk)))
+
+(define (environment-add-defines env names thunk)
+  (environment-add-defines! (make-environment env)
+                            names
+                            thunk))
+
 ;; Macs is a list of lists where car is name, cadr is the sexp
 ;; of the macro transformer
-(define (environment-add-macros env macs rec)
-  (let ((new-env (make-environment env)))
-    (environment-inner-ns-macro-set!
+(define (environment-add-macros env macs rec thunk)
+  (let ((new-env (if (eq? rec 'side-effect)
+                     env
+                     (make-environment env))))
+    (environment-add-to-ns
      new-env
-     (map (lambda (m)
-            (list (car m)
-                  (if rec new-env env)
-                  ;; This eval is for creating a procedure object from
-                  ;; the macro source code.
-                  (parameterize
-                   ((calcing #f))
-                   (eval-no-hook
-                    (make-macro-fun
-                     (if rec
-                         new-env
-                         env)
-                     (expand-macro (cadr m)
-                                   (environment-next-phase env)))))))
-          macs))
-    new-env))
+     environment-inner-ns-macro
+     environment-inner-ns-macro-set!
+     macs
+     (lambda (m)
+       (list (car m)
+             (if rec new-env env)
+             ;; This eval is for creating a procedure object from
+             ;; the macro source code.
+             (parameterize
+              ((calcing #f))
+              (eval-no-hook
+               (make-macro-fun
+                (if rec
+                    new-env
+                    env)
+                (expand-macro (cadr m)
+                              (environment-next-phase env)))))))
+     thunk)))
 
 ;; The implementation of this function -forms-to-letrec is a
 ;; little bit odd. I made them this way because it's important
@@ -472,12 +504,13 @@
 ;; function (like lets, lambdas, syntax-rules macros)
 ;;
 ;; Also, the function is written in CPS. It mirrors the
-;; environment-add-defines function, which is also CPS, to be
-;; able to do the right thing when a synclosure is given as
-;; the name in let bindings.
-(define (transform-forms-to-triple form env cont)
+;; environment-add-defines and environment-add-macros functions, which
+;; are also CPS, to be able to do the right thing when a synclosure is
+;; given as the name in let bindings or macro names.
+(define (transform-forms-to-triple form parent-env cont)
   (let* ((exprs '())
          (defs '())
+         (env (make-environment parent-env))
          (ieq? (lambda (a b env)
                 (identifier=? builtin-environment
                               a
@@ -516,18 +549,19 @@
              ((ieq? 'define (car x) env)
               (let ((src (transform-to-lambda (cdr x))))
                 (push-def src)
-                (environment-add-defines
+                (environment-add-defines!
                  env
                  (list (car src))
                  (lambda (new-env _)
                    (loop (cdr form) new-env)))))
              
              ((ieq? 'define-syntax (car x) env)
-              (loop (cdr form)
-                    (environment-add-macros
-                     env
-                     (list (cdr x))
-                     #t)))
+              (environment-add-macros
+               env
+               (list (cdr x))
+               'side-effect
+               (lambda (new-env _)
+                 (loop (cdr form) new-env))))
              
              ((or (ieq? 'begin (car x) env)
                   (ieq? '##begin (car x) env))
@@ -536,6 +570,7 @@
              (else
               (push-exprs-expand x (cdr form) env))))))))
 
+;; (inside-letrec) implies (not (top-level))
 (define top-level (make-parameter #t))
 (define inside-letrec (make-parameter #f))
 
@@ -701,17 +736,18 @@
                              (= 2 (length x))))
                        (error "Invalid syntax binding" form)))
                  bindings)
-       
-       (let* ((let-syntax-env (environment-add-macros
-                               env
-                               bindings
-                               rec))
-              (res (parameterize
-                    ((inside-letrec #t))
-                    (map (lambda (x)
-                           (expand-macro x let-syntax-env))
-                         body))))
-         `(##begin ,@res)))
+
+       (environment-add-macros
+        env
+        bindings
+        rec
+        (lambda (let-syntax-env _)
+          (let ((res (parameterize
+                      ((inside-letrec #t))
+                      (map (lambda (x)
+                             (expand-macro x let-syntax-env))
+                           body))))
+            `(##begin ,@res)))))
      (cdr form))))
 
 ;; Expansion functions
@@ -968,7 +1004,8 @@
              (default-action
                (lambda ()
                  (parameterize
-                  ((inside-letrec #f))
+                  ((inside-letrec #f)
+                   (top-level #f))
                   (expr*:dotted-map (lambda (x)
                                       (expand-macro x env))
                                     source)))))
@@ -987,14 +1024,12 @@
                                       (expand-macro x env))
                                     (cdr code)))))
                (lambda (macro)
-                 (parameterize
-                  ((inside-letrec #f))
-                  (list
-                   ((cadr macro)
-                    source
-                    env
-                    (car macro)))))) =>
-                    (lambda (ret) (car ret)))
+                 (list
+                  ((cadr macro)
+                   source
+                   env
+                   (car macro))))) =>
+                   (lambda (ret) (car ret)))
              
              ((and
                (symbol? hd)
@@ -1003,12 +1038,10 @@
                         (environment-top-ns-macro-get load-environment hd))
                    (environment-top-ns-macro-get builtin-environment hd))) =>
                    (lambda (mac)
-                     (parameterize
-                      ((inside-letrec (and (inside-letrec) (eq? hd 'begin))))
-                      ((car mac) ;; Macro function
-                       source
-                       env ;; TODO I'm not sure if this should be search-env
-                       (cadr mac))))) ;; Macro environment
+                     ((car mac) ;; Macro function
+                      source
+                      env ;; TODO I'm not sure if this should be search-env
+                      (cadr mac)))) ;; Macro environment
 
              ;; It's tempting to add ##begin to this list, it would
              ;; after all make ##begin a useful construct for
@@ -1061,11 +1094,23 @@
              (environment-top-ns-get builtin-environment
                                      code)
              code)))))
-
-     ((null? code)
-      (error "Ill-formed expression" code))
      
-     (else source))))
+     ((or (number? code)
+          (string? code)
+          (char? code)
+          (boolean? code)
+          (eq? code #!void)
+          (eq? code #!eof)
+          (eq? code #!optional)
+          (eq? code #!rest)
+          (eq? code #!key)
+          (keyword? code))
+      code)
+
+     ;; All other things (e.g. null, vectors, boxes, procedures,
+     ;; abritrary objects) are invalid expressions.
+     (else
+      (error "Ill-formed expression" code)))))
 
 ;; Identifiers
 
@@ -1225,7 +1270,7 @@
 
    (export
     (lambda (code env mac-env)
-      (if (or (not (top-level))
+      (if (or (not (environment-top? env))
               (not (environment-module env)))
           (error "Incorrectly placed export form"
                  (expr*:strip-locationinfo code)))
@@ -1253,33 +1298,36 @@
    (define
      (lambda (code env mac-env)
        (let ((src (expr*:transform-to-lambda (expr*:cdr code))))
-         (if (top-level)
-             (begin
-               ;; If it's a top level define, it's required to make
-               ;; defines shadow imported defines. (For instance,
-               ;; lib/string imports lib/srfi13, defines string-map
-               ;; and uses string-map.  Then lib/string's string-map
-               ;; should be used.
-               (let* ((name-form (car (expr*:value src)))
-                      (def-env (if (syntactic-closure? name-form)
-                                   (syntactic-closure-env name-form)
-                                   env))
-                      (name (expand-synclosure name-form env))
-                      (ns (environment-add-define! def-env
-                                                   (expr*:value name))))
-                 (expr*:value-set
-                  code
-                  `(##define ,(expr*:value-set
-                               name
-                               (gen-symbol ns
-                                           (expr*:value name)))
-                     ,(expand-macro (cadr (expr*:value src)) env)))))
-             
-             ;; This is to make transform-to-letrec work. It needs that
-             ;; defines are not expanded.
-             `(,(make-syntactic-closure builtin-environment '() 'define)
-               ,(car src)
-               ,(cadr src))))))
+         (cond
+          ((and (not (and (top-level)
+                          (environment-top? env)))
+                (not (inside-letrec)))
+           (error "Incorrectly placed define:"
+                  (expr*:strip-locationinfo code)))
+          
+          ((top-level)
+           (let* ((name-form (car (expr*:value src)))
+                  (def-env (if (syntactic-closure? name-form)
+                               (syntactic-closure-env name-form)
+                               env))
+                  (name (expand-synclosure name-form env))
+                  (ns (environment-add-define! def-env
+                                               (expr*:value name))))
+             (expr*:value-set
+              code
+              `(##define ,(expr*:value-set
+                           name
+                           (gen-symbol ns
+                                       (expr*:value name)))
+                 ,(expand-macro (cadr (expr*:value src)) env)))))
+          
+          (else ;; => (inside-letrec)
+           ;; This is to make transform-to-letrec work. It needs that
+           ;; defines are not expanded.
+           `(,(make-syntactic-closure
+               builtin-environment '() 'define)
+             ,(make-syntactic-closure env '() (car src))
+             ,(make-syntactic-closure env '() (cadr src))))))))
 
    (define-syntax
      (lambda (source env mac-env)
@@ -1291,23 +1339,36 @@
          (let* ((name (cadr code))
                 (trans (caddr code))
                 (before-name (expr*:value name)))
-           (if (top-level)
-               (let* ((fun (parameterize
-                            ((calcing #f))
-                            (expand-macro
-                             trans
-                             (environment-next-phase env))))
-                      (fn-name (environment-add-macro-fun
-                                before-name
-                                (eval-no-hook fun)
-                                env)))
-                 (expand-macro
-                  (if (calcing)
-                      `(define-macro-register ,name ,trans)
-                      `(##define ,fn-name
-                         ,fun))
-                  empty-environment))
-               source)))))
+           (cond
+            ((and (not (and (top-level)
+                            (environment-top? env)))
+                  (not (inside-letrec)))
+             (error "Incorrectly placed define-syntax:"
+                    (expr*:strip-locationinfo code)))
+            
+            ((top-level)
+             (let* ((fun (parameterize
+                          ((calcing #f))
+                          (expand-macro
+                           trans
+                           (environment-next-phase env))))
+                    (fn-name (environment-add-macro-fun
+                              before-name
+                              (eval-no-hook fun)
+                              env)))
+               (expand-macro
+                (if (calcing)
+                    `(define-macro-register ,name ,trans)
+                    (void))
+                empty-environment)))
+            
+            (else ;; => (inside-letrec)
+             (expr*:value-set
+              source
+              (list (make-syntactic-closure
+                     builtin-environment '() 'define-syntax)
+                    (make-syntactic-closure env '() (cadr code))
+                    (make-syntactic-closure env '() (caddr code))))))))))
    
    (define-macro-register
      (lambda (form env mac-env)
