@@ -342,6 +342,12 @@
                 (let ((x 3))
                   (foo)))))
 
+;; Test of identifier=?
+(let-syntax ((test (syntax-rules (a)
+                     ((test a) #t)
+                     ((test x) #f))))
+  (test a))
+
 
 
 (eq? 1
@@ -557,14 +563,15 @@
 
 ;; Test mutually recursive functions
 ;; defined with define within a scope
-(let ()
-  (define (a x)
-    (b (- x 1)))
-  (define (b x)
-    (if (negative? x)
-        x
-        (a (- x 1))))
-  (a 12))
+(negative?
+ (let ()
+   (define (a x)
+     (b (- x 1)))
+   (define (b x)
+     (if (negative? x)
+         x
+         (a (- x 1))))
+   (a 12)))
 
 ;; Test syntax-rules macros that take
 ;; syntactic closures as parameters where
@@ -904,18 +911,18 @@
        (xx)))))
 
 ;; This is a quirky case. I don't know exactly what the results of
-;; this one should be. let-syntax does not generate a new scope like
-;; let does, so I think it should leak.
+;; this one should be. SISC returns #t on this one. Gauche gives an
+;; error.
 (let-syntax
     ((mac
       (syntax-rules ()
         ((mac)
          (define-syntax xx
            (syntax-rules ()
-             ((xx) #t)))))))
+             ((xx) #f)))))))
   (define-syntax xx
     (syntax-rules ()
-      ((xx) #f)))
+      ((xx) #t)))
   (mac)
   (xx))
 
@@ -941,31 +948,29 @@
     (mac)
     (xx)))
 
-;; Test that this nonsensical expression generates an error.
-(with-exception-catcher
- (lambda (e) #t)
- (lambda ()
-   (expand-macro
-    (make-syntactic-closure
-     (module#make-environment (module#top-environment))
-     '()
-     '(define-syntax whoa
-        (syntax-rules ()
-          ((whoa) #t)))))
-   #f))
 
-;; Test that this nonsensical expression generates an error.
-(with-exception-catcher
- (lambda (e) #t)
- (lambda ()
-   (expand-macro
-    (make-syntactic-closure
-     (module#make-environment (module#top-environment))
-     '()
-     '(define whoa #f)))
-   #f))
+;; Test that begins get properly expanded always. This is actually a
+;; test to make sure that the inside-letrec parameter is handled
+;; correctly.
+(let ((x #t))
+  x
+  (begin x))
 
+;; Another inside-letrec related test
+(let ()
+  (let ((x (begin expand-macro)))
+    (eq? x expand-macro)))
 
+;; One more test aimed at inside-letrec correctness
+(let ()
+  (define-macro (a) #t)
+  (a))
+
+;; Test that transform-forms-to-triple doesn't bail on #!void
+(let ()
+  #!void
+  (define a #t)
+  a)
 
 
 
@@ -979,19 +984,15 @@
 
 
 
-(begin
-  (import (module))
-  (syntax-begin (import (module))))
 
 
-;; Test lambda with the parameter list as syntactic closure
-(expand-macro
- `(let ((a 0))
-    ,(capture-syntactic-environment
-      (lambda (env)
-        `(lambda ,(make-syntactic-closure env '() '(a))
-           a
-           ,(make-syntactic-closure env '() 'a))))))
+
+
+
+
+
+
+
 
 ;; Test macros that define variables
 (parameterize
@@ -1029,16 +1030,13 @@
      (parameterize
       ((module#top-level #f)
        (module#inside-letrec #t))
-      (expand-macro
+      (module#expand-synclosure
        (make-syntactic-closure
         (module#top-environment)
         '()
         `(define test #t))
        (module#top-environment)))))
 
-(begin
-  (import (module))
-  (syntax-begin (import (module))))
 
 (expand-macro
  '(let ()
@@ -1069,25 +1067,47 @@
        (one)
        test))))
 
-;; A more intricate test of mutually recursive macros
-(eval
- (expand-macro
-  '(let ()
-     (define a #t)
-     (define (b) (two #f))
-     (define-macro (one n) (if n 'a '(two #t)))
-     (define-macro (two n) `(one ,n))
-     (b))))
 
-;; Test mutually recursive functions
-;; defined with define within a scope
 
-(begin
-  (import (module))
-  (syntax-begin (import (module))))
+
+
+
+
 
 (expand-macro
- `(let ()
-    (define a b)
-    (define b a)
-    #f))
+ '(let ((test #f))
+    (let-syntax
+        ((one
+          (nh-macro-transformer
+           (lambda ()
+             `(define test #t)))))
+      (one)
+      test)))
+
+
+
+;; This is not above, so don't just remove it.
+(expand-macro
+ '(let ()
+    (let-syntax ()
+      (define (b) #t))
+    (b)))
+
+(let-syntax ((test (syntax-rules (a)
+                     ((test a) #t)
+                     ((test x) #f))))
+  (test a))
+
+(equal? '(a! hej (x . five!))
+        (let-syntax ((test (syntax-rules (a)
+                             ((test a) 'a!)
+                             ((test 5) 'five!)
+                             ((test 5 var) var)
+                             ((test) 'Hoo)
+                             ((test other ...) 'x))))
+          (list (test a)
+                (test 5 'hej)
+                (let ((a #f))
+                  (cons (test a)
+                        (test 5))))))
+

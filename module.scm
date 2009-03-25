@@ -295,16 +295,16 @@
                 (symbol? as)))
       (error "Invalid exports declaration" name as))
   (cond
-   ((environment-top-ns-macro-get env name) =>
-    (lambda (mac)
-      (list as ;; exported name
-            'mac
-            (car mac) ;; macro procedure
-            (cadr mac)))) ;; macro environment
-   
-   ((environment-top-ns-get env name) =>
-    (lambda (def)
-      (list as 'def def)))
+   ((environment-get env name) =>
+    (lambda (val)
+      (if (eq? 'mac (car val))
+          (list as
+                'mac
+                (cadr val) ;; Macro procedure
+                (caddr val)) ;; Macro environment
+          (list as
+                'def
+                (cadr val)))))
    
    (else
     (error "Name can't be exported because it isn't defined"
@@ -378,16 +378,11 @@
   (make-module-info
    '() '() '() '() '() "" "" "" #f builtin-environment))
 
-;; True when a calculating info for a module
-(define calcing (make-parameter #f))
-
 ;; The placement of this code is a little counterintuitive. It is
-;; here, because this is the code that actually does thea
-;; calc-info. But it's the calcing dynamic variable that actually
-;; triggers its use, which is in hygiene.scm.
+;; here, because this is the code that actually does the
+;; calc-info.
 (define-env load-environment
   "module-loadenv#"
-  ()
   ((import
     (nh-macro-transformer
      (lambda pkgs
@@ -414,16 +409,16 @@
        (let* ((code (expr*:value source))
               (src (transform-to-lambda (cdr code)))
               (sym (synclosure-extract-form (car src))))
-         (environment-top-ns-add (top-environment)
-                                 sym
-                                 (gen-symbol
+         (environment-add-def! (top-environment) ;; TODO Why not env?
+                               sym
+                               (gen-symbol
                                   (module-namespace (current-module))
                                   sym))
          (*module-loadenv-symbols*
           (cons (cons sym 'def) (*module-loadenv-symbols*)))
          (void))))
    
-   (define-macro-register
+   (module#define-macro-register
      (lambda (form env mac-env)
        (let ((src (transform-to-lambda (cdr form))))
          (*module-loadenv-symbols*
@@ -538,13 +533,15 @@
                  (type (cdr pair)))
              (if (eq? 'def type)
                  (list name 'def (gen-symbol ns name))
-                 (let ((mac (environment-top-ns-macro-get
-                             env
-                             name)))
+                 (let ((mac (environment-get env name)))
+                   (if (or (not mac)
+                           (not (eq? 'mac (car mac))))
+                       (error "Internal error in loadenv-symbol-defs:"
+                              mac))
                    (list name ;; exported name
                          'mac
-                         (car mac) ;; macro procedure
-                         (cadr mac))))))
+                         (cadr mac) ;; macro procedure
+                         (caddr mac)))))) ;; macro environment
          symbols)))
 
 ;; This function makes use of the module-loadenv dynamic environment.
@@ -564,8 +561,10 @@
        (if filename
            (parameterize
             ((top-environment (make-top-environment
-                               (resolve-one-module module)))
-             (calcing #t))
+                               (resolve-one-module module)
+                               #t))) ;; The #t is to indicate that we
+                                     ;; want to include the calc-info
+                                     ;; environment
             (expand-macro
              (expr*:strip-locationinfo
               (file-read-as-expr filename)))
@@ -670,7 +669,8 @@
 (define (namespace-rename-reserved str)
   (cond
    ((or (string->number str)
-        (string-contains str #\~))
+        (string-contains str #\~)
+        (equal? str "module"))
     (string-append str "_"))
 
    (else
@@ -681,8 +681,11 @@
          (make-module-util-function
           (lambda (mod)
             (string-append
-             (namespace-rename-reserved
-              ((loader-module-name (module-loader mod)) mod))
+             (let ((loader (module-loader mod)))
+               (if (eq? loader module-module-loader)
+                   "module"
+                   (namespace-rename-reserved
+                    ((loader-module-name loader) mod))))
              "#")))))
     (lambda (mod)
       ;; This function might be called with #f as argument
@@ -705,12 +708,12 @@
       (lambda (def)
         (if (eq? 'def (cadr def))
             ;; Regular define
-            (environment-top-ns-add
+            (environment-add-def!
              te
              (car def) ;; The name it's imported as
              (caddr def)) ;; The name it's imported from
             ;; Macro
-            (environment-top-ns-macro-add
+            (environment-add-mac!
              te
              ;; The name it's imported as
              (car def)
@@ -724,6 +727,8 @@
   (let* ((repl-environment #f)
          (fn (make-module-util-function
               (lambda (mod)
+                ;; TODO I think there might be some redundant work
+                ;; going on here.
                 (if (not (environment-module (top-environment)))
                     (set! repl-environment (top-environment)))
                 (top-environment (make-top-environment mod))
@@ -766,8 +771,7 @@
 (define (load-once file-with-extension #!optional module)
   (let ((module (and module (resolve-one-module module))))
     (parameterize
-     ((top-environment (make-top-environment module))
-      (calcing #f))
+     ((top-environment (make-top-environment module)))
      (with-module-cache
       (lambda ()
         (let* ((file (path-strip-trailing-directory-separator
@@ -1062,6 +1066,45 @@
    (lambda (mod) #f)
    ;; compile!
    (lambda (mod) #f)))
+
+
+
+;;;; ---------- Some environment creation stuff ----------
+
+;; This code is here because it depends on the module-info machinery.
+
+(define module-env-table
+  (let* ((ns (make-table))
+         (env (make-environment #f ns ns)))
+    (module-add-defs-to-env
+     (module-info-exports
+      ((loader-calculate-info module-module-loader) #f))
+     env)
+    ns))
+
+(define (make-top-environment module #!optional calcing)
+  (let*
+      ((builtin
+        (if calcing
+            (cons (env-ns load-environment)
+                  (env-ns builtin-environment))
+            (env-ns builtin-environment)))
+       (ns (cons
+            (make-table)
+            (if module
+                builtin
+                (cons module-env-table
+                      builtin)))))
+    (make-environment module
+                      ns
+                      ns)))
+
+(define empty-environment (make-top-environment #f))
+
+(define top-environment
+  (make-parameter (make-top-environment #f)))
+
+
 
 ;;;; ---------- Hack for configuration ----------
 
