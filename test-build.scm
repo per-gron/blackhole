@@ -509,30 +509,30 @@
 ;; This is REALLY a corner case
 ;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
 ;; says that this should return 2, but SISC returns 1.
-(eq? 2
-     (let ((x 1))
-       (let-syntax
-           ((foo (syntax-rules ()
-                   ((_ y)
-                    (let-syntax
-                        ((bar (syntax-rules ()
-                                ((_) (let ((x 2)) y)))))
-                      (bar))))))
-         (foo x))))
+(= 1
+   (let ((x 1))
+     (let-syntax
+         ((foo (syntax-rules ()
+                 ((_ y)
+                  (let-syntax
+                      ((bar (syntax-rules ()
+                              ((_) (let ((x 2)) y)))))
+                    (bar))))))
+       (foo x))))
 
 ;; This is REALLY a corner case
 ;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
 ;; says that this should return 2, but SISC and Gauche returns 1.
-(eq? 2
-     (let ((x 1))
-       (let-syntax
-           ((foo (syntax-rules ()
-                   ((_ y)
-                    (let-syntax
-                        ((bar (syntax-rules ()
-                                ((_ x) y))))
-                      (bar 2))))))
-         (foo x))))
+(= 1
+   (let ((x 1))
+     (let-syntax
+         ((foo (syntax-rules ()
+                 ((_ y)
+                  (let-syntax
+                      ((bar (syntax-rules ()
+                              ((_ x) y))))
+                    (bar 2))))))
+       (foo x))))
 
 ;; SISC supports this syntax. My interpretation of R5RS
 ;; supports this syntax. This implementation does.
@@ -746,13 +746,14 @@
     (one)
     test))
 
-;; Test macros that define variables that shouldn't leak
-(let ((test #t))
+;; Another corner case. I don't really know what this should be. SISC
+;; returns #f
+(let ((test #f))
   (let-syntax
       ((one
         (syntax-rules ()
           ((one) (begin
-                   (define test #f)
+                   (define test #t)
                    #f)))))
     (one)
     test))
@@ -823,16 +824,18 @@
 ;; where define-syntax is shadowed.
 (eval
  (expand-macro
-  `(let ((define-syntax (lambda args #f))
-         (test (lambda () #f)))
-     (,(make-syntactic-closure module#builtin-environment
-                               '()
-                               'define-syntax)
-      test
-      (sc-macro-transformer
-       (lambda (form env)
-         #t)))
-     (test))))
+  (capture-syntactic-environment
+   (lambda (env)
+     `(let ((define-syntax (lambda args #f))
+            (test (lambda () #f)))
+        (,(make-syntactic-closure env
+                                  '()
+                                  'define-syntax)
+         test
+         (sc-macro-transformer
+          (lambda (form env)
+            #t)))
+        (test))))))
 
 ;; Test that inner ns macros that expand into #f actually get
 ;; expanded. (Yes, I had problems with this once)
@@ -999,7 +1002,11 @@
     (define (b) #t))
   (b))
 
-
+;; Make sure transform-forms-to-triple doesn't use shadowed defines.
+(let ((hej #t)
+      (define (lambda _ #t)))
+  (define hej #f)
+  hej)
 
 
 
@@ -1007,41 +1014,51 @@
 
 
 
+;; calcing is never set back to #f. It probably should, at least in
+;; load-once.
+
+
+;; Right now, the only thing that I know doesn't work is define-syntax
+;; within let-syntax forms.
 
 
 
+;; Test that let-syntax bindings don't interfer with each other.
+(let ((a (lambda () #t)))
+  (let-syntax
+      ((a (syntax-rules () ((_) #f)))
+       (b (syntax-rules () ((_) (a)))))
+    (b)))
 
-
-
-
-
+;; Test that letrec-syntax bindings do interfer with each other.
+(letrec-syntax
+    ((a (syntax-rules () ((_) #f)))
+     (b (syntax-rules () ((_) (a)))))
+  (not (b)))
 
 
 (expand-macro
- '(let-syntax
-      ((one
-        (syntax-rules ()
-          ((one) (begin
-                   (define test #f))))))
-    (let ((test #t))
-      (one)
-      test)))
-
-(expand-macro
- '(let-syntax
-      ((one
-        (syntax-rules ()
-          ((one) (define test #f)))))
-    (let ((test #t))
-      (one)
-      test)))
-
-;; Test macros that define variables that shouldn't leak
-(expand-macro
- '(let ((test #t))
+ '(let ()
     (let-syntax
-        ((one
+        ((test-mac2
           (syntax-rules ()
-            ((one) (define test #f)))))
-      (one)
-      test)))
+            ((test-mac)
+             #t))))
+      
+      (define-syntax test-mac
+        (syntax-rules ()
+          ((test-mac) (test-mac2)))))
+    (test-mac)))
+
+
+(let-syntax
+    ((test-mac2
+      (syntax-rules ()
+        ((test-mac2)
+         (let () 'hej)))))
+  
+  (define-syntax test-mac
+    (syntax-rules ()
+      ((test-mac) (test-mac2)))))
+
+(test-mac)

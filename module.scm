@@ -409,7 +409,7 @@
        (let* ((code (expr*:value source))
               (src (transform-to-lambda (cdr code)))
               (sym (synclosure-extract-form (car src))))
-         (environment-add-def! (top-environment) ;; TODO Why not env?
+         (environment-add-def! env
                                sym
                                (gen-symbol
                                   (module-namespace (current-module))
@@ -554,17 +554,17 @@
                               env)
            '()))))
 
+(define calcing (make-parameter #f))
+
 (define (module-info-calculate module #!optional filename)
   (with-module-loadenv
    (lambda ()
      (let ((env #f))
        (if filename
            (parameterize
-            ((top-environment (make-top-environment
-                               (resolve-one-module module)
-                               #t))) ;; The #t is to indicate that we
-                                     ;; want to include the calc-info
-                                     ;; environment
+            ((calcing #t)
+             (top-environment (make-top-environment
+                               (resolve-one-module module))))
             (expand-macro
              (expr*:strip-locationinfo
               (file-read-as-expr filename)))
@@ -771,7 +771,8 @@
 (define (load-once file-with-extension #!optional module)
   (let ((module (and module (resolve-one-module module))))
     (parameterize
-     ((top-environment (make-top-environment module)))
+     ((top-environment (make-top-environment module))
+      (calcing #f))
      (with-module-cache
       (lambda ()
         (let* ((file (path-strip-trailing-directory-separator
@@ -826,6 +827,7 @@
   (parameterize
    ((top-environment (make-top-environment
                       (resolve-one-module module)))
+    (calcing #f)
     (module-hook (module-prelude module #t)))
    (compile-file fn
                  options: (append options *compiler-options*)
@@ -1082,24 +1084,95 @@
      env)
     ns))
 
-(define (make-top-environment module #!optional calcing)
-  (let*
-      ((builtin
-        (if calcing
-            (cons (env-ns load-environment)
-                  (env-ns builtin-environment))
-            (env-ns builtin-environment)))
-       (ns (cons
-            (make-table)
-            (if module
-                builtin
-                (cons module-env-table
-                      builtin)))))
+(define (builtin-ns-fun phase?)
+  (let* ((builtin-table
+          (env-ns builtin-environment))
+         (inside-letrec-table
+          (env-ns inside-letrec-environment))
+         (calcing-table
+          (cons (env-ns load-environment)
+                builtin-table))
+         (inside-letrec-pair
+          (cons inside-letrec-table
+                builtin-table)))
+    (lambda ()
+      (cond
+       ((and (not phase?)
+             (calcing))
+        calcing-table)
+       
+       ((inside-letrec)
+        inside-letrec-pair)
+
+       (else
+        builtin-table)))))
+
+(define builtin-ns
+  (builtin-ns-fun #f))
+
+(define builtin-ns-phase
+  (cons module-env-table (builtin-ns-fun #t)))
+
+(define (make-top-environment module)
+  (let ((ns (cons
+             (make-table)
+             (if module
+                 builtin-ns
+                 (cons module-env-table
+                       builtin-ns)))))
     (make-environment module
                       ns
                       ns)))
 
-(define empty-environment (make-top-environment #f))
+;; This is a rather ugly hack. When calc-info:ing a module, the macros
+;; in that module are registered.  What is actually stored is the
+;; macro function, and the environment in which it was defined.
+;;
+;; The problem is that, when calc-info:ing a module, the environment
+;; in which macros are defined will have the load-environment,
+;; shadowing some real macros. For instance, all let forms will expand
+;; to #!void in the macro's definition environment, which is not what
+;; we intend.
+;;
+;; What this function does is to take an environment and simply remove
+;; references to load-environment.
+;;
+;; Also, to avoid the dangers of that environment-add-to-ns will
+;; remove things from the environment (this happens when defining
+;; macros within let-syntax forms), all alist ns nodes are cloned.
+(define (environment-clone-ns-for-macro env)
+  (let* ((load-table
+          (env-ns load-environment))
+         
+         (new-ns
+          (or
+           (let loop ((ns (env-ns env)))
+             (cond
+              ((eq? load-table ns)
+               #f)
+              
+              ((pair? ns)
+               (let ((a (loop (car ns)))
+                     (b (loop (cdr ns))))
+                 (if (and a b)
+                     (cons a b)
+                     (or a b))))
+
+              ((box? ns)
+               ;; Clone the box
+               (box (unbox ns)))
+              
+              (else ;; ns should be a table
+               ns)))
+           (make-table))))
+    (make-env (env-parent env)
+              (env-module env)
+              (env-next-phase env)
+              new-ns
+              new-ns)))
+
+(define empty-environment
+  (make-top-environment #f))
 
 (define top-environment
   (make-parameter (make-top-environment #f)))

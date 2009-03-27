@@ -94,6 +94,8 @@
 ;; * A pair of two datastructures of the this type. Lookups are done
 ;;   first in the car, and if nothing was found, search in the
 ;;   cdr. Modifications are done in the car.
+;; * A procedure returning a datastructure. Lookups are done on the
+;;   return value, modification is an error.
 ;;
 ;; The key is the name of the identifier, and the value is a list that
 ;; can either be ('mac [macro function] [macro environment]) or ('def
@@ -154,11 +156,8 @@
 (define (environment-next-phase env)
   (or (env-next-phase env)
       (if (environment-top? env)
-          (let* ((ns (cons
-                      (make-table)
-                      (cons
-                       module-env-table
-                       (env-ns builtin-environment))))
+          (let* ((ns (cons (make-table)
+                           builtin-ns-phase))
                  (val (make-env (+ 1 (env-parent env))
                                 (env-module env)
                                 #f
@@ -190,6 +189,9 @@
    ((table? ns)
     (and (not ignore-globals)
          (table-ref ns name #f)))
+
+   ((procedure? ns)
+    (ns-get (ns) name ignore-globals: ignore-globals))
    
    (else
     (error "Invalid ns" ns))))
@@ -224,6 +226,9 @@
    ((pair? ns)
     (ns-add! (car ns) name val))
 
+   ((procedure? ns)
+    (error "Cannot modify procedure ns" ns))
+
    (else
     (error "Invalid ns" ns))))
 
@@ -246,6 +251,9 @@
 
    ((pair? ns)
     (ns-add/reset! (car ns) name val))
+
+   ((procedure? ns)
+    (error "Cannot modify procedure ns" ns))
 
    (else
     (error "Invalid ns" ns))))
@@ -351,7 +359,10 @@
            (environment-add-mac!
             env
             name ;; The exported name
-            fun
+            (eval-no-hook
+             (expand-macro
+              fun
+              (environment-next-phase env)))
             env))))
     (cond
      ((symbol? name)
@@ -368,7 +379,7 @@
      (else
       (error "Name must be an identifier" name)))))
 
-(define (make-macro-fun env trans)
+(define (make-macro-fun env trans) ;; TODO Right now this isn't used
   (let* ((lambda-sc (make-syntactic-closure
                      builtin-environment
                      '()
@@ -487,7 +498,7 @@
 ;; Macs is a list of lists where car is name, cadr is the sexp
 ;; of the macro transformer
 (define (environment-add-macros env macs rec thunk)
-  (let ((new-env (if (eq? rec 'side-effect)
+  (let ((new-env (if rec
                      env
                      (make-environment env))))
     (environment-add-to-ns
@@ -499,13 +510,11 @@
              ;; This eval is for creating a procedure object from
              ;; the macro source code.
              (eval-no-hook
-              (make-macro-fun
-               (if rec
-                   new-env
-                   env)
+              ;(make-macro-fun ;; TODO What does this do?
+               ;env ;; TODO Why not new-env? What is this?
                (expand-macro (cadr m)
-                             (environment-next-phase env))))
-             (if rec new-env env)))
+                             (environment-next-phase env)));)
+             env))
      thunk)))
 
 ;; (inside-letrec) implies (not (top-level))
@@ -1034,16 +1043,6 @@
                                     source)))))
         (if (symbol? hd) ;; This is equivalent to (identifier? hd-val)
             (cond
-             ((and (inside-letrec)
-                   (environment-get inside-letrec-environment hd)) =>
-                   (lambda (val)
-                     (if (not (eq? 'mac (car val)))
-                         (error "expand-macro internal error"))
-                     ((cadr val)
-                      source
-                      env
-                      (caddr val))))
-             
              ((environment-get search-env hd) =>
               (lambda (val)
                 (if (eq? 'def (car val))
@@ -1371,13 +1370,10 @@
                 (before-name (expr*:value name)))
            (cond
             ((top-level)
-             (let ((fun (expand-macro
-                         trans
-                         (environment-next-phase env))))
-               (environment-add-macro-fun
-                before-name
-                (eval-no-hook fun)
-                env)
+             (begin
+               (environment-add-macro-fun before-name
+                                          trans
+                                          env)
                (expand-macro
                 `(module#define-macro-register ,name ,trans)
                 env)))
@@ -1481,7 +1477,7 @@
          (let* ((src (transform-to-lambda (cdr code))))
            (expand-macro
             `(,(make-syntactic-closure
-                builtin-environment
+                empty-environment
                 '()
                 'define-syntax)
               ,(car src)
@@ -1523,11 +1519,11 @@
        (let ((code (expr*:strip-locationinfo code)))
          (let ((src (transform-to-lambda code)))
            (expand-macro
-            `(,(make-syntactic-closure builtin-environment
+            `(,(make-syntactic-closure empty-environment
                                        '()
                                        'define)
               ,(car src)
-              (,(make-syntactic-closure builtin-environment
+              (,(make-syntactic-closure empty-environment
                                         '()
                                         'if)
                (module#defined? ',(car src))
