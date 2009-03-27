@@ -428,15 +428,15 @@
    
    (let
        (lambda (code env mac-env)
-         #f))
+         (void)))
    
    (letrec
        (lambda (code env mac-env)
-         #f))
+         (void)))
    
    (lambda
        (lambda (code env mac-env)
-         #f))
+         (void)))
    
    (export
     (lambda (code env mac-env)
@@ -1125,7 +1125,7 @@
       `((here . ,current-module-resolver)
         (module . ,(make-singleton-module-resolver
                     module-module-loader))
-        (std . ,(package-module-resolver "~~/lib/module/std/"))
+        (std . ,(package-module-resolver "~~/lib/modules/std/"))
         (termite . ,(make-singleton-module-resolver
                      termite-loader))))
 

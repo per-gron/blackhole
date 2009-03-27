@@ -265,6 +265,19 @@
      (let ((=> #f))
        (cond (#t => 'ok))))
 
+;; Test that let-syntax bindings don't interfer with each other.
+(let ((a (lambda () #t)))
+  (let-syntax
+      ((a (syntax-rules () ((_) #f)))
+       (b (syntax-rules () ((_) (a)))))
+    (b)))
+
+;; Test that letrec-syntax bindings do interfer with each other.
+(letrec-syntax
+    ((a (syntax-rules () ((_) #f)))
+     (b (syntax-rules () ((_) (a)))))
+  (not (b)))
+
 ;; Test macro recursion with letrec-syntax
 (eval
  '(letrec-syntax ((test
@@ -586,11 +599,12 @@
        (two (1 2))))
 
 ;; Test let with the parameter list as syntactic closure
-(expand-macro
- (capture-syntactic-environment
-  (lambda (env)
-    `(let ,(make-syntactic-closure env '() '((a 3)))
-       #f))))
+(eval
+ (expand-macro
+  (capture-syntactic-environment
+   (lambda (env)
+     `(let ,(make-syntactic-closure env '() '((a 3)))
+        #t)))))
 
 ;; Test let* with the parameter list as syntactic closure
 (eval
@@ -612,12 +626,11 @@
               ,loop)))))))
 
 ;; Test let with one parameter as syntactic closure
-(eval
- (expand-macro
-  (capture-syntactic-environment
-   (lambda (env)
-     `(let (,(make-syntactic-closure env '() '(a 3)))
-        #t)))))
+(expand-macro
+ (capture-syntactic-environment
+  (lambda (env)
+    `(let (,(make-syntactic-closure env '() '(a 3)))
+       #t))))
 
 ;; Test lambda with the parameter list as syntactic closure
 (expand-macro
@@ -919,10 +932,10 @@
         ((mac)
          (define-syntax xx
            (syntax-rules ()
-             ((xx) #f)))))))
+             ((xx) #t)))))))
   (define-syntax xx
     (syntax-rules ()
-      ((xx) #t)))
+      ((xx) #f)))
   (mac)
   (xx))
 
@@ -972,6 +985,19 @@
   (define a #t)
   a)
 
+;; Basic test for begins in transform-forms-to-triple.
+(eq? 6
+     (let ((a 2) (b 2))
+       (begin
+         (define a 3))
+       (define b 3)
+       (+ a b)))
+
+;; Test that defines work even when they are inside let-syntax forms.
+(let ()
+  (let-syntax ()
+    (define (b) #t))
+  (b))
 
 
 
@@ -991,123 +1017,31 @@
 
 
 
-
-
-
-;; Test macros that define variables
-(parameterize
- ((module#top-level #f))
- (expand-macro
-  '(let-syntax
-       ((one
-         (sc-macro-transformer
-          (lambda (form env)
-            (pp `(e ,env))
-            (make-syntactic-closure
-             env
-             '()
-             `(define test #t))))))
-     (one))))
-
-(parameterize
- ((module#top-level #f))
- (module#let/letrec-syntax-helper
-  #f
-  '(let-syntax
-       ((one
-         (sc-macro-transformer
-          (lambda (form env)
-            (pp `(e ,env))
-            (make-syntactic-closure
-             env
-             '()
-             `(define test #t))))))
-     (one))
-  (module#top-environment)))
-
-(pp (list
-     (module#top-environment)
-     (parameterize
-      ((module#top-level #f)
-       (module#inside-letrec #t))
-      (module#expand-synclosure
-       (make-syntactic-closure
-        (module#top-environment)
-        '()
-        `(define test #t))
-       (module#top-environment)))))
-
-
 (expand-macro
- '(let ()
-    (let-syntax
-        ((one
-          (syntax-rules ()
-            ((_ test)
-             (define test #t)))))
-      (one test)
-      test)))
-
-
-
-
-(parameterize
- ((module#top-level #f))
- (expand-macro
-  '(let ()
-     (let-syntax
-         ((one
-           (sc-macro-transformer
-            (lambda (form env)
-              (pp `(e ,env))
-              (make-syntactic-closure
-               env
-               '()
-               `(define test #t))))))
-       (one)
-       test))))
-
-
-
-
-
-
-
-
-(expand-macro
- '(let ((test #f))
-    (let-syntax
-        ((one
-          (nh-macro-transformer
-           (lambda ()
-             `(define test #t)))))
+ '(let-syntax
+      ((one
+        (syntax-rules ()
+          ((one) (begin
+                   (define test #f))))))
+    (let ((test #t))
       (one)
       test)))
 
-
-
-;; This is not above, so don't just remove it.
 (expand-macro
- '(let ()
-    (let-syntax ()
-      (define (b) #t))
-    (b)))
+ '(let-syntax
+      ((one
+        (syntax-rules ()
+          ((one) (define test #f)))))
+    (let ((test #t))
+      (one)
+      test)))
 
-(let-syntax ((test (syntax-rules (a)
-                     ((test a) #t)
-                     ((test x) #f))))
-  (test a))
-
-(equal? '(a! hej (x . five!))
-        (let-syntax ((test (syntax-rules (a)
-                             ((test a) 'a!)
-                             ((test 5) 'five!)
-                             ((test 5 var) var)
-                             ((test) 'Hoo)
-                             ((test other ...) 'x))))
-          (list (test a)
-                (test 5 'hej)
-                (let ((a #f))
-                  (cons (test a)
-                        (test 5))))))
-
+;; Test macros that define variables that shouldn't leak
+(expand-macro
+ '(let ((test #t))
+    (let-syntax
+        ((one
+          (syntax-rules ()
+            ((one) (define test #f)))))
+      (one)
+      test)))

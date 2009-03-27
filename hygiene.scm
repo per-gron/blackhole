@@ -85,8 +85,13 @@
 ;;
 ;; The actual data structure looks like this. It is one of:
 ;; * A table. Lookups and modifications are done in the obvious way.
-;; * A box of an alist. The same here.
-;; * A pair of two datastructures of the same type. Lookups are done
+;;   An important thing to note here is that tables are used for
+;;   top-level bindings, while alists are used for lexical
+;;   bindings. identifier=? relies on this to be able to do the right
+;;   thing.
+;; * A box of an alist. Lookups and modifications are done in the
+;;   obvious way.
+;; * A pair of two datastructures of the this type. Lookups are done
 ;;   first in the car, and if nothing was found, search in the
 ;;   cdr. Modifications are done in the car.
 ;;
@@ -172,24 +177,25 @@
 
 (define environment-module env-module)
 
-(define (ns-get ns name)
+(define (ns-get ns name #!key ignore-globals)
   (cond
-   ((table? ns)
-    (table-ref ns name #f))
-   
    ((box? ns)
     (let ((p (assq name (unbox ns))))
       (and p (cdr p))))
    
    ((pair? ns)
-    (or (ns-get (car ns) name)
-        (ns-get (cdr ns) name)))
+    (or (ns-get (car ns) name ignore-globals: ignore-globals)
+        (ns-get (cdr ns) name ignore-globals: ignore-globals)))
+   
+   ((table? ns)
+    (and (not ignore-globals)
+         (table-ref ns name #f)))
    
    (else
     (error "Invalid ns" ns))))
 
-(define (environment-get env name)
-  (ns-get (env-ns env) name))
+(define (environment-get env name #!key ignore-globals)
+  (ns-get (env-ns env) name ignore-globals: ignore-globals))
 
 (define (environment-is-scope? env)
   (eq? (env-ns env) (env-ns-mutate env)))
@@ -518,77 +524,82 @@
 ;; are also CPS, to be able to do the right thing when a synclosure is
 ;; given as the name in let bindings or macro names.
 (define (transform-forms-to-triple form parent-env cont)
-  (parameterize
-   ((top-level #f)
-    (inside-letrec #t))
-   (let* ((exprs '())
-          (defs '())
-          (env (make-environment parent-env))
-          (ieq? (lambda (a b env)
-                  (identifier=? builtin-environment
-                                a
-                                env
-                                b)))
-          (push-exprs-expand
-           (lambda (expr rest env)
-             (parameterize
-              ((inside-letrec #f))
-              (set! exprs
-                    (append
-                     exprs
-                     (cons expr
-                           (map (lambda (x)
-                                  (let ((ret (expand-macro x env)))
-                                    ;; TODO I think these might be noops.
-                                    (if (and (pair? ret)
-                                             (ieq? 'define (car ret) env))
-                                        (error "Incorrectly placed define"
-                                               `(define ,@(cdr ret))))
-                                    (if (and (pair? ret)
-                                             (ieq? 'define-syntax (car ret) env))
-                                        (error "Incorrectly placed define-syntax"
-                                               `(define-syntax ,@(cdr ret))))
-                                    ret))
-                                rest))))
-              (cont exprs defs env))))
-          (push-def (lambda (x)
-                      (set! defs (cons x defs)))))
-     
-     (let loop ((form form) (env env))
-       (if (null? form)
-           (cont exprs defs env)
-           (let ((x (expand-macro (car form) env)))
-             (cond
-              ((eq? #!void x)
-               (loop (cdr form) env))
-              
-              ((not (pair? x))
-               (push-exprs-expand x (cdr form) env))
-              
-              ((ieq? 'define (car x) env)
-               (let ((src (transform-to-lambda (cdr x))))
-                 (push-def src)
-                 (environment-add-defines
-                  env
-                  (list (car src))
-                  (lambda (new-env _)
-                    (loop (cdr form) new-env))
-                  #t)))
-              
-              ((ieq? 'define-syntax (car x) env)
-               (environment-add-macros
-                env
-                (list (cdr x))
-                'side-effect
-                (lambda (new-env _)
-                  (loop (cdr form) new-env))))
-              
-              ((or (ieq? 'begin (car x) env)
-                   (ieq? '##begin (car x) env))
-               (loop (append (cdr x) (cdr form)) env))
-              
-              (else
-               (push-exprs-expand x (cdr form) env)))))))))
+  (let* ((exprs '())
+         (defs '())
+         (env (make-environment parent-env))
+         (ieq? (lambda (a b env)
+                 (identifier=? builtin-environment
+                               a
+                               env
+                               b)))
+         (push-exprs-expand
+          (lambda (expr rest env)
+            (parameterize
+             ((inside-letrec #f))
+             (set! exprs
+                   (append
+                    exprs
+                    (cons expr
+                          (map (lambda (x)
+                                 (expand-macro x env))
+                               rest))))
+             (cont exprs defs env))))
+         (push-def (lambda (x)
+                     (set! defs (cons x defs)))))
+    
+    (parameterize
+     ((top-level #f)
+      (inside-letrec #t))
+     ;; Bah... it's really not good to have to resort to continuations
+     ;; here. It is used to be able to implement the interaction
+     ;; between let-syntax, begin and this function properly; because
+     ;; of how environment-add-macros work, let/letrec-syntax-helper
+     ;; can't just return a syntactic-closure with its contents,
+     ;; because environment-add-macros will remove the macros from
+     ;; that environment when it returns.
+     (call/cc
+      (lambda (ret)
+        (let loop ((form form) (env env))
+          (inside-letrec
+           (lambda (forms)
+             (ret
+              (loop (append forms (cdr form))
+                    env))))
+          
+          (if (null? form)
+              (cont exprs defs env)
+              (let ((x (expand-macro (car form) env)))
+                (cond
+                 ((eq? #!void x)
+                  (loop (cdr form) env))
+                 
+                 ((not (pair? x))
+                  (push-exprs-expand x (cdr form) env))
+                 
+                 ((ieq? 'define (car x) env)
+                  (let ((src (transform-to-lambda (cdr x))))
+                    (push-def src)
+                    (environment-add-defines
+                     env
+                     (list (car src))
+                     (lambda (new-env _)
+                       (loop (cdr form) new-env))
+                     #t)))
+                 
+                 ((ieq? 'define-syntax (car x) env)
+                  (environment-add-macros
+                   env
+                   (list (cdr x))
+                   'side-effect
+                   (lambda (new-env _)
+                     (loop (cdr form) new-env))))
+                 
+                 ((or (ieq? 'begin (car x) env)
+                      (ieq? '##begin (car x) env))
+                  (loop (append (cdr x) (cdr form)) env))
+                 
+                 (else
+                  (push-exprs-expand x (cdr form) env)))))))))))
 
 (define (transform-forms-to-letrec form env)
   (transform-forms-to-triple
@@ -740,7 +751,7 @@
                 ,@(transform-forms-to-letrec body lambda-env)))))))
     (cdr code))))
 
-(define (let/letrec-syntax-helper rec form env)
+(define (let/letrec-syntax-helper rec form env thunk)
   (let ((form (expr*:strip-locationinfo form)))
     (apply
      (lambda (bindings . body)
@@ -759,10 +770,12 @@
         bindings
         rec
         (lambda (let-syntax-env _)
-          `(##begin
-             ,@(map (lambda (x)
-                      (expand-macro x let-syntax-env))
-                    body)))))
+          (let ((inner-env
+                 (make-environment let-syntax-env
+                                   (env-ns let-syntax-env)
+                                   (env-ns-mutate env))))
+            (thunk body
+                   inner-env)))))
      (cdr form))))
 
 ;; Expansion functions
@@ -1150,21 +1163,23 @@
   ;;
   ;; Both x variables would expand into something like 1#x, but they
   ;; are still not the same identifier.
-  ;;
-  ;; The way we check this is that every environment stores stuff for
-  ;; every identifier it contains.  One of the things that are stored
-  ;; is the "origin environment," that is, the scope where the
-  ;; identifier was introduced. If the two identifiers' environments
-  ;; are the same, then they are equal.
   (let* ((strip1 (strip-synclosure env1 id1))
          (id1 (car strip1))
          (env1 (cdr strip1))
-         (one (environment-get env1 id1))
+         (one (environment-get env1
+                               id1
+                               ;; TODO I'm not sure this is the
+                               ;; correct place to have this. It is
+                               ;; here because syntax-rules needs it
+                               ;; for the literals part to work.
+                               ignore-globals: #t))
          
          (strip2 (strip-synclosure env2 id2))
          (id2 (car strip2))
          (env2 (cdr strip2))
-         (two (environment-get env2 id2)))
+         (two (environment-get env2
+                               id2
+                               ignore-globals: #t)))
     (or (and (not one) (not two) (eq? id1 id2))
         (and one two (eq? one two)))))
 
@@ -1243,9 +1258,39 @@
                  builtin-environment '() 'define-syntax)
                 (make-syntactic-closure env '() (cadr code))
                 (make-syntactic-closure env '() (caddr code)))))))
+   
+   (let-syntax
+       (lambda (code env mac-env)
+         (let/letrec-syntax-helper
+          #f
+          code
+          env
+          (lambda (body inner-env)
+            ((inside-letrec)
+             (map (lambda (x)
+                    (make-syntactic-closure
+                     inner-env '() x))
+                  body))))))
+
+   (letrec-syntax
+       (lambda (code env mac-env)
+         (let/letrec-syntax-helper
+          #t
+          code
+          env
+          (lambda (body inner-env)
+            ((inside-letrec)
+             (map (lambda (x)
+                    (make-syntactic-closure
+                     inner-env '() x))
+                  body))))))
    (begin
      (lambda (code env mac-env)
-       code)))) ;; TODO Does this preserve syntactic closure/envs?
+       ((inside-letrec)
+        (map (lambda (x)
+               (make-syntactic-closure
+                env '() x))
+             (cdr (expr*:value code))))))))
 
 (define-env builtin-environment
   "module#"
@@ -1376,11 +1421,27 @@
    
    (let-syntax
        (lambda (code env mac-env)
-         (let/letrec-syntax-helper #f code env)))
+         (let/letrec-syntax-helper
+          #f
+          code
+          env
+          (lambda (body inner-env)
+            `(##begin
+               ,@(map (lambda (x)
+                        (expand-macro x inner-env))
+                      body))))))
 
    (letrec-syntax
        (lambda (code env mac-env)
-         (let/letrec-syntax-helper #t code env)))
+         (let/letrec-syntax-helper
+          #t
+          code
+          env
+          (lambda (body inner-env)
+            `(##begin
+               ,@(map (lambda (x)
+                        (expand-macro x inner-env))
+                      body))))))
    
    (lambda
        (lambda (code env mac-env)
