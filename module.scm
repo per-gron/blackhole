@@ -689,7 +689,7 @@
              "#")))))
     (lambda (mod)
       ;; This function might be called with #f as argument
-      (if mod (fn mod) ""))))
+      (if mod (fn mod) "~#"))))
 
 (define (module-load-list modules)
   (with-module-cache
