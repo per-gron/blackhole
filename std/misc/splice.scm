@@ -14,11 +14,11 @@
   (cond
    ((and (pair? list)
          (splice? (car list)))
-    (append (unsplice (car list))
+    (append (splice-data (car list))
             (unsplice-list (cdr list))))
 
    ((splice? list)
-    (unsplice list))
+    (splice-data list))
 
    ((pair? list)
     (cons (car list)

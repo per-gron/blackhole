@@ -1295,17 +1295,10 @@
   "module#"
   ((import
     (lambda (source env mac-env)
-      (let ((code (expr*:strip-locationinfo source)))
-        (with-module-cache
-         (lambda ()
-           (call-with-values
-               (lambda ()
-                 (resolve-imports
-                  (extract-synclosure-crawler
-                   (cdr code))))
-             (lambda (defs modules)
-               (module-load-list modules)
-               (module-add-defs-to-env defs env))))))))
+      (module-import
+       (extract-synclosure-crawler
+        (cdr (expr*:strip-locationinfo source)))
+       env)))
 
    (export
     (lambda (code env mac-env)

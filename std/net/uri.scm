@@ -3,12 +3,8 @@
 ;;; Written by Marc Feeley for http-server, made to a
 ;;; separate module and refactored by Per Eckerdal.
 
-(declare
-  (standard-bindings)
-  (extended-bindings)
-  (block)
-  ;;(not safe) ?
-  )
+(import x-www-form-urlencoded
+        (only: ../srfi/13 string-index-right))
 
 (export make-uri
         uri?
@@ -35,6 +31,13 @@
         remove-dot-segments
         uri-join
         uri-join*)
+
+(declare
+  (standard-bindings)
+  (extended-bindings)
+  (block)
+  ;;(not safe) ?
+  )
 
 (define-type uri
   id: 62788556-c247-11d9-9598-00039301ba52

@@ -33,8 +33,8 @@
                     (if ignore-errors-in-encoding
                         #f
                         (raise
-                         (dumps "Failed to read u8vector, broken "
-                                "characters? Data: " v " (end)."))))
+                         (error "Failed to read u8vector, broken characters? Data: "
+                                v))))
                   (lambda ()
                     (read-char input-port)))))
             ; (dbg "Had " c)
