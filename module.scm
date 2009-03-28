@@ -731,7 +731,8 @@
      (call-with-values
          (lambda () (resolve-imports modules))
        (lambda (defs mods)
-         (if (eq? (calc-mode) 'repl)
+         (if (or (eq? (calc-mode) 'repl)
+                 (> (environment-phase env) 0))
              (for-each module-load/deps mods))
          
          (module-add-defs-to-env defs env))))))
@@ -977,7 +978,6 @@
    ;; load
    (lambda (mod) '())
    ;; calculate-info
-   ;; TODO Add syntax-rules to here, too.
    (lambda (mod)
      (make-module-info
       '()
@@ -1043,7 +1043,10 @@
               module-load/deps
               module-import
               module-module
-              
+
+              modules-compile!
+              modules-clean!
+              modules-in-dir
               module-deps
               module-compile/deps!
               module-clean/deps!
