@@ -1,4 +1,4 @@
-(define (recompile-modules mods #!optional continue-on-error port)
+(define (modules-compile! mods #!optional continue-on-error port)
   (with-module-cache
    (lambda ()
      (let* ((mods (resolve-modules mods))
@@ -37,6 +37,30 @@
           (set! file-number (+ file-number 1)))
         mods-sorted)))))
 
+(define (modules-clean! mods)
+  (for-each module-clean! mods))
+
+(define (modules-in-dir top-dir)
+  (let ((mod-list '()))
+    (let loop ((files (directory-files top-dir))
+               (dir top-dir))
+      (for-each
+       (lambda (file)
+         (let ((path (path-expand file dir)))
+           (cond
+            ((is-directory? path)
+             (loop (directory-files path)
+                   path))
+
+            (else
+             (if (string-ends-with path ".scm")
+                 (set! mod-list
+                       (cons (make-module local-loader
+                                          (path-normalize path))
+                             mod-list)))))))
+       files))
+    mod-list))
+
 (define (module-deps mod #!optional recursive)
   (if recursive
       (remove-duplicates
@@ -49,10 +73,10 @@
       (module-info-uses (module-info mod))))
 
 (define (module-compile/deps! mod #!optional continue-on-error port)
-  (recompile-modules (cons mod (module-deps mod #t)) continue-on-error port))
+  (modules-compile! (cons mod (module-deps mod #t)) continue-on-error port))
 
 (define (module-clean/deps! mod #!optional continue-on-error port)
-  (for-each module-clean! (cons mod (module-deps mod #t))))
+  (modules-clean! (cons mod (module-deps mod #t))))
 
 (define (module-generate-export-list mod)
   (cons 'export

@@ -30,6 +30,9 @@
 ;  - Run perl Configure VC-WIN32 then nmake -f ms\ntdll.mak then nmake -f ms\ntdll.mak test
 ;  - .lib files are put in OpenSSL's out32 dir. 
 
+(syntax-begin
+ (import ../string/util))
+
 (export OpenSSL-Error-NONE
         OpenSSL-Error-SSL
         OpenSSL-Error-WANT-READ

@@ -9,14 +9,14 @@
 (define-syntax get-tags-include
   (sc-macro-transformer
    (lambda (form env)
-     `',(build#module-include 'tags))))
+     `',(module#module-include 'tags))))
 
 (define tags-include (get-tags-include))
 
 (define-syntax get-tags-module
   (sc-macro-transformer
    (lambda (form env)
-     `',(build#resolve-one-module 'tags))))
+     `',(module#resolve-one-module 'tags))))
 
 (define tags-module (get-tags-module))
 
@@ -47,8 +47,8 @@
 (define (scmd-eval form file)
   (let ((module (path->module file)))
     (parameterize
-     ((build#top-environment
-       (build#make-top-environment module)))
+     ((module#top-environment
+       (module#make-top-environment module)))
      (let* ((cte (##make-top-cte))
             (e (lambda (form)
                  (##eval-top form cte))))
