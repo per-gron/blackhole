@@ -63,6 +63,10 @@
 ;; TODO This is probably very slow
 (define (flatten list)
   (cond ((null? list) '())
+
+        ((null? (car list))
+         (flatten (cdr list)))
+        
         ((pair? (car list))
          (append (flatten (car list))
                  (flatten (cdr list))))

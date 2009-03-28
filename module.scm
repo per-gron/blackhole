@@ -554,7 +554,7 @@
                               env)
            '()))))
 
-(define calcing (make-parameter #f))
+(define calc-mode (make-parameter 'repl)) ;; one of 'repl, 'calc, 'load
 
 (define (module-info-calculate module #!optional filename)
   (with-module-loadenv
@@ -562,7 +562,7 @@
      (let ((env #f))
        (if filename
            (parameterize
-            ((calcing #t)
+            ((calc-mode 'calc)
              (top-environment (make-top-environment
                                (resolve-one-module module))))
             (expand-macro
@@ -691,16 +691,6 @@
       ;; This function might be called with #f as argument
       (if mod (fn mod) "~#"))))
 
-(define (module-load-list modules)
-  (with-module-cache
-   (lambda ()
-     (for-each
-      (lambda (module)
-        (for-each (lambda (args)
-                    (apply load-once args))
-                  (module-load module)))
-      modules))))
-
 (define (module-add-defs-to-env defs #!optional (te (top-environment)))
   (with-module-cache
    (lambda ()
@@ -723,18 +713,40 @@
              (cadddr def))))
       defs))))
 
+(define (module-load/deps module)
+  (with-module-cache
+   (lambda ()
+     (for-each module-load/deps
+               (module-info-uses
+                (module-info module)))
+     
+     (for-each (lambda (args)
+                 (apply load-once args))
+               (module-load module)))))
+
+
+(define (module-import modules #!optional (env (top-environment)))
+  (with-module-cache
+   (lambda ()
+     (call-with-values
+         (lambda () (resolve-imports modules))
+       (lambda (defs mods)
+         (if (eq? (calc-mode) 'repl)
+             (for-each module-load/deps mods))
+         
+         (module-add-defs-to-env defs env))))))
+
 (define module-module
   (let* ((repl-environment #f)
          (fn (make-module-util-function
               (lambda (mod)
-                ;; TODO I think there might be some redundant work
-                ;; going on here.
                 (if (not (environment-module (top-environment)))
                     (set! repl-environment (top-environment)))
+
                 (top-environment (make-top-environment mod))
+                (module-load/deps mod)
+                
                 (let ((info (module-info mod)))
-                  (module-load-list
-                   (cons mod (module-info-uses info)))
                   (module-add-defs-to-env (module-info-imports info))
                   (module-add-defs-to-env
                    (loadenv-symbol-defs (module-info-symbols info)
@@ -772,7 +784,7 @@
   (let ((module (and module (resolve-one-module module))))
     (parameterize
      ((top-environment (make-top-environment module))
-      (calcing #f))
+      (calc-mode 'load))
      (with-module-cache
       (lambda ()
         (let* ((file (path-strip-trailing-directory-separator
@@ -781,8 +793,9 @@
                (scm (string-append file ".scm"))
                (scm-exists? (file-exists? scm))
                (time (table-ref *load-once-registry* file #f)))
-          (if (not (equal? time (or (not scm-exists?)
-                                    (file-last-changed-seconds scm))))
+          (if (not (equal? time
+                           (or (not scm-exists?)
+                               (file-last-changed-seconds scm))))
               (let ((info (and module (module-info module))))
                 ;; If the file needs to be compiled, compile it (if it
                 ;; isn't compiled and is set to force-compile or if the
@@ -827,7 +840,7 @@
   (parameterize
    ((top-environment (make-top-environment
                       (resolve-one-module module)))
-    (calcing #f)
+    (calc-mode 'load)
     (module-hook (module-prelude module #t)))
    (compile-file fn
                  options: (append options *compiler-options*)
@@ -1027,6 +1040,8 @@
               module-compile!
               module-clean!
               module-namespace
+              module-load/deps
+              module-import
               module-module
               
               module-deps
@@ -1098,7 +1113,7 @@
     (lambda ()
       (cond
        ((and (not phase?)
-             (calcing))
+             (eq? (calc-mode) 'calc))
         calcing-table)
        
        ((inside-letrec)
