@@ -73,3 +73,8 @@
   (set! ##expand-source (hook #f))
   (set! c#expand-source (hook #t)))
 
+
+(eval
+ `(begin
+    (##namespace (,(module-namespace #f)))
+    ,@*global-includes*))
