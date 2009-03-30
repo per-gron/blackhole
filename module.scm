@@ -384,21 +384,22 @@
 (define-env load-environment
   "module-loadenv#"
   ((import
-    (nh-macro-transformer
-     (lambda pkgs
-       (with-module-cache
-        (lambda ()
-          (call-with-values
-              (lambda () (resolve-imports
-                          (extract-synclosure-crawler pkgs)))
-            (lambda (def mod)
-              (*module-loadenv-uses*
-               (append (*module-loadenv-uses*)
-                       mod))
-              (*module-loadenv-imports*
-               (append (*module-loadenv-imports*)
-                       def))
-              (module-add-defs-to-env def))))))))
+    (lambda (source env mac-env)
+      (let ((pkgs (extract-synclosure-crawler
+                   (cdr (expr*:strip-locationinfo source)))))
+        (with-module-cache
+         (lambda ()
+           (call-with-values
+               (lambda () (resolve-imports
+                           (extract-synclosure-crawler pkgs)))
+             (lambda (def mod)
+               (*module-loadenv-uses*
+                (append (*module-loadenv-uses*)
+                        mod))
+               (*module-loadenv-imports*
+                (append (*module-loadenv-imports*)
+                        def))
+               (module-add-defs-to-env def env))))))))
    
    (module
     (lambda (code env mac-env)
