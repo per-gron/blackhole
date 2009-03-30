@@ -622,7 +622,7 @@
      
      (if (null? defs)
          inner-exp
-         `((##letrec
+         `((letrec
                ,(map (lambda (src)
                        (expand-macro src new-env))
                      defs)
@@ -660,8 +660,8 @@
                ps))
          (lambda (let-env defined-params)
            `(,(if rec
-                  '##letrec
-                  '##let)
+                  'letrec
+                  'let)
              ,@(if prefix
                    `(,(expand-macro prefix let-env))
                    '())
@@ -758,7 +758,7 @@
                              (error "Invalid parameter list: "
                                     params)))))))
                      params))))
-             `(##lambda ,hygparams
+             `(lambda ,hygparams
                 ,@(transform-forms-to-letrec body lambda-env)))))))
     (cdr code))))
 
@@ -1450,7 +1450,7 @@
            (apply
             (lambda (params . body)
               ;; Two null? checks are needed to avoid unneccesary
-              ;; (##let () ...)s while still allowing (let* () ...)
+              ;; (let () ...)s while still allowing (let* () ...)
               (let ((params (extract-syntactic-closure-list params 2)))
                 (expand-macro
                  (if (null? params)
@@ -1487,17 +1487,19 @@
       `(declare
         ,@(cdr (extract-synclosure-crawler
                 (expr*:strip-locationinfo code))))))
-
+   
    (cond
     (lambda (source env mac-env)
       (expr*:value-set
        source
        (let ((code (expr*:value source)))
          (cons
-          (car code)
+          (expr*:value-set (car code)
+                           'cond)
           (map (lambda (inner-source)
                  (let* ((inner-code
-                         (expr*:value inner-source))
+                         (extract-syntactic-closure-list
+                          (expr*:value inner-source)))
                         (hd-source
                          (if (pair? inner-code)
                              (car inner-code)
@@ -1508,15 +1510,18 @@
                    (expr*:value-set
                     inner-source
                     (cond
-                     ((identifier=? empty-environment
-                                    'else
-                                    env
-                                    hd)
-                      (cons hd-source
+                     ((and (identifier? hd)
+                           (identifier=? empty-environment
+                                         'else
+                                         env
+                                         hd))
+                      (cons (expr*:value-set hd-source
+                                             'else)
                             (expand-macro (cdr inner-code)
                                           env)))
 
                      ((and (pair? (cdr inner-code))
+                           (identifier? (expr*:value (cadr inner-code)))
                            (identifier=? empty-environment
                                          '=>
                                          env
