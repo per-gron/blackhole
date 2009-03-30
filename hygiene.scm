@@ -1347,10 +1347,10 @@
                                                (expr*:value name))))
              (expr*:value-set
               code
-              `(##define ,(expr*:value-set
-                           name
-                           (gen-symbol ns
-                                       (expr*:value name)))
+              `(define ,(expr*:value-set
+                         name
+                         (gen-symbol ns
+                                     (expr*:value name)))
                  ,(expand-macro (cadr (expr*:value src)) env)))))
           
           (else
