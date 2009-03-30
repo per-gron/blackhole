@@ -1395,11 +1395,13 @@
      (lambda (code env mac-env)
        (expr*:value-set
         code
-        ;; TODO This doesn't generate source code locations correctly?
-        `(##begin ,@(expr*:map
-                     (lambda (x)
-                       (expand-macro x env))
-                     (cdr (expr*:value code)))))))
+        `(begin
+           ,@(map
+              (lambda (x)
+                (expr*:value-set x
+                                 (expand-macro (expr*:value x)
+                                               env)))
+              (cdr (expr*:value code)))))))
    
    (let
        (lambda (code env mac-env)
