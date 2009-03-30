@@ -353,16 +353,21 @@
              "")
          "#"))))
 
+(define (eval-in-next-phase code env)
+  (let ((np (environment-next-phase env)))
+    (parameterize
+     ((top-environment np))
+     (eval-no-hook
+      (expand-macro code
+                    np)))))
+
 (define (environment-add-macro-fun name fun env)
   (let ((fn
          (lambda (name env)
            (environment-add-mac!
             env
             name ;; The exported name
-            (eval-no-hook
-             (expand-macro
-              fun
-              (environment-next-phase env)))
+            (eval-in-next-phase fun env)
             env))))
     (cond
      ((symbol? name)
@@ -378,27 +383,6 @@
 
      (else
       (error "Name must be an identifier" name)))))
-
-(define (make-macro-fun env trans) ;; TODO Right now this isn't used
-  (let* ((lambda-sc (make-syntactic-closure
-                     builtin-environment
-                     '()
-                     'lambda))
-         (cons-sc (make-syntactic-closure
-                   builtin-environment
-                   '()
-                   'cons))
-         (apply-sc (make-syntactic-closure
-                    builtin-environment
-                    '()
-                    'apply))
-         (gs (gensym)))
-    (expand-macro
-     `(,lambda-sc ,gs
-                  (module#expand-macro
-                   (,apply-sc ,trans ,gs)
-                   ',env))
-     env)))
 
 (define (environment-add-define! env name)
   (let* ((top (top-level))
@@ -509,11 +493,7 @@
              'mac
              ;; This eval is for creating a procedure object from
              ;; the macro source code.
-             (eval-no-hook
-              ;(make-macro-fun ;; TODO What does this do?
-               ;env ;; TODO Why not new-env? What is this?
-               (expand-macro (cadr m)
-                             (environment-next-phase env)));)
+             (eval-in-next-phase (cadr m) env)
              env))
      thunk)))
 
@@ -1381,16 +1361,15 @@
 
    (syntax-begin
     (lambda (code env mac-env)
-      ;; The loop is here to return the last value.
-      (eval-no-hook
-       (expand-macro `(begin ,@(cdr (expr*:value code)))
-                     (environment-next-phase env)))))
+      (eval-in-next-phase `(##begin
+                             ,@(cdr (expr*:value code)))
+                          env)))
    
    (begin
      (lambda (code env mac-env)
        (expr*:value-set
         code
-        ;; TODO This doesn't generate source code locations correctly
+        ;; TODO This doesn't generate source code locations correctly?
         `(##begin ,@(expr*:map
                      (lambda (x)
                        (expand-macro x env))
