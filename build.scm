@@ -59,22 +59,12 @@
 
 ;; Add the hooks =)
 
-(define module-hook (make-parameter (lambda (src compiling?) src)))
-
 (let ((hook (lambda (compiling?)
               (lambda (src)
                 (let ((ret (expr:deep-fixup
-                            ((module-hook)
-                             (expand-macro src)
-                             compiling?))))
+                            (expand-macro src))))
                   ;; Useful when debugging
                   ;; (pp (expr*:strip-locationinfo ret))
                   ret)))))
   (set! ##expand-source (hook #f))
   (set! c#expand-source (hook #t)))
-
-
-(eval
- `(begin
-    (##namespace (,(module-namespace #f)))
-    ,@*global-includes*))

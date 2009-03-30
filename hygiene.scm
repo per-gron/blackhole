@@ -42,6 +42,32 @@
    (string-append str
                   (symbol->string sym))))
 
+(define (parse-gambit-header-file file)
+  (apply
+   append
+   (map (lambda (form)
+          (if (eq? '##include (car form))
+              (parse-gambit-header-file (cadr form))
+              (list form)))
+        (call-with-input-file file
+          read-all))))
+
+(define (parse-gambit-headers)
+  (let ((table (make-table)))
+    (for-each
+     (lambda (ns-form)
+       (if (not (and (eq? '##namespace
+                          (car ns-form))
+                     (equal? (caadr ns-form) "")))
+           (error "Wrong format on gambit header."))
+       (for-each (lambda (name)
+                   (table-set! table name (list 'def name)))
+                 (cdadr ns-form)))
+     (parse-gambit-header-file "~~lib/gambit#.scm"))
+    table))
+
+(define gambit-builtin-table (parse-gambit-headers))
+
 ;; Structures
 
 ;; Environments are rather odd data structures. They are designed the
@@ -99,10 +125,7 @@
 ;;
 ;; The key is the name of the identifier, and the value is a list that
 ;; can either be ('mac [macro function] [macro environment]) or ('def
-;; [symbol to be expanded to] [environment where it was introduced])
-;;
-;; (I don't think the environment in the 'def kind of list is needed,
-;; it's an artifact of an earlier implementation of identifier=?)
+;; [symbol to be expanded to])
 (define-type env
   id: A8981FB8-BC38-47BA-8707-5A3F5962D610
   ;; The parent environment. This is how lexical scope is implemented;
@@ -119,6 +142,10 @@
   ;; environment is created, this is set to #f, and is then lazily
   ;; initialized to an environment object when it is asked for.
   (next-phase unprintable:)
+  
+  ;; The namespace string of the current environment. Lazily
+  ;; initialized, so it's #f on a newly created environment.
+  (ns-string unprintable:)
   
   ;; These are unprintable because it often contains cyclic data
   ;; structures, which in practise crashes gambit when prettyprinting
@@ -137,6 +164,7 @@
             (if (env? parent)
                 (environment-module parent)
                 parent)
+            #f
             #f
             ns
             ns-mutate))
@@ -160,6 +188,7 @@
                            builtin-ns-phase))
                  (val (make-env (+ 1 (env-parent env))
                                 (env-module env)
+                                #f
                                 #f
                                 ns
                                 ns)))
@@ -201,17 +230,6 @@
 
 (define (environment-is-scope? env)
   (eq? (env-ns env) (env-ns-mutate env)))
-
-(define (environment-find-scope env)
-  (cond
-   ((not env)
-    (error "environment-find-scope internal error"))
-   
-   ((environment-is-scope? env)
-    env)
-
-   (else
-    (environment-find-scope (env-parent env)))))
 
 (define (ns-add! ns name val)
   (cond
@@ -262,8 +280,7 @@
   (ns-add! (env-ns-mutate env)
            exported-name
            (list 'def
-                 actual-name
-                 (environment-find-scope env))))
+                 actual-name)))
 
 (define (environment-add-mac! env exported-name fun m-env)
   (ns-add! (env-ns-mutate env)
@@ -340,18 +357,24 @@
    "#"))
 
 (define (environment-namespace env)
-  (let ((phase (environment-phase env))
-        (ns (module-namespace
-             (environment-module env))))
-    (if (zero? phase)
-        ns
-        (string-append
-         (substring ns 0 (max 0 (- (string-length ns) 1)))
-         "~"
-         (if (> phase 1)
-             (number->string phase)
-             "")
-         "#"))))
+  (or (env-ns-string env)
+      (let ((ns-string
+             (let ((phase (environment-phase env))
+                   (ns (module-namespace
+                        (environment-module env))))
+               (if (zero? phase)
+                   ns
+                   (string-append
+                    (substring ns
+                               0
+                               (max 0 (- (string-length ns) 1)))
+                    "~"
+                    (if (> phase 1)
+                        (number->string phase)
+                        "")
+                    "#")))))
+        (env-ns-string-set! env ns-string)
+        ns-string)))
 
 (define (eval-in-next-phase code env)
   (let ((np (environment-next-phase env)))
@@ -475,8 +498,7 @@
       (lambda (n)
         (list (car n)
               'def
-              (gen-symbol (cadr n) (car n))
-              (caddr n)))
+              (gen-symbol (cadr n) (car n))))
       thunk))))
 
 ;; Macs is a list of lists where car is name, cadr is the sexp
@@ -1048,11 +1070,13 @@
              ;; effectively disables macro expansion while compiling
              ;; and loading files.
              ((memq hd '(##namespace
+                         ##declare
                          ##let
                          ##let*
                          ##letrec
                          ##lambda
                          ##define
+                         ##cond
                          ##case
                          ##define-macro))
               (expr*:value-set code
@@ -1081,7 +1105,9 @@
               (error "Macro name can't be used as a variable:" code))))
        
        (else
-        source)))
+        (expr*:value-set source
+                         (gen-symbol (environment-namespace env)
+                                     code)))))
      
      ((or (number? code)
           (string? code)
@@ -1456,11 +1482,63 @@
               (module#nh-macro-transformer ,(cadr src)))
             env)))))
 
+   (declare
+    (lambda (code env mac-env)
+      `(declare
+        ,@(cdr (extract-synclosure-crawler
+                (expr*:strip-locationinfo code))))))
+
+   (cond
+    (lambda (source env mac-env)
+      (expr*:value-set
+       source
+       (let ((code (expr*:value source)))
+         (cons
+          (car code)
+          (map (lambda (inner-source)
+                 (let* ((inner-code
+                         (expr*:value inner-source))
+                        (hd-source
+                         (if (pair? inner-code)
+                             (car inner-code)
+                             (error "Invalid cond form: "
+                                    (expr*:strip-locationinfo
+                                     source))))
+                        (hd (expr*:value hd-source)))
+                   (expr*:value-set
+                    inner-source
+                    (cond
+                     ((identifier=? empty-environment
+                                    'else
+                                    env
+                                    hd)
+                      (cons hd-source
+                            (expand-macro (cdr inner-code)
+                                          env)))
+
+                     ((and (pair? (cdr inner-code))
+                           (identifier=? empty-environment
+                                         '=>
+                                         env
+                                         (expr*:value
+                                          (cadr inner-code))))
+                      (cons (expand-macro hd-source env)
+                            (cons (expr*:value-set (cadr inner-code)
+                                                   '=>)
+                                  (expand-macro (cddr inner-code)
+                                                env))))
+                     
+                     (else
+                      (expand-macro inner-code
+                                    env))))))
+                      
+               (cdr code)))))))
+
    (case
-       (lambda (code env mac-env)
+       (lambda (source env mac-env)
          ;; TODO This doesn't generate source code locations correctly
-         (let ((code (expr*:strip-locationinfo code)))
-           `(##case ,(expand-macro (cadr code) env)
+         (let ((code (expr*:strip-locationinfo source)))
+           `(case ,(expand-macro (cadr code) env)
               ,@(map (lambda (x)
                        `(,(car x)
                          ,@(map (lambda (f)
@@ -1513,6 +1591,11 @@
        (void))))
 
    (define-type
+     (nh-macro-transformer
+      (lambda args
+        (expand 'define-type #f #f args))))
+
+   (define-structure
      (nh-macro-transformer
       (lambda args
         (expand 'define-type #f #f args))))))
