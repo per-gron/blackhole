@@ -15,9 +15,6 @@
 (define-type loader
   id: 786F06E1-BAF1-45A5-B31F-ED09AE93514F
 
-  ;; Returns an s-expression with code that use should expand to when
-  ;; a module is used.
-  (include unprintable: equality-skip: read-only:)
   ;; Returns a list of lists. The inner list is arguments to the
   ;; load-once function, will be called like (apply load-once ...)
   (load unprintable: equality-skip: read-only:)
@@ -629,11 +626,6 @@
              (table-set! (*calc-info-cache*) mp ret)
              ret))))))
 
-(define module-include
-  (make-module-util-function
-   (lambda (mod)
-     ((loader-include (module-loader mod)) mod))))
-
 (define module-load
   (make-module-util-function
    (lambda (mod)
@@ -753,34 +745,18 @@
                   (module-add-defs-to-env
                    (loadenv-symbol-defs (module-info-symbols info)
                                         (module-info-environment info))))
-                `(begin
-                   (##namespace (,(module-namespace mod)))
-                   ,@*global-includes*)))))
+                (void)))))
     (lambda (mod)
       ;; This function might be called with #f as argument
       (if mod
           (fn mod)
           (begin
             (top-environment repl-environment)
-            `(begin
-               (##namespace (""))
-               ,@*global-includes*))))))
+            (void))))))
 
 ;;;; ---------- Loader utility functions ----------
 
 (define *load-once-registry* (make-table))
-
-;; Internal utility
-(define (module-prelude module #!optional only-compile?)
-  (lambda (src compiling?)
-    (if (and only-compile? (not compiling?))
-        src
-        (begin
-          (module-hook (lambda (src compiling?) src))
-          `(begin
-             (##namespace (,(module-namespace module)))
-             ,@*global-includes*
-             ,src)))))
 
 (define (load-once file-with-extension #!optional module)
   (let ((module (and module (resolve-one-module module))))
@@ -826,9 +802,7 @@
                             (lambda ()
                               (with-module-loadenv
                                (lambda ()
-                                 (parameterize
-                                  ((module-hook (module-prelude module)))
-                                  (load file))))))))
+                                 (load file)))))))
                   (table-set! *load-once-registry*
                               file (or (not scm-exists?)
                                        (file-last-changed-seconds scm)))
@@ -842,8 +816,7 @@
   (parameterize
    ((top-environment (make-top-environment
                       (resolve-one-module module)))
-    (calc-mode 'load)
-    (module-hook (module-prelude module #t)))
+    (calc-mode 'load))
    (compile-file fn
                  options: (append options *compiler-options*)
                  cc-options: (string-append
@@ -904,18 +877,6 @@
 
 (define local-loader
   (make-loader
-   ;; include
-   (lambda (mod)
-     (let* ((info (module-info mod))
-            (syms (map car (module-info-symbols info))))
-       `(begin
-          ;; Don't include the namespace directive if no symbols are
-          ;; declared; it will mean an entierly different thing then.
-          ,@(if (null? syms)
-                '()
-                `((##namespace (,(module-namespace mod)
-                                ,@syms)))))))
-   
    ;; load
    (lambda (mod)
      (cons (list (path-strip-extension (module-path mod))
@@ -973,9 +934,6 @@
 
 (define module-module-loader
   (make-loader
-   ;; include
-   (lambda (mod)
-     '(##begin))
    ;; load
    (lambda (mod) '())
    ;; calculate-info
@@ -1003,7 +961,6 @@
               nh-macro-transformer
               
               make-loader
-              loader-include
               loader-load
               loader-calculate-info
               loader-needs-compile?
@@ -1035,7 +992,6 @@
               module-loader
               module-path
               module-info
-              module-include
               module-load
               module-needs-compile?
               module-compile!
@@ -1067,27 +1023,6 @@
    ;; compile!
    (lambda (mod) #f)))
 
-(define termite-loader
-  (make-loader
-   ;; include
-   (lambda (mod)
-     '(##include "~~/lib/termite/termite#.scm"))
-   ;; load
-   (lambda (mod)
-     '(("~~/lib/termite/termite")))
-   ;; calculate-info
-   (lambda (mod) empty-module-info)
-   ;; path-absolutize
-   (lambda (path #!optional ref) #f)
-   ;; module-name
-   (lambda (mod) "termite")
-   ;; needs-compile?
-   (lambda (mod) #f)
-   ;; clean!
-   (lambda (mod) #f)
-   ;; compile!
-   (lambda (mod) #f)))
-
 
 
 ;;;; ---------- Some environment creation stuff ----------
@@ -1104,16 +1039,17 @@
     ns))
 
 (define (builtin-ns-fun phase?)
-  (let* ((builtin-table
-          (env-ns builtin-environment))
+  (let* ((builtin-pair
+          (cons (env-ns builtin-environment)
+                gambit-builtin-table))
          (inside-letrec-table
           (env-ns inside-letrec-environment))
          (calcing-table
           (cons (env-ns load-environment)
-                builtin-table))
+                builtin-pair))
          (inside-letrec-pair
           (cons inside-letrec-table
-                builtin-table)))
+                builtin-pair)))
     (lambda ()
       (cond
        ((and (not phase?)
@@ -1124,7 +1060,7 @@
         inside-letrec-pair)
 
        (else
-        builtin-table)))))
+        builtin-pair)))))
 
 (define builtin-ns
   (builtin-ns-fun #f))
@@ -1143,53 +1079,6 @@
                       ns
                       ns)))
 
-;; This is a rather ugly hack. When calc-info:ing a module, the macros
-;; in that module are registered.  What is actually stored is the
-;; macro function, and the environment in which it was defined.
-;;
-;; The problem is that, when calc-info:ing a module, the environment
-;; in which macros are defined will have the load-environment,
-;; shadowing some real macros. For instance, all let forms will expand
-;; to #!void in the macro's definition environment, which is not what
-;; we intend.
-;;
-;; What this function does is to take an environment and simply remove
-;; references to load-environment.
-;;
-;; Also, to avoid the dangers of that environment-add-to-ns will
-;; remove things from the environment (this happens when defining
-;; macros within let-syntax forms), all alist ns nodes are cloned.
-(define (environment-clone-ns-for-macro env)
-  (let* ((load-table
-          (env-ns load-environment))
-         
-         (new-ns
-          (or
-           (let loop ((ns (env-ns env)))
-             (cond
-              ((eq? load-table ns)
-               #f)
-              
-              ((pair? ns)
-               (let ((a (loop (car ns)))
-                     (b (loop (cdr ns))))
-                 (if (and a b)
-                     (cons a b)
-                     (or a b))))
-
-              ((box? ns)
-               ;; Clone the box
-               (box (unbox ns)))
-              
-              (else ;; ns should be a table
-               ns)))
-           (make-table))))
-    (make-env (env-parent env)
-              (env-module env)
-              (env-next-phase env)
-              new-ns
-              new-ns)))
-
 (define empty-environment
   (make-top-environment #f))
 
@@ -1203,7 +1092,6 @@
 ;; Variables declared here are used all over the place.
 
 ;; Configuration directives
-(define *global-includes* #f)
 (define *compiler-options* '())
 (define *compiler-cc-options* "")
 (define *compiler-ld-options-prelude* "")
@@ -1217,11 +1105,4 @@
       `((here . ,current-module-resolver)
         (module . ,(make-singleton-module-resolver
                     module-module-loader))
-        (std . ,(package-module-resolver "~~/lib/modules/std/"))
-        (termite . ,(make-singleton-module-resolver
-                     termite-loader))))
-
-;; Fill in with default values
-(set! *global-includes*
-      (or *global-includes*
-          `((##include "~~/lib/gambit#.scm"))))
+        (std . ,(package-module-resolver "~~/lib/modules/std/"))))
