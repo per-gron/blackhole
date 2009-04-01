@@ -237,6 +237,7 @@
 (define (module-compile-bunch to-file
                               files
                               #!key
+                              (save-links #t)
                               (port (current-output-port)))
   (generate-tmp-dir
    (lambda (dir)
@@ -264,8 +265,6 @@
                             to-file)
                            ".c")
                           dir)))
-
-       (pp c-files)
        
        (with-module-cache
         (lambda ()
@@ -306,12 +305,21 @@
                 (cons link-c-file c-files))
            (path-expand to-file (current-directory)))
 
+          (if save-links
+              (for-each (lambda (file)
+                          (with-output-to-file
+                              (string-append (path-strip-extension file)
+                                             ".ol")
+                            (lambda ()
+                              (println (path-normalize to-file)))))
+                        files))
+
           to-file))))))
 
 
-;;(module-compile-bunch "test.ob"
+;;(module-compile-bunch "std/build.ob"
 ;;                      (module-files-in-dir
-;;                       "~~/lib/modules/std/ds"))
+;;                       "~~/lib/modules/std"))
 
 
 

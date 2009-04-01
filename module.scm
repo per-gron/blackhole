@@ -663,7 +663,8 @@
   (cond
    ((or (string->number str)
         (string-contains str #\~)
-        (equal? str "module"))
+        (equal? str "module")
+        (equal? str "c"))
     (string-append str "_"))
 
    (else
@@ -758,7 +759,69 @@
 
 (define *load-once-registry* (make-table))
 
-(define (load-once file-with-extension #!optional module)
+(define *load-and-init-registry* (make-table))
+
+(define (load-and-init file mod)
+  (with-module-loadenv
+   (lambda ()
+     (let* ((fn
+             (let* ((ol (string-append file ".ol"))
+                    (fn (if (file-exists? ol)
+                            (with-input-from-file ol
+                              read-line)
+                            (last-object-file file))))
+               (and fn
+                    (path-normalize fn
+                                    #f
+                                    file))))
+            
+            (result
+             (and fn
+                  (or (table-ref *load-and-init-registry*
+                                 fn
+                                 #f)
+                      (##load-object-file fn #t)))))
+
+       (cond
+        ((not fn)
+         (load file))
+
+        (else
+         (if (not
+              (and (vector? result)
+                   (= 3 (vector-length result))))
+             (error "Failed to load file:" file result))
+         
+         (table-set! *load-and-init-registry*
+                     fn
+                     result)
+         
+         (let* ((exec-vect (vector-ref result 0))
+                (exec-len (vector-length exec-vect))
+                (ns (let ((str (module-namespace mod)))
+                      (substring str 0 (- (string-length str) 1)))))
+           ((if (= exec-len 1)
+                (vector-ref exec-vect 0)
+                (let loop ((i 0))
+                  (cond
+                   ((>= i exec-len)
+                    (error "Module initializer not found for:" ns))
+                   
+                   ((let ((name-sym (##procedure-name
+                                     (vector-ref exec-vect i))))
+                      (and
+                       name-sym
+                       (let* ((name-str (symbol->string name-sym))
+                              (name (substring name-str
+                                               1
+                                               (string-length name-str))))
+                         (equal? name ns))))
+                    (vector-ref exec-vect i))
+                   
+                   (else
+                    (loop (+ 1 i))))))))))))))
+
+(define (load-once file-with-extension module)
   (let ((module (and module (resolve-one-module module))))
     (parameterize
      ((top-environment (make-top-environment module))
@@ -784,25 +847,10 @@
                                res
                                (eq? res #t))))
                     (begin
-                      (print "load-once: " file " is being compiled...\n")
+                      (print file " is being compiled...\n")
                       (module-compile! module)))
                 ;; Load it.
-                (let ((ret (with-exception-catcher
-                            (lambda (e)
-                              ;; Comparing error *strings* is a REALLY
-                              ;; ugly hack, but it'll do for now.
-                              (if (and
-                                   (os-exception? e)
-                                   (equal? "Can't load a given object \
-                                          file more than once"
-                                           (err-code->string
-                                            (os-exception-code e))))
-                                  "(Did not load again)"
-                                  (raise e)))
-                            (lambda ()
-                              (with-module-loadenv
-                               (lambda ()
-                                 (load file)))))))
+                (let ((ret (load-and-init file module)))
                   (table-set! *load-once-registry*
                               file (or (not scm-exists?)
                                        (file-last-changed-seconds scm)))
