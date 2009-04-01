@@ -932,9 +932,6 @@
                     (env (syntactic-closure-env sc))
                     (ids (syntactic-closure-ids sc)))
                 (cond
-                 ((null? form)
-                  '())
-                 
                  ((pair? form)
                   (cons (extract-syntactic-closure-list
                          (expand
@@ -1176,33 +1173,40 @@
   (let* ((strip1 (strip-synclosure env1 id1))
          (id1 (car strip1))
          (env1 (cdr strip1))
-         (one (environment-get env1
-                               id1
-                               ;; TODO I'm not sure this is the
-                               ;; correct place to have this. It is
-                               ;; here because syntax-rules needs it
-                               ;; for the literals part to work.
-                               ignore-globals: #t))
          
          (strip2 (strip-synclosure env2 id2))
          (id2 (car strip2))
-         (env2 (cdr strip2))
-         (two (environment-get env2
-                               id2
-                               ignore-globals: #t)))
-    (or (and (not one) (not two) (eq? id1 id2))
-        (and one two (eq? one two)))))
+         (env2 (cdr strip2)))
+    (and (eq? id1 id2)
+         (let ((one (environment-get env1
+                                     id1
+                                     ;; TODO I'm not sure this is the
+                                     ;; correct place to have this. It is
+                                     ;; here because syntax-rules needs it
+                                     ;; for the literals part to work.
+                                     ignore-globals: #t))
+               (two (environment-get env2
+                                     id2
+                                     ignore-globals: #t)))
+           (or (and (not one) (not two) (eq? id1 id2))
+               (and one two (eq? one two)))))))
 
 ;; Tools for defining macros
 
 (define (sc-macro-transformer thunk)
   (lambda (form env mac-env)
-    (expand-macro (thunk (expr*:strip-locationinfo form) env)
+    (expand-macro (thunk (extract-syntactic-closure-list
+                          (expr*:strip-locationinfo form)
+                          -1)
+                         env)
                   mac-env)))
 
 (define (rsc-macro-transformer thunk)
   (lambda (form env mac-env)
-    (expand-macro (thunk (expr*:strip-locationinfo form) mac-env)
+    (expand-macro (thunk (extract-syntactic-closure-list
+                          (expr*:strip-locationinfo form)
+                          -1)
+                         mac-env)
                   env)))
 
 (define (nh-macro-transformer thunk)
@@ -1392,7 +1396,7 @@
 
    (syntax-begin
     (lambda (code env mac-env)
-      (eval-in-next-phase `(##begin
+      (eval-in-next-phase `(begin
                              ,@(cdr (expr*:value code)))
                           env)))
    
@@ -1427,7 +1431,7 @@
           code
           env
           (lambda (body inner-env)
-            `(##begin
+            `(begin
                ,@(map (lambda (x)
                         (expand-macro x inner-env))
                       body))))))
@@ -1439,7 +1443,7 @@
           code
           env
           (lambda (body inner-env)
-            `(##begin
+            `(begin
                ,@(map (lambda (x)
                         (expand-macro x inner-env))
                       body))))))
