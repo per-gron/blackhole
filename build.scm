@@ -1,4 +1,5 @@
 ;; TODO
+;; * implementera include
 ;; * Den kompilerar inte om dependencies när det behövs (pga
 ;;   makro-expansion)
 ;; * Stöd för att kompilera till annan mapp

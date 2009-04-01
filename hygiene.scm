@@ -38,9 +38,11 @@
    (else (list (fun lst)))))
 
 (define (gen-symbol str sym)
-  (string->symbol
-   (string-append str
-                  (symbol->string sym))))
+  (if (uninterned-symbol? sym)
+      sym
+      (string->symbol
+       (string-append str
+                      (symbol->string sym)))))
 
 (define (parse-gambit-header-file file)
   (apply
@@ -1092,6 +1094,9 @@
      ((or (syntactic-closure? code)
           (syntactic-capture? code))
       (expand-synclosure source env))
+
+     ((uninterned-symbol? code)
+      source)
      
      ((symbol? code)
       (cond
