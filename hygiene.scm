@@ -1550,17 +1550,47 @@
                       
                (cdr code)))))))
 
+   (cond-expand
+    (lambda (source env mac-env)
+      (expr*:value-set
+       source
+       (let ((code (expr*:value source)))
+         (cons
+          (expr*:value-set (car code)
+                           'cond-expand)
+          (map (lambda (inner-source)
+                 (let ((inner-code (expr*:value inner-source)))
+                   (if (not (pair? inner-code))
+                       (error "Invalid cond-expand form: "
+                              (expr*:strip-locationinfo source)))
+                   
+                   (cons (extract-synclosure-crawler
+                          (car inner-code))
+                         (expand-macro (cdr inner-source)))))
+               (cdr code)))))))
+
    (case
        (lambda (source env mac-env)
-         ;; TODO This doesn't generate source code locations correctly
-         (let ((code (expr*:strip-locationinfo source)))
-           `(case ,(expand-macro (cadr code) env)
-              ,@(map (lambda (x)
-                       `(,(car x)
-                         ,@(map (lambda (f)
-                                  (expand-macro f env))
-                                (cdr x))))
-                     (cddr code))))))
+         (expr*:value-set
+          source
+          (let ((code (expr*:value source)))
+            `(,(expr*:value-set (car code)
+                                'case)
+              ,(expand-macro (cadr code) env)
+              ,@(map (lambda (inner-source)
+                       (let ((inner-code (expr*:value inner-source)))
+                         `(,(extract-synclosure-crawler
+                             (car inner-code))
+                           ,@(map (lambda (f)
+                                    (expand-macro f env))
+                                  (cdr inner-code)))))
+                     (cddr code)))))))
+
+   (c-lambda
+    (lambda (source env mac-env)
+      (extract-synclosure-crawler source)))
+
+   ;; TODO Add c-define
    
    (receive
     (lambda (code env mac-env)

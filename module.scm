@@ -810,23 +810,31 @@
 
 (define (compile-with-options module
                               fn
-                              #!key (options '()) (cc-options "")
-                              (ld-options-prelude "") (ld-options ""))
+                              #!key
+                              to-c
+                              (options '())
+                              (cc-options "")
+                              (ld-options-prelude "")
+                              (ld-options ""))
   (##gc) ;; Avoid out-of-memory related crashes
   (parameterize
    ((top-environment (make-top-environment
                       (resolve-one-module module)))
     (calc-mode 'load))
-   (compile-file fn
-                 options: (append options *compiler-options*)
-                 cc-options: (string-append
-                              cc-options " " *compiler-cc-options*)
-                 ld-options-prelude: (string-append
-                                      ld-options-prelude
-                                      " "
-                                      *compiler-ld-options-prelude*)
-                 ld-options: (string-append
-                              ld-options " " *compiler-ld-options*))))
+   (if to-c
+       (compile-file-to-c fn
+                          output: (and (string? to-c) to-c)
+                          options: (append options *compiler-options*))
+       (compile-file fn
+                     options: (append options *compiler-options*)
+                     cc-options: (string-append
+                                  cc-options " " *compiler-cc-options*)
+                     ld-options-prelude: (string-append
+                                          ld-options-prelude
+                                          " "
+                                          *compiler-ld-options-prelude*)
+                     ld-options: (string-append
+                                  ld-options " " *compiler-ld-options*)))))
 
 (define (object-files path)
   (let* ((dir (path-directory path))
@@ -1097,7 +1105,7 @@
 (define *compiler-ld-options-prelude* "")
 (define *compiler-ld-options* "")
 
-(set! *compiler-options* '(debug))
+;;(set! *compiler-options* '(debug))
 ;;(set! *compiler-cc-options* "-I/usr/local/BerkeleyDB.4.7/include")
 ;;(set! *compiler-ld-options-prelude* "-L/usr/local/BerkeleyDB.4.7/lib")
 

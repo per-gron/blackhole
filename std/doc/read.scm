@@ -1,7 +1,7 @@
 (private)
 
 ;; The following four functions need that _gambit#.scm is included:
-(##include "~~/lib/_gambit#.scm")
+;; (##include "~~/lib/_gambit#.scm")
 
 (define (read-next-char-or-eof re) ;; possibly returns end-of-file
   (macro-read-char (macro-readenv-port re)))

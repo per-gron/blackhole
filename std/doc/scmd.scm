@@ -6,13 +6,6 @@
 
 (private)
 
-(define-syntax get-tags-include
-  (sc-macro-transformer
-   (lambda (form env)
-     `',(module#module-include 'tags))))
-
-(define tags-include (get-tags-include))
-
 (define-syntax get-tags-module
   (sc-macro-transformer
    (lambda (form env)
