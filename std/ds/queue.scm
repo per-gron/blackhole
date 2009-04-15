@@ -28,7 +28,7 @@
 (define (make-end-cons)
   (cons 'end '()))
 
-(define no-value (list))
+(define no-value (list 'no-value))
 
 (define (make-queue)
   (let ((end-cons (make-end-cons)))
