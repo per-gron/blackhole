@@ -1,8 +1,7 @@
-;;; I (Per Eckerdal) don't know who have written these functions.
-;;; They seem to be taken from Gambit.
+;;; Copyright (c) 1994-2009 by Marc Feeley, All Rights Reserved.
+;;;
+;;; (More or less extracted from ~~/lib/_io#.scm)
 
-;; Christian Jaeger's functions used (include "~~/lib/_gambit#.scm") to
-;; get access to these values.
 (define (device-port-rdevice-condvar port)
   (##vector-ref port 44))
 (define (device-port-wdevice-condvar port)

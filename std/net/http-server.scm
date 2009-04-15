@@ -1,10 +1,7 @@
-;==============================================================================
-
-; File: "http.scm", Time-stamp: <2007-04-04 14:42:59 feeley>
-
-; Copyright (c) 2005-2007 by Marc Feeley, All Rights Reserved.
-
-;==============================================================================
+;;; Routines common to both a HTTP client and server.
+;;;
+;;; Copyright (c) 2008-2009 Per Eckerdal, 2005-2007 Marc Feeley, All
+;;; Rights Reserved.
 
 ;; TODO The server doesn't give a 400 error when given a HTTP/1.1
 ;;      request without a Host: header.

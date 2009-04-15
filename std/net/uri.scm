@@ -2,6 +2,9 @@
 ;;;
 ;;; Written by Marc Feeley for http-server, made to a
 ;;; separate module and refactored by Per Eckerdal.
+;;;
+;;; Copyright (c) 2008-2009 Per Eckerdal, 2005-2007 Marc Feeley, All
+;;; Rights Reserved.
 
 (import x-www-form-urlencoded
         (only: ../srfi/13 string-index-right))

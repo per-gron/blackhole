@@ -1,6 +1,7 @@
 ;;; Routines common to both a HTTP client and server.
 ;;;
-;;; Copyright (c) 2008 Per Eckerdal, 2005-2007 Marc Feeley
+;;; Copyright (c) 2008-2009 Per Eckerdal, 2005-2007 Marc Feeley, All
+;;; Rights Reserved.
 
 (import ../string/util
         ../srfi/1
