@@ -5,7 +5,7 @@
 
 (import ../srfi/13
         ../srfi/1
-        ../util/u8v)
+        ../misc/u8v)
 
 (export char->string
         string-strip
