@@ -19,7 +19,6 @@
 (export sxml>>html*
         sxml>>xhtml*
         sxml>>xml*
-        make-sxml>>
         sxml>>html-fast
         sxml>>html
         sxml>>xhtml-fast

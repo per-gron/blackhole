@@ -1,5 +1,5 @@
 (import core
-        ../string/u8v)
+        ../util/u8v)
 
 (export file-spork-mimes
         file-spork)
