@@ -1,3 +1,6 @@
+(import (only: (module) identifier?)) ;; TODO It might be good to
+                                      ;; remove this dependency
+
 (export match)
 
 (define (pattern-match-helper pattern message)
@@ -46,27 +49,30 @@
    (else
     #f)))
 
-(define (pattern-match-param-list mac-env env pattern)
-  (let ((pattern (extract-syntactic-closure-list pattern 1)))
-    (cond
-     ((identifier? pattern)
-      (list pattern))
-     
-     ((and (pair? pattern)
-           (identifier=? mac-env 'quote env (car pattern)))
-      '())
-     
-     ((pair? pattern)
-      (append (pattern-match-param-list mac-env env (car pattern))
-              (pattern-match-param-list mac-env env (cdr pattern))))
-     
-     (else
-      '()))))
 
-(define (pattern-match-make-lambda mac-env env pattern . body)
-  `(,(make-syntactic-closure mac-env '() 'lambda)
-    ,(pattern-match-param-list mac-env env pattern)
-    ,@body))
+(syntax-begin
+ 
+ (define (pattern-match-param-list mac-env env pattern)
+   (let ((pattern (extract-syntactic-closure-list pattern 1)))
+     (cond
+      ((identifier? pattern)
+       (list pattern))
+      
+      ((and (pair? pattern)
+            (identifier=? mac-env 'quote env (car pattern)))
+       '())
+      
+      ((pair? pattern)
+       (append (pattern-match-param-list mac-env env (car pattern))
+               (pattern-match-param-list mac-env env (cdr pattern))))
+      
+      (else
+       '()))))
+ 
+ (define (pattern-match-make-lambda mac-env env pattern . body)
+   `(,(make-syntactic-closure mac-env '() 'lambda)
+     ,(pattern-match-param-list mac-env env pattern)
+     ,@body)))
 
 (define-syntax match-lambda
   (sc-macro-transformer
