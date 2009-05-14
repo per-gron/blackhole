@@ -7,14 +7,19 @@
         portutil)
 
 (define (call-with-tcp-client hostname port-num proc)
-    (let* ((port
-            (open-tcp-client
-             (list server-address: hostname
-                   port-number: port-num)))
-           (result
-            (proc port)))
-      (close-port port)
-      result))
+  (let ((port #f))
+    (dynamic-wind
+        (lambda ()
+          (if port
+              (error "Cannot re-enter call-with-tcp-client"))
+          (set! port
+                (open-tcp-client
+                 (list server-address: hostname
+                       port-number: port-num))))
+        (lambda ()
+          (proc port))
+        (lambda ()
+          (close-port port)))))
 
 (define (ipv4->u8vector ip)
   (let ((v (string-split #\. ip))
