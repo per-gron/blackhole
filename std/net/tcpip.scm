@@ -3,8 +3,7 @@
 ;;; Copyright (c) 2008 Mikael Möre, 1994-2009 Marc Feeley, All Rights
 ;;; Reserved.
 
-(import ../string/util
-        portutil)
+(import ../string/util)
 
 (define (call-with-tcp-client hostname port-num proc)
   (let ((port #f))
