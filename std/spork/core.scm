@@ -53,6 +53,8 @@
         spork-server-public-kids-set!
         spork-server-cutlery
         spork-server-cutlery-set!
+        spork-server-root
+        spork-server-root-set!
         make-spork-server
         spork-server-define-error
         
@@ -240,16 +242,21 @@
                 kid
                 (cons fun
                       (current-frame)))
-    (string-append
-     (let ((cp (current-path/server)))
+    (let* ((cp (current-path/server))
+            (server (if cp
+                        (cdr cp)
+                        default-server))
+            (root (spork-server-root server)))
+      (string-append
+       root
        (if cp
            (let ((str (caar cp)))
              (if (eq? 0 (string-length str))
                  ""
                  (string-append "/" str)))
-           ""))
-     (if public "/@@" "/@")
-     kid)))
+           "")
+       (if public "/@@" "/@")
+       kid))))
 
 (define (registry-run kid param #!optional public)
   (let ((res (table-ref (if public
@@ -465,16 +472,18 @@
   constructor: make-spork-server-internal
   errors
   public-kids
-  cutlery)
+  cutlery
+  root)
 
 (define default-server
-  (make-spork-server-internal '() #f #f))
+  (make-spork-server-internal '() #f #f ""))
 
-(define (make-spork-server cutlery #!optional errors)
+(define (make-spork-server cutlery #!key errors root)
   (make-spork-server-internal
    (or errors (spork-server-errors default-server))
    (make-table)
-   cutlery))
+   cutlery
+   (or root "")))
 
 (define (spork-server-define-error server num lambda)
   (spork-server-errors-set!
@@ -590,12 +599,17 @@
    (make-http-server (handle-req-catch-errs server)
                      port)))
 
-(define (spork-serve #!key (port 8080))
+(define (spork-serve #!key
+                     (port 8080)
+                     errors
+                     root)
   (let ((c (make-cutlery)))
     (thread-start!
      (make-thread
       (lambda ()
-        (spork-server-run (make-spork-server c)
+        (spork-server-run (make-spork-server c
+                                             errors: errors
+                                             root: root)
                           port))))
     c))
 
