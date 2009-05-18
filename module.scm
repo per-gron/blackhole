@@ -606,8 +606,10 @@
 (define (with-module-cache thunk)
   (if (*calc-info-cache*)
       (thunk)
-      (parameterize ((*calc-info-cache* (make-table)))
-                    (thunk))))
+      (parameterize
+       ((*calc-info-cache*
+         (make-table)))
+       (suspend-ns-table-changes thunk))))
 
 (define (make-module-util-function fn)
   (lambda (mod)
@@ -656,8 +658,99 @@
    (lambda (mod)
      ((loader-clean! (module-loader mod)) mod))))
 
-;; TODO This function should rename modules with name h[number] to not
-;; clash with the hygiene.
+;;; This is the functionality for choosing unique namespaces
+
+(define ns-file "~~/lib/modules/ns.dat")
+(define ns-table #f)
+(define ns-table-timestamp #f)
+(define *ns-table-dont-read-file*
+  (make-parameter #f))
+
+(define (ns-file-timestamp)
+  (time->seconds
+   (file-info-last-modification-time
+    (file-info ns-file))))
+
+(define (ns-table-up-to-date?)
+  (and ns-table-timestamp
+       (>= ns-table-timestamp
+           (ns-file-timestamp))))
+
+(define (read-ns-table)
+  (if (file-exists? ns-file)
+      (let* ((size (file-info-size
+                    (file-info ns-file)))
+             (vec (make-u8vector size)))
+        (with-input-from-file
+            ns-file
+          (lambda ()
+            (read-subu8vector vec 0 size)))
+        (u8vector->object vec))
+      (make-table)))
+
+(define (save-ns-table tbl)
+  (if (not tbl)
+      (error "Cannot save non-existent ns-table"))
+  (with-output-to-file
+      ns-file
+    (lambda ()
+      (let ((vect (object->u8vector tbl)))
+        (write-subu8vector vect
+                           0
+                           (u8vector-length vect)))))
+  (set! ns-table-timestamp
+        (ns-file-timestamp)))
+
+(define (ns-table-cleanup tbl)
+  (let ((updated #f))
+    (table-for-each
+     (lambda (k v)
+       (if (not (file-exists? k))
+           (begin
+             (table-set! tbl k)
+             (set! updated #t))))
+     tbl)
+
+    (if updated
+        (save-ns-table tbl))))
+
+(define (get-ns-table)
+  (cond
+   ((or (*ns-table-dont-read-file*)
+        (and ns-table
+             (ns-table-up-to-date?)))
+    ns-table)
+
+   (else
+    (let ((tbl (read-ns-table)))
+      ;; If this is the first time ns-table is loaded, do a cleanup
+      (if (not ns-table)
+          (ns-table-cleanup tbl))
+      
+      (set! ns-table tbl)
+      tbl))))
+
+(define (suspend-ns-table-changes thunk)
+  (if (*ns-table-dont-read-file*)
+      (thunk)
+      (begin
+        (get-ns-table)
+        (parameterize
+         ((*ns-table-dont-read-file* #t))
+         (dynamic-wind
+             (lambda ()
+               #f)
+             thunk
+             (lambda ()
+               (if (eq? (*ns-table-dont-read-file*)
+                        'changed)
+                   (save-ns-table ns-table))))))))
+
+(define (update-ns-table name path)
+  (table-set! ns-table path name)
+  (if (*ns-table-dont-read-file*)
+      (*ns-table-dont-read-file* 'changed)
+      (save-ns-table ns-table)))
 
 (define (namespace-rename-reserved str)
   (cond
@@ -670,6 +763,36 @@
    (else
     str)))
 
+(define (namespace-choose-unique mod)
+  (let ((abs-path (module-path mod))
+        (loader (module-loader mod)))
+    (get-ns-table)
+    
+    (or (table-ref ns-table abs-path #f)
+        (let ((ns-no-reserved
+               (namespace-rename-reserved
+                ((loader-module-name loader) mod))))
+          (let loop ((i 0))
+            (let* ((name
+                    (if (eq? i 0)
+                        ns-no-reserved
+                        (string-append ns-no-reserved
+                                       "_"
+                                       (number->string i))))
+                   (found #f))
+              
+              (table-for-each
+               (lambda (k v)
+                 (if (equal? v name)
+                     (set! found #t)))
+               ns-table)
+
+              (if found
+                  (loop (+ 1 i))
+                  (begin
+                    (update-ns-table name abs-path)
+                    name))))))))
+
 (define module-namespace
   (let ((fn
          (make-module-util-function
@@ -678,8 +801,7 @@
              (let ((loader (module-loader mod)))
                (if (eq? loader module-module-loader)
                    "module"
-                   (namespace-rename-reserved
-                    ((loader-module-name loader) mod))))
+                   (namespace-choose-unique mod)))
              "#")))))
     (lambda (mod)
       ;; This function might be called with #f as argument
