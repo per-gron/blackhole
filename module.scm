@@ -61,7 +61,9 @@
   ;; The loader object
   (loader read-only:)
   ;; The absolute module path. It must be a hashable object.
-  (path read-only:))
+  (path read-only:)
+  ;; The namespace, lazily initialized
+  (ns unprintable: init: #f))
 
 
 ;;;; ---------- Module resolvers ----------
@@ -685,7 +687,12 @@
             ns-file
           (lambda ()
             (read-subu8vector vec 0 size)))
-        (u8vector->object vec))
+
+        ;; This is here to fix an odd bug that put table-set! into an
+        ;; infinite loop sometimes.
+        (list->table
+         (table->list
+          (u8vector->object vec))))
       (make-table)))
 
 (define (save-ns-table tbl)
@@ -764,34 +771,39 @@
     str)))
 
 (define (namespace-choose-unique mod)
-  (let ((abs-path (module-path mod))
-        (loader (module-loader mod)))
-    (get-ns-table)
-    
-    (or (table-ref ns-table abs-path #f)
-        (let ((ns-no-reserved
-               (namespace-rename-reserved
-                ((loader-module-name loader) mod))))
-          (let loop ((i 0))
-            (let* ((name
-                    (if (eq? i 0)
-                        ns-no-reserved
-                        (string-append ns-no-reserved
-                                       "_"
-                                       (number->string i))))
-                   (found #f))
-              
-              (table-for-each
-               (lambda (k v)
-                 (if (equal? v name)
-                     (set! found #t)))
-               ns-table)
-
-              (if found
-                  (loop (+ 1 i))
-                  (begin
-                    (update-ns-table name abs-path)
-                    name))))))))
+  (or (module-ns mod)
+      (let ((ns
+             (let ((abs-path (module-path mod))
+                   (loader (module-loader mod)))
+               (get-ns-table)
+               
+               (or (table-ref ns-table abs-path #f)
+                   (let ((ns-no-reserved
+                          (namespace-rename-reserved
+                           ((loader-module-name loader) mod))))
+                     (let loop ((i 0))
+                       (let* ((name
+                               (if (eq? i 0)
+                                   ns-no-reserved
+                                   (string-append
+                                    ns-no-reserved
+                                    "_"
+                                    (number->string i))))
+                              (found #f))
+                         
+                         (table-for-each
+                          (lambda (k v)
+                            (if (equal? v name)
+                                (set! found #t)))
+                          ns-table)
+                         
+                         (if found
+                             (loop (+ 1 i))
+                             (begin
+                               (update-ns-table name abs-path)
+                               name)))))))))
+        (module-ns-set! mod ns)
+        ns)))
 
 (define module-namespace
   (let ((fn
