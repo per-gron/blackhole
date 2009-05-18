@@ -802,20 +802,25 @@
      ((pair? code)
       (let ((hd (expr*:value (car code))))
         (cond
-         ((or (eq? hd 'unquote)
-              (eq? hd 'unquote-splicing))
+         ((or (identifier=? env hd
+                            builtin-environment 'unquote)
+              (identifier=? env hd
+                            builtin-environment 'unquote-splicing))
           (expr*:value-set
            source
-           (list (car code)
+           (list (expr*:value-set (car code)
+                                  (extract-syntactic-closure hd))
                  (hyg-expand-macro-quasiquote
                   env
                   (cadr code)
                   (- level 1)))))
          
-         ((eq? hd 'quasiquote)
+         ((identifier=? env hd
+                        builtin-environment 'quasiquote)
           (expr*:value-set
            source
-           (list (car code)
+           (list (expr*:value-set (car code)
+                                  'quasiquote)
                  (hyg-expand-macro-quasiquote
                   env
                   (cadr code)
@@ -830,12 +835,15 @@
                   (cond
                    ;; Check for (... unquote (b c)) = (... . ,(b c))
                    ((and (pair? lst)
-                         (eq? 'unquote (expr*:value (car lst)))
+                         (identifier=? env (expr*:value (car lst))
+                                       builtin-environment 'unquote)
                          (pair? (expr*:value (cdr lst)))
                          (null? (expr*:value (cddr lst))))
                     (list
                      (cons
-                      'unquote-splicing
+                      (make-syntactic-closure builtin-environment
+                                              '()
+                                              'unquote-splicing)
                       (cdr (fn lst)))))
                    
                    ((pair? lst)
