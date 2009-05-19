@@ -60,6 +60,16 @@
 (define (is-directory? dir)
   (file-exists? (string-append dir "/")))
 
+(define (recursively-delete-file dir)
+  (if (is-directory? dir)
+      (begin
+        (for-each (lambda (fn)
+                    (recursively-delete-file
+                     (path-expand fn dir)))
+                  (directory-files dir))
+        (delete-directory dir))
+      (delete-file dir)))
+
 ;; TODO This is probably very slow
 (define (flatten list)
   (cond ((null? list) '())
@@ -255,3 +265,11 @@
                      (cdr list))
              predicate))))
    (else (raise "Argument to remove-duplicates must be a list"))))
+
+(define (create-dir-unless-exists dir)
+  (if (not (file-exists? dir))
+      (begin
+        (create-dir-unless-exists
+         (path-directory
+          (path-strip-trailing-directory-separator dir)))
+        (create-directory dir))))
