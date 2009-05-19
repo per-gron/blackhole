@@ -25,13 +25,11 @@
   ;; to, and returns the object that should be in the path field of a
   ;; module object.
   (path-absolutize unprintable: equality-skip: read-only:)
+  ;; Returns what should be in the module-file field of the module
+  ;; object.
+  (absolute-file unprintable: equality-skip: read-only:)
   ;; Takes a module and returns a string for the name of the module
-  (module-name unprintable: equality-skip: read-only:)
-  ;; Returns #t if yes, #f if no or 'not-compiled if the module is not
-  ;; compiled at all.
-  (needs-compile? unprintable: equality-skip: read-only:)
-  (clean! unprintable: equality-skip: read-only:)
-  (compile! unprintable: equality-skip: read-only:))
+  (module-name unprintable: equality-skip: read-only:))
 
 
 ;;;; ---------- Module info ----------
@@ -63,7 +61,18 @@
   ;; The absolute module path. It must be a hashable object.
   (path read-only:)
   ;; The namespace, lazily initialized
-  (ns unprintable: init: #f))
+  (ns unprintable: init: #f)
+  ;; An absolute file name that uniqely identifies this particular
+  ;; module. This file needs to exist as long as the module exists on
+  ;; this particular machine. Lazily initialized
+  (file module-file-lazy module-file-set! unprintable: init: #f))
+
+(define (module-file mod)
+  (or (module-file-lazy mod)
+      (let ((val ((loader-absolute-file
+                   (module-loader mod)) mod)))
+        (module-file-set! mod val)
+        val)))
 
 
 ;;;; ---------- Module resolvers ----------
@@ -638,7 +647,11 @@
 (define module-needs-compile?
   (make-module-util-function
    (lambda (mod)
-     ((loader-needs-compile? (module-loader mod)) mod))))
+     (let* ((path (module-file mod))
+            (of (last-object-file path)))
+       (if of
+           (not (file-newer? of path))
+           'not-compiled)))))
 
 (define (module-compile! mod #!optional continue-on-error)
   (let ((mod (resolve-one-module mod)))
@@ -653,12 +666,25 @@
                 #f)
               (raise e)))
         (lambda ()
-          ((loader-compile! (module-loader mod)) mod)))))))
+          (let ((info (module-info mod)))
+            (with-module-loadenv ;; For *module-loadenv-uses*
+             (lambda ()
+               (let ((result (compile-with-options
+                              mod
+                              (module-file mod)
+                              options: (module-info-options info)
+                              cc-options: (module-info-cc-options info)
+                              ld-options-prelude: (module-info-ld-options-prelude
+                                                   info)
+                              ld-options: (module-info-ld-options info))))
+                 (if (not result)
+                     (error "Compilation failed"))))))))))))
 
 (define module-clean!
   (make-module-util-function
    (lambda (mod)
-     ((loader-clean! (module-loader mod)) mod))))
+     (let ((fn (module-file mod)))
+       (and fn (clean-file (module-file mod)))))))
 
 ;;; This is the functionality for choosing unique namespaces
 
@@ -773,7 +799,7 @@
 (define (namespace-choose-unique mod)
   (or (module-ns mod)
       (let ((ns
-             (let ((abs-path (module-path mod))
+             (let ((abs-path (module-file mod))
                    (loader (module-loader mod)))
                (get-ns-table)
                
@@ -1078,7 +1104,7 @@
    
    ;; calculate-info
    (lambda (mod)
-     (module-info-calculate mod (module-path mod)))
+     (module-info-calculate mod (module-file mod)))
    
    ;; path-absolutize
    (lambda (path #!optional ref)
@@ -1088,39 +1114,15 @@
                          (path-directory ref)
                          (current-directory))))
 
+   ;; absolute-file
+   (lambda (mod)
+     (module-path mod))
+
    ;; module-name
    (lambda (mod)
      (path-strip-directory
       (path-strip-extension
-       (module-path mod))))
-   
-   ;; needs-compile?
-   (lambda (mod)
-     (let* ((path (module-path mod))
-            (of (last-object-file path)))
-       (if of
-           (not (file-newer? of path))
-           'not-compiled)))
-   
-   ;; clean!
-   (lambda (mod)
-     (clean-file (module-path mod)))
-   
-   ;; compile!
-   (lambda (mod)
-     (let ((info (module-info mod)))
-       (with-module-loadenv ;; For *module-loadenv-uses*
-        (lambda ()
-          (let ((result (compile-with-options
-                         mod
-                         (module-path mod)
-                         options: (module-info-options info)
-                         cc-options: (module-info-cc-options info)
-                         ld-options-prelude: (module-info-ld-options-prelude
-                                              info)
-                         ld-options: (module-info-ld-options info))))
-            (if (not result)
-                (error "Compilation failed")))))))))
+       (module-path mod))))))
 
 (define module-module-loader
   (make-loader
@@ -1204,14 +1206,10 @@
       '() '() '() "" "" "" #f builtin-environment))
    ;; path-absolutize
    (lambda (path #!optional ref) #f)
+   ;; absolute-file
+   (lambda (mod) #f)
    ;; module-name
-   (lambda (mod) "module")
-   ;; needs-compile?
-   (lambda (mod) #f)
-   ;; clean!
-   (lambda (mod) #f)
-   ;; compile!
-   (lambda (mod) #f)))
+   (lambda (mod) "module")))
 
 
 
@@ -1274,25 +1272,3 @@
 
 (define top-environment
   (make-parameter (make-top-environment #f)))
-
-
-
-;;;; ---------- Hack for configuration ----------
-
-;; Variables declared here are used all over the place.
-
-;; Configuration directives
-(define *compiler-options* '())
-(define *compiler-cc-options* "")
-(define *compiler-ld-options-prelude* "")
-(define *compiler-ld-options* "")
-
-;;(set! *compiler-options* '(debug))
-;;(set! *compiler-cc-options* "-I/usr/local/BerkeleyDB.4.7/include")
-;;(set! *compiler-ld-options-prelude* "-L/usr/local/BerkeleyDB.4.7/lib")
-
-(set! *module-resolvers*
-      `((here . ,current-module-resolver)
-        (module . ,(make-singleton-module-resolver
-                    module-module-loader))
-        (std . ,(package-module-resolver "~~/lib/modules/std/"))))
