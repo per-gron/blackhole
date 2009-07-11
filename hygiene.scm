@@ -167,7 +167,8 @@
                 (environment-module parent)
                 parent)
             #f
-            #f
+            (and (env? parent)
+                 (env-ns-string parent))
             ns
             ns-mutate))
 
@@ -840,11 +841,8 @@
                          (pair? (expr*:value (cdr lst)))
                          (null? (expr*:value (cddr lst))))
                     (list
-                     (cons
-                      (make-syntactic-closure builtin-environment
-                                              '()
-                                              'unquote-splicing)
-                      (cdr (fn lst)))))
+                     (cons 'unquote-splicing
+                           (cdr (fn lst)))))
                    
                    ((pair? lst)
                     (cons (fn (car lst))

@@ -23,6 +23,11 @@
            (+ a b))))
      3)
 
+;; Test unquote after dot
+(eq? 10
+     (let ((a (eval (expand-macro '`(5 . ,5)))))
+       (+ (car a) (cdr a))))
+
 ;; Test scope priority (is the macro or the define more important?)
 ;; This should return #t
 (eval
@@ -162,11 +167,10 @@
 
 ;; Rest parameters as syntactic closures in lambda
 ((eval
-  (expand-macro
-   (capture-syntactic-environment
-    (lambda (env)
-      `(lambda (a #!rest ,(make-syntactic-closure env '() 'a))
-         a)))))
+  (capture-syntactic-environment
+   (lambda (env)
+     `(lambda (a #!rest ,(make-syntactic-closure env '() 'a))
+        a))))
  #t
  #f)
 
@@ -197,29 +201,27 @@
 
 (eq? 3
      (eval
-      (expand-macro
-       `(let ((a 3))
-          ,(capture-syntactic-environment
-            (lambda (e)
-              `(let ((a 4))
-                 ,(make-syntactic-closure e '() 'a))))))))
+      `(let ((a 3))
+         ,(capture-syntactic-environment
+           (lambda (e)
+             `(let ((a 4))
+                ,(make-syntactic-closure e '() 'a)))))))
 
 
 (eq? 'now
      (eval
-      (expand-macro
-       '(let-syntax
-            ((when (sc-macro-transformer
-                    (lambda (form env)
-                      `(if ,(make-syntactic-closure env '() (cadr form))
-                           (begin
-                             ,@(cddr
-                                (map (lambda (x)
-                                       (make-syntactic-closure env '() x))
-                                     form))))))))
-          (let ((if #t))
-            (when if (set! if 'now))
-            if)))))
+      '(let-syntax
+           ((when (sc-macro-transformer
+                   (lambda (form env)
+                     `(if ,(make-syntactic-closure env '() (cadr form))
+                          (begin
+                            ,@(cddr
+                               (map (lambda (x)
+                                      (make-syntactic-closure env '() x))
+                                    form))))))))
+         (let ((if #t))
+           (when if (set! if 'now))
+           if))))
 
 (eq? 4 (let ()
          (define (a) 4)
@@ -308,30 +310,28 @@
 ;; where a define uses a macro.
 (eq? 4
      (eval
-      (expand-macro
-       '(let ()
-          (define-syntax test
-            (syntax-rules ()
-              ((test) 4)))
-          
-          (define hej (test))
-          
-          hej))))
+      '(let ()
+         (define-syntax test
+           (syntax-rules ()
+             ((test) 4)))
+         
+         (define hej (test))
+         
+         hej)))
 
 ;; Pretty much same as above, but with some more quirks
 ;; to test for double-colorings.
 (eq? 5 ((eval
-         (expand-macro
-          '(let ()
-             (define-syntax test
-               (syntax-rules ()
-                 ((test) 3)
-                 
-                 ((test var) (lambda (x) (+ x var)))))
-             
-             (define (hej var) (test var))
-             
-             (hej (test)))))
+         '(let ()
+            (define-syntax test
+              (syntax-rules ()
+                ((test) 3)
+                
+                ((test var) (lambda (x) (+ x var)))))
+            
+            (define (hej var) (test var))
+            
+            (hej (test))))
         2))
 
 ;; Basic test for identifier=?
@@ -365,16 +365,15 @@
 
 (eq? 1
      (eval
-      (expand-macro
-       '(let-syntax ((swap
-                      (syntax-rules ()
-                        ((swap a b) (let ((tmp b))
-                                      (set! b a)
-                                      (set! a tmp))))))
-          (let ((one 1)
-                (two 2))
-            (swap one two)
-            two)))))
+      '(let-syntax ((swap
+                     (syntax-rules ()
+                       ((swap a b) (let ((tmp b))
+                                     (set! b a)
+                                     (set! a tmp))))))
+         (let ((one 1)
+               (two 2))
+           (swap one two)
+           two))))
 
 (equal? '(a! hej (x . five!))
         (let-syntax ((test (syntax-rules (a)
@@ -660,8 +659,7 @@
 ;; that macro-expands
 (eq? 8
      ((eval
-       (expand-macro
-        '(lambda (#!optional (x (let ((a 4)) (+ a a)))) x)))))
+       '(lambda (#!optional (x (let ((a 4)) (+ a a)))) x))))
 
 ;; Test transform-to-lambda with a syntactic closure
 ;; as parameter
@@ -674,14 +672,13 @@
 ;; Test define with a syntactic closure as name
 (equal? '(#t . #f)
         (eval
-         (expand-macro
-          (capture-syntactic-environment
-           (lambda (env)
-             (let ((x (make-syntactic-closure env '() 'x)))
-               `(let ((x #t))
-                  (define ,x #f)
-                  (cons x
-                        ,x))))))))
+         (capture-syntactic-environment
+          (lambda (env)
+            (let ((x (make-syntactic-closure env '() 'x)))
+              `(let ((x #t))
+                 (define ,x #f)
+                 (cons x
+                       ,x)))))))
 
 ;; Test macros that defines macros
 (eval
