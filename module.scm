@@ -1200,6 +1200,8 @@
               module-compile/deps!
               module-clean/deps!
               module-generate-export-list
+              module-compile-bunch
+              module-files-in-dir
               
               loader
               module-module-loader)))
