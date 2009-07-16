@@ -716,9 +716,7 @@
                           (let ((s (if id?
                                        x
                                        (car x))))
-                            (if key
-                                (cons s "")
-                                s)))
+                            (if key (cons s "") s)))
                          
                          (else #f))))
                     params)))
@@ -1267,7 +1265,10 @@
          `(,(make-syntactic-closure
              builtin-environment '() 'define)
            ,(make-syntactic-closure env '() (car src))
-           ,(make-syntactic-closure env '() (cadr src))))))
+           ,(let ((src-cdr (cdr src)))
+              (if (pair? src-cdr)
+                  (make-syntactic-closure env '() (car src-cdr))
+                  #!void))))))
 
    (define-syntax
      (lambda (source env mac-env)
@@ -1350,7 +1351,11 @@
    
    (define
      (lambda (code env mac-env)
-       (let ((src (expr*:transform-to-lambda (expr*:cdr code))))
+       (let* ((code-cdr (expr*:cdr code))
+              (src (expr*:transform-to-lambda
+                    (if (null? code-cdr)
+                        (error "Ill-formed define form" code)
+                        code-cdr))))
          (cond
           ((top-level)
            (let* ((name-form (car (expr*:value src)))
@@ -1366,7 +1371,15 @@
                          name
                          (gen-symbol ns
                                      (expr*:value name)))
-                 ,(expand-macro (cadr (expr*:value src)) env)))))
+                 ,(expand-macro (let ((src-v (expr*:value src)))
+                                  (if (pair? src-v)
+                                      (let ((src-v-cdr (cdr src-v)))
+                                        (if (pair? src-v-cdr)
+                                            (car src-v-cdr)
+                                            #!void))
+                                      (error "Ill-formed define form"
+                                             code)))
+                                env)))))
           
           (else
            (error "Incorrectly placed define:"
