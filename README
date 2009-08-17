@@ -1,0 +1,6 @@
+This repository contains useful libraries for use with the blackhole
+module system. It contains some basic data structures, implementations
+of some SRFIs, a web server and client, and some utility modules.
+
+When installed into the std directory of blackhole, the modules will
+be accessible with for instance (import (std srfi/1))
