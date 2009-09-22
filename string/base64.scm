@@ -19,17 +19,17 @@
 
 ; Representation of fifos.
 
-(##define-macro (macro-make-fifo)
+(define-macro (macro-make-fifo)
   `(let ((fifo (##cons '() '())))
      (macro-fifo-tail-set! fifo fifo)
      fifo))
 
-(##define-macro (macro-fifo-next fifo)        `(##cdr ,fifo))
-(##define-macro (macro-fifo-next-set! fifo x) `(##set-cdr! ,fifo ,x))
-(##define-macro (macro-fifo-tail fifo)        `(##car ,fifo))
-(##define-macro (macro-fifo-tail-set! fifo x) `(##set-car! ,fifo ,x))
-(##define-macro (macro-fifo-elem fifo)        `(##car ,fifo))
-(##define-macro (macro-fifo-elem-set! fifo x) `(##set-car! ,fifo ,x))
+(define-macro (macro-fifo-next fifo)        `(##cdr ,fifo))
+(define-macro (macro-fifo-next-set! fifo x) `(##set-cdr! ,fifo ,x))
+(define-macro (macro-fifo-tail fifo)        `(##car ,fifo))
+(define-macro (macro-fifo-tail-set! fifo x) `(##set-car! ,fifo ,x))
+(define-macro (macro-fifo-elem fifo)        `(##car ,fifo))
+(define-macro (macro-fifo-elem-set! fifo x) `(##set-car! ,fifo ,x))
 
 (##define-macro (macro-fifo->list fifo)
   `(macro-fifo-next ,fifo))
@@ -58,7 +58,7 @@
            (macro-fifo-next-set! head '())))
        head)))
 
-(##define-macro (macro-fifo-insert-at-tail! fifo elem)
+(define-macro (macro-fifo-insert-at-tail! fifo elem)
   `(let ((fifo ,fifo) (elem ,elem))
      (let ((x (##cons elem '())))
 
