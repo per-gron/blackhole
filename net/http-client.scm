@@ -31,7 +31,8 @@
         ../string/util
         ../srfi/1
         ../srfi/13
-        ../srfi/19)
+        ../srfi/19
+		../misc/u8v)
 
 (export http-max-pipelined-requests-per-connection
         http-max-connection-idle-time
@@ -102,6 +103,7 @@
 ;;
 ;; Utility functions
 ;;
+
 
 (define (al-get lst key #!optional (dfl #f))
   (let ((pair (assoc key lst)))
@@ -415,9 +417,14 @@
 
 (define (read-status-line-code str)
   (let* ((len (string-length str))
+		 (hit-space #f)
          (start
           (let loop ((start 0))
+			(if (char=? (string-ref str start) #\space)
+				(set! hit-space #t)
+				#f)
             (if (and (< start len)
+					 hit-space
                      (not (char-numeric? (string-ref str start))))
                 (loop (+ 1 start))
                 start))))
@@ -1024,7 +1031,6 @@
                              headers
                              query
                              (lambda (code headers has-content?)
-
                                (set! response-code code)
                                (set! response-headers headers)
                                port)
