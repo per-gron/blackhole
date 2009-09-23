@@ -51,14 +51,31 @@
         res))))
     res))
 
+(define (sc-memq env id ids)
+  (if (pair? ids)
+      (or (and (identifier=? env id
+                             env (car ids))
+               ids)
+          (sc-memq env id (cdr ids)))
+      #f))
+
+(define (sc-assq env id ids)
+  (if (pair? ids)
+      (let ((hd (car ids)))
+        (or (and (identifier=? env id
+                               env (car hd))
+                 hd)
+            (sc-assq env id (cdr ids))))
+      #f))
+
 (define (pattern-match literals env pattern form)
-  (let ((form (extract-syntactic-closure-list form)))
+  (let ((form (expand-syncapture form env)))
     (cond
      ((null? pattern)
       (and (null? form) '()))
      
-     ((symbol? pattern)
-      (if (memq pattern literals)
+     ((identifier? pattern)
+      (if (sc-memq env pattern literals)
           (and (identifier=? empty-environment pattern
                              env form)
                '())
@@ -67,7 +84,8 @@
      
      ((and (pair? pattern)
            (pair? (cdr pattern))
-           (eq? '... (cadr pattern))
+           (identifier=? env '...
+                         env (cadr pattern))
            (null? (cddr pattern)))
       (let* ((inner-pattern (car pattern)))
         (let loop ((matches '())
@@ -145,14 +163,14 @@
    (else form)))
   
 
-(define (substitute pattern-vars subs form)
+(define (substitute env pattern-vars subs form)
   (cond
-   ((symbol? form)
-    (if (memq form pattern-vars)
+   ((identifier? form)
+    (if (sc-memq env form pattern-vars)
         (let ((pair
                (let loop ((s subs))
                  (and (not (null? s))
-                      (or (assq form (car s))
+                      (or (sc-assq env form (car s))
                           (loop (cdr s)))))))
           (if pair
               (cdr pair)
@@ -164,6 +182,8 @@
              (eq? '... (caar form)))
         (let ((inner-form (cdar form))
               (inner-subs
+               ;; It's safe to use assq here, because the '... comes
+               ;; directly from pattern-match.
                (let ((p (assq '... (car subs))))
                  (if p
                      (cdr p)
@@ -196,16 +216,17 @@
                  (loop '()))
                (lambda ()
                  (append
-                  (substitute pattern-vars
+                  (substitute env
+                              pattern-vars
                               (cons (car inner-subs)
                                     subs)
                               inner-form)
                   (loop (cdr inner-subs))))))
              
              ((null? inner-subs)
-              (substitute pattern-vars subs (cdr form))))))
-        (cons (substitute pattern-vars subs (car form))
-              (substitute pattern-vars subs (cdr form)))))
+              (substitute env pattern-vars subs (cdr form))))))
+        (cons (substitute env pattern-vars subs (car form))
+              (substitute env pattern-vars subs (cdr form)))))
    
    ;; TODO Vectors?
    
@@ -225,39 +246,45 @@
          rules))
 
   ;; Return the actual macro transformer function
-  (lambda (form env)
-    (call/cc
-     (lambda (ret)
-       (let ((form-args (cdr form)))
-         (for-each
-          (lambda (rule pe)
-            (let* ((pattern (cdar rule))
-                   (pattern-vars
-                    (let loop ((pattern pattern))
-                      (cond
-                       ((eq? pattern '...)
-                        '())
-                       
-                       ((symbol? pattern)
-                        (list pattern))
-                       
-                       ((pair? pattern)
-                        (append (loop (car pattern))
-                                (loop (cdr pattern))))
-                       
-                       (else '())))))
-              (cond
-               ((pattern-match
-                 literals
-                 env
-                 pattern
-                 form-args) =>
-                 (lambda (subs)
-                   (ret
-                    (substitute pattern-vars
-                                (list subs)
-                                pe)))))))
-          rules prefix-ellipsis)
-         (error "Ill-formed special form: "
-                (extract-syntactic-closure form)))))))
+  (lambda (source env mac-env)
+    (let ((form (expr*:strip-locationinfo source)))
+      (call/cc
+       (lambda (ret)
+         (let* ((form (expand-syncapture form env))
+                (form-args (cdr form)))
+           (for-each
+            (lambda (rule pe)
+              (let* ((pattern (cdar rule))
+                     (pattern-vars
+                      (let loop ((pattern pattern))
+                        (cond
+                         ((eq? pattern '...)
+                          '())
+                         
+                         ((identifier? pattern)
+                          (list pattern))
+                         
+                         ((pair? pattern)
+                          (append (loop (car pattern))
+                                  (loop (cdr pattern))))
+                         
+                         (else '())))))
+                (cond
+                 ((pattern-match
+                   literals
+                   env
+                   pattern
+                   form-args) =>
+                   (lambda (subs)
+                     (let ((res
+                            (expand-macro
+                             (substitute env
+                                         pattern-vars
+                                         (list subs)
+                                         pe)
+                             mac-env)))
+                       (ret res)))))))
+            rules prefix-ellipsis)
+           (error "Ill-formed special form: "
+                  (extract-synclosure-crawler form))))))))
 

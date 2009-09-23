@@ -29,7 +29,6 @@
        (+ (car a) (cdr a))))
 
 ;; Test scope priority (is the macro or the define more important?)
-;; This should return #t
 (eval
  '(let-syntax
       ((test (syntax-rules ()
@@ -78,7 +77,7 @@
 
 ;; Test letrec's non-independence with syntactic closures as arguments
 (eval
- `(let ((a (lambda () #f)))
+ `(let ((a #f))
     ,(capture-syntactic-environment
       (lambda (env)
         (let ((a (make-syntactic-closure env '() 'a)))
@@ -96,7 +95,7 @@
 ;; function clones the environment, the answer is the top level a,
 ;; otherwise the inner a.
 (expand-macro
- `(let ((a #f))
+ `(let ((a #t))
     ,(capture-syntactic-environment
       (lambda (e)
         (capture-syntactic-environment
@@ -176,13 +175,12 @@
 
 ;; Key parameters as syntactic closures in lambda
 ((eval
-  (expand-macro
-   `(let ((a #f))
-      ,(capture-syntactic-environment
-        (lambda (env)
-          (let ((a (make-syntactic-closure env '() 'a)))
-            `(lambda (a #!key ,a)
-               ,a)))))))
+  `(let ((a #f))
+     ,(capture-syntactic-environment
+       (lambda (env)
+         (let ((a (make-syntactic-closure env '() 'a)))
+           `(lambda (a #!key ,a)
+              ,a))))))
  #f
  a: #t)
 
@@ -199,13 +197,14 @@
     `(let ((a 3))
        ,(make-syntactic-closure e '() 'a)))))
 
-(eq? 3
-     (eval
-      `(let ((a 3))
-         ,(capture-syntactic-environment
-           (lambda (e)
-             `(let ((a 4))
-                ,(make-syntactic-closure e '() 'a)))))))
+;; Basic syntactic closure test
+(eval
+ `(let ((a #t))
+    ,(capture-syntactic-environment
+      (lambda (env)
+        (let ((a (make-syntactic-closure env '() 'a)))
+          `(let ((a #f))
+             ,a))))))
 
 
 (eq? 'now
@@ -223,24 +222,24 @@
            (when if (set! if 'now))
            if))))
 
-(eq? 4 (let ()
-         (define (a) 4)
-         (a)))
+(let ()
+  (define (a) #t)
+  (a))
 
-(eq? 4 (letrec ()
-         (define (a) 4)
-         (a)))
+(letrec ()
+  (define (a) #t)
+  (a))
 
 (begin
   (define (x)
-    (define (a) 4)
+    (define (a) #t)
     (a))
-  (eq? 4 (x)))
+  (x))
 
-(eq? 4 (let* ((a 4)
-              (b 5))
-         (define (c) 4)
-         (c)))
+(let* ((a 4)
+       (b 5))
+  (define (c) #t)
+  (c))
 
 (expand-macro
  '(let-syntax ((test-a (sc-macro-transformer
@@ -267,14 +266,14 @@
      (let ((=> #f))
        (cond (#t => 'ok))))
 
-;; Test that let-syntax bindings don't interfer with each other.
+;; Test that let-syntax bindings don't interfere with each other.
 (let ((a (lambda () #t)))
   (let-syntax
       ((a (syntax-rules () ((_) #f)))
        (b (syntax-rules () ((_) (a)))))
     (b)))
 
-;; Test that letrec-syntax bindings do interfer with each other.
+;; Test that letrec-syntax bindings do interfere with each other.
 (letrec-syntax
     ((a (syntax-rules () ((_) #f)))
      (b (syntax-rules () ((_) (a)))))
@@ -300,11 +299,10 @@
 
 (eq? 3
      (eval
-      (expand-macro
-       '(let ()
-          (define-syntax hej (sc-macro-transformer
-                              (lambda _ 3)))
-          (hej)))))
+      '(let ()
+         (define-syntax hej (sc-macro-transformer
+                             (lambda _ 3)))
+         (hej))))
 
 ;; Test define-syntax within a transform-to-letrec scope
 ;; where a define uses a macro.
@@ -402,19 +400,21 @@
                    (haha var)))))
     (test 4)))
 
-(expand-macro
- '(let-syntax ((test
-                (syntax-rules ()
-                  ((test (a b) ...)
-                   (begin (+ a b) ...)))))
-    (test (1 2) (3 4))))
+(equal? '(begin (begin (+ 1 2) (+ 3 4)))
+        (expand-macro
+         '(let-syntax ((test
+                        (syntax-rules ()
+                          ((test (a b) ...)
+                           (begin (+ a b) ...)))))
+            (test (1 2) (3 4)))))
 
-(expand-macro
- '(let-syntax ((test
-                (syntax-rules ()
-                  ((test var hej ...)
-                   (begin (var hej) ... end)))))
-    (test 1 2 3 4 5)))
+(equal? '(begin (begin (1 2) (1 3) (1 4) (1 5) ~#end))
+        (expand-macro
+         '(let-syntax ((test
+                        (syntax-rules ()
+                          ((test var hej ...)
+                           (begin (var hej) ... end)))))
+            (test 1 2 3 4 5))))
 
 ;; Test that syntax-rules ... rules can take empty parameters
 (let-syntax ((test
@@ -431,41 +431,46 @@
                          'b))))
           (test (hej alla idioter) 44)))
 
-(expand-macro
- '(let-syntax ((test
-                (syntax-rules ()
-                  ((test (a ...) (b ...))
-                   (begin (+ a b) ...)))))
-    (test (1 2) (3 4))))
+(equal? '(begin (begin (+ 1 3) (+ 2 4)))
+        (expand-macro
+         '(let-syntax ((test
+                        (syntax-rules ()
+                          ((test (a ...) (b ...))
+                           (begin (+ a b) ...)))))
+            (test (1 2) (3 4)))))
 
 ;; This really should give an error. At least it doesn't crash.
-(expand-macro
- '(let-syntax ((test
-                (syntax-rules ()
-                  ((test (a ...) (b ...))
-                   (begin (+ a b) ...)))))
-    (test (1 2) (3 4 5))))
+(equal? '(begin (begin (+ 1 3) (+ 2 4)))
+        (expand-macro
+         '(let-syntax ((test
+                        (syntax-rules ()
+                          ((test (a ...) (b ...))
+                           (begin (+ a b) ...)))))
+            (test (1 2) (3 4 5)))))
 
-(expand-macro
- '(let-syntax ((test
-                (syntax-rules ()
-                  ((test (a ...) (b ...))
-                   (+ a ... b ...)))))
-    (test (1 2) (3 4 5))))
+(equal? '(begin (+ 1 2 3 4 5))
+        (expand-macro
+         '(let-syntax ((test
+                        (syntax-rules ()
+                          ((test (a ...) (b ...))
+                           (+ a ... b ...)))))
+            (test (1 2) (3 4 5)))))
 
-(expand-macro
- '(let-syntax ((test
-                (syntax-rules ()
-                  ((test (a ...) ...)
-                   '((a ...) ...)))))
-    (test (a) (b c d))))
+(equal? '(begin '((a) (b c d)))
+        (expand-macro
+         '(let-syntax ((test
+                        (syntax-rules ()
+                          ((test (a ...) ...)
+                           '((a ...) ...)))))
+            (test (a) (b c d)))))
 
-(expand-macro
- '(let-syntax ((test
-                (syntax-rules ()
-                  ((test (_ val ...) ...)
-                   '((val ...) ...)))))
-    (test (1 2 3) (4 5))))
+(equal? '(begin '((2 3) (5)))
+        (expand-macro
+         '(let-syntax ((test
+                        (syntax-rules ()
+                          ((test (_ val ...) ...)
+                           '((val ...) ...)))))
+            (test (1 2 3) (4 5)))))
 
 ;; Test letrec-syntax
 (eq? 'YaY
@@ -507,31 +512,31 @@
 
 ;; This is REALLY a corner case
 ;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
-;; says that this should return 2, but SISC returns 1.
-(= 1
-   (let ((x 1))
-     (let-syntax
-         ((foo (syntax-rules ()
-                 ((_ y)
-                  (let-syntax
-                      ((bar (syntax-rules ()
-                              ((_) (let ((x 2)) y)))))
-                    (bar))))))
+;; says that this should return 1, and SISC returns 1.
+(eq? 1
+     (let ((x 1))
+       (let-syntax
+           ((foo (syntax-rules ()
+                   ((_ y)
+                    (let-syntax
+                        ((bar (syntax-rules ()
+                                ((_) (let ((x 2)) y)))))
+                      (bar))))))
        (foo x))))
 
 ;; This is REALLY a corner case
 ;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
 ;; says that this should return 2, but SISC and Gauche returns 1.
-(= 1
-   (let ((x 1))
-     (let-syntax
-         ((foo (syntax-rules ()
-                 ((_ y)
-                  (let-syntax
-                      ((bar (syntax-rules ()
-                              ((_ x) y))))
-                    (bar 2))))))
-       (foo x))))
+(eq? 2
+     (let ((x 1))
+       (let-syntax
+           ((foo (syntax-rules ()
+                   ((_ y)
+                    (let-syntax
+                        ((bar (syntax-rules ()
+                                ((_ x) y))))
+                      (bar 2))))))
+         (foo x))))
 
 ;; SISC supports this syntax. My interpretation of R5RS
 ;; supports this syntax. This implementation does.
@@ -1005,57 +1010,166 @@
   (define hej #f)
   hej)
 
+;; Test syntactic capture in the head position
+(eval
+ `(,(capture-syntactic-environment
+     (lambda (env)
+       'eq?))
+   1 1))
+
+;; Test syntactic capture with macro in head position
+(eval
+ `(let-syntax
+      ((mac
+        (syntax-rules ()
+          ((_) #t))))
+    (,(capture-syntactic-environment
+       (lambda (env)
+         'mac)))))
+
+;; A somewhat esoteric test with synclosures and syncaptures
+(eq? 0
+     (eval
+      `(let ((a 0))
+         ,(capture-syntactic-environment
+           (lambda (env-1)
+             `(let ((b 1))
+                ,(capture-syntactic-environment
+                  (lambda (env-2)
+                    (let ((a-1 (make-syntactic-closure env-1 '() 'a))
+                          (a-2 (make-syntactic-closure env-2 '() 'a)))
+                      `(let ((,a-2 2))
+                         ,a-1))))))))))
+
+;; Check that child environments within a transform-forms-to-triple
+;; are preserved even on defines.
+(let ()
+  (let-syntax
+      ((test (syntax-rules ()
+               ((test) #t))))
+    (define (test-fun) (test)))
+  (test-fun))
+
+;; Check that it's possible to have defines inside syncaptures within
+;; scopes.
+(equal?
+ 4
+ (eval
+  `(let ()
+     ,(capture-syntactic-environment
+       (lambda (_)
+         `(define a 4)))
+     a)))
+
+;; Test that let-syntax within a let can contain a define-syntax that
+;; uses macros defined by the previously mentioned let-syntax.
+(let ()
+  (let-syntax
+      ((test-mac2
+        (syntax-rules ()
+          ((test-mac)
+           #t))))
+    
+    (define-syntax test-mac
+      (syntax-rules ()
+        ((test-mac) (test-mac2)))))
+  (test-mac))
+
+
+;; Test that top-level let-syntax can contain a define-syntax that
+;; uses macros defined by the previously mentioned let-syntax.
+(begin
+  (define-syntax test-mac2
+    (syntax-rules ()
+      ((test-mac2)
+       #f)))
+  
+  (let-syntax
+      ((test-mac2
+        (syntax-rules ()
+          ((test-mac2)
+           #t))))
+    
+    (define-syntax test-mac
+      (syntax-rules ()
+        ((test-mac) (test-mac2)))))
+  
+  (test-mac))
+
 
 
 ;;; Problematic things:
 
 
+;; This should make it up to the real tests
+(let ((a #f))
+  ((lambda (a #!key (b a))
+     b) #t))
 
 ;; calcing is never set back to #f. It probably should, at least in
 ;; load-once.
 
+;; This is a quirky case. I don't know exactly what the results of
+;; this one should be. SISC returns #t on this one. Gauche gives an
+;; error.
+(expand-macro
+ '(let-syntax
+      ((mac
+        (syntax-rules ()
+          ((mac)
+           (define-syntax xx
+             (syntax-rules ()
+               ((xx) #t)))))))
+    (define-syntax xx
+      (syntax-rules ()
+        ((xx) #f)))
+    (mac)
+    (xx)))
 
-;; Right now, the only thing that I know doesn't work is define-syntax
-;; within let-syntax forms.
 
 
 
-;; Test that let-syntax bindings don't interfer with each other.
-(let ((a (lambda () #t)))
+
+
+
+
+
+
+
+
+
+;; This test probably ought make it to the real tests.
+;; What does this mean?
+(expand-macro
+ '(let ()
+    (define a 1)
+    (define a 2)
+    a))
+
+;; This test probably ought make it to the real tests
+(let ((test #f))
   (let-syntax
-      ((a (syntax-rules () ((_) #f)))
-       (b (syntax-rules () ((_) (a)))))
-    (b)))
+      ((one
+        (syntax-rules ()
+          ((one xx)
+           (define xx #t)))))
+    (one test)
+    test))
 
-;; Test that letrec-syntax bindings do interfer with each other.
-(letrec-syntax
-    ((a (syntax-rules () ((_) #f)))
-     (b (syntax-rules () ((_) (a)))))
-  (not (b)))
+;; This test probably ought make it to the real tests
+(let ((test (lambda () #f)))
+  (let-syntax
+      ((one
+        (syntax-rules ()
+          ((one xx)
+           (define-macro (xx) #t)))))
+    (one test)
+    (test)))
+
+
 
 
 (expand-macro
- '(let ()
-    (let-syntax
-        ((test-mac2
-          (syntax-rules ()
-            ((test-mac)
-             #t))))
-      
-      (define-syntax test-mac
-        (syntax-rules ()
-          ((test-mac) (test-mac2)))))
-    (test-mac)))
-
-
-(let-syntax
-    ((test-mac2
-      (syntax-rules ()
-        ((test-mac2)
-         (let () 'hej)))))
-  
-  (define-syntax test-mac
-    (syntax-rules ()
-      ((test-mac) (test-mac2)))))
-
-(test-mac)
+ '(let ((a #f))
+    ((lambda (a #!key (b a))
+       b) #t)))

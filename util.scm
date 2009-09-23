@@ -146,6 +146,30 @@
           (cons (car list) (filter pred (cdr list)))
           (filter pred (cdr list)))))
 
+(define (find pred lst)
+  (let loop ((lst lst))
+    (cond
+     ((pair? lst)
+      (let ((hd (car lst)))
+        (if (pred hd)
+            hd
+            (loop (cdr lst)))))
+
+     (else
+      #f))))
+
+(define (vector-map fn vec)
+  (let* ((len (vector-length vec))
+         (v (make-vector len)))
+    (let loop ((i 0))
+      (cond
+       ((< i len)
+        (vector-set! v
+                     i
+                     (fn (vector-ref form i)))
+        (loop (+ 1 i)))))
+    v))
+
 (define (last lst)
   (cond ((null? lst) #f)
         ((null? (cdr lst)) (car lst))

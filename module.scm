@@ -1136,9 +1136,8 @@
        (list 'syntax-rules
              'mac
              (lambda (code env mac-env)
-               `(module#sc-macro-transformer
-                 (apply module#syntax-rules-proc
-                        ',(expr*:cdr code))))
+               `(apply module#syntax-rules-proc
+                       ',(expr*:cdr code)))
              builtin-environment)
        (map (lambda (x)
               (list x 'def (gen-symbol "module#" x)))
@@ -1221,7 +1220,7 @@
 
 (define module-env-table
   (let* ((ns (make-table))
-         (env (make-environment #f ns ns)))
+         (env (make-environment #f ns)))
     (module-add-defs-to-env
      (module-info-exports
       ((loader-calculate-info module-module-loader) #f))
@@ -1265,9 +1264,7 @@
                  builtin-ns
                  (cons module-env-table
                        builtin-ns)))))
-    (make-environment module
-                      ns
-                      ns)))
+    (make-environment module ns)))
 
 (define empty-environment
   (make-top-environment #f))
