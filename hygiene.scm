@@ -1543,6 +1543,19 @@
                                   (cdr inner-code)))))
                      (cddr code)))))))
 
+   (time
+    (lambda (source env mac-env)
+      (expr*:value-set
+       source
+       (let ((code (expr*:value source)))
+         (if (not (= 2 (length code)))
+             (error "Ill-formed special form"
+                    (expr*:strip-locationinfo source)))
+         `(,(expr*:value-set (car code) '##time)
+           (lambda () ,@(expand-macro (cdr code)
+                                      env))
+           ',(cadr code))))))
+
    (c-lambda
     (lambda (source env mac-env)
       (extract-synclosure-crawler source)))
