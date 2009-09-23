@@ -184,7 +184,8 @@
           (if directory
               c-filename
               (##path-strip-directory c-filename))))
-    (##open-process
+    (##open-process-generic
+     3 ;; (macro-direction-inout)
      #t
      (lambda (port)
        (let ((status (##process-status port)))
@@ -253,6 +254,7 @@
                               files
                               #!key
                               (save-links #t)
+                              standalone ;; standalone implies save-links is #f
                               (port (current-output-port)))
   (generate-tmp-dir
    (lambda (dir)
@@ -305,31 +307,44 @@
            ;; Suppress warning messages from link-flat
            ((current-output-port
              (open-output-u8vector)))
-           (link-flat (map path-strip-extension
-                           c-files)
-                      output: link-c-file))
+           ((if standalone
+                link-incremental
+                link-flat)
+            (map path-strip-extension
+                 c-files)
+            output: link-c-file))
 
-          (display "Compiling link file..\n" port)
-          (module-compile-c-file-to-o link-c-file)
-
-          (display "Linking files..\n" port)
-          (module-link-files
-           (map (lambda (fn)
-                  (string-append (path-strip-extension fn)
-                                 ".o"))
-                (cons link-c-file c-files))
-           (path-expand to-file (current-directory)))
-
-          (if save-links
-              (for-each (lambda (file)
-                          (with-output-to-file
-                              (string-append (path-strip-extension file)
-                                             ".ol")
-                            (lambda ()
-                              (println (path-normalize to-file)))))
-                        files))
-
-          to-file))))))
+          (cond
+           (standalone
+            (pp (map (lambda (fn)
+                       (string-append (path-strip-extension fn)
+                                      ".o"))
+                     (cons link-c-file c-files)))
+            (##repl))
+           
+           (else
+            (display "Compiling link file..\n" port)
+            (module-compile-c-file-to-o link-c-file)
+            
+            (display "Linking files..\n" port)
+            (module-link-files
+             (map (lambda (fn)
+                    (string-append (path-strip-extension fn)
+                                   ".o"))
+                  (cons link-c-file c-files))
+             (path-expand to-file (current-directory))
+             standalone: standalone)
+            
+            (if save-links
+                (for-each (lambda (file)
+                            (with-output-to-file
+                                (string-append (path-strip-extension file)
+                                               ".ol")
+                              (lambda ()
+                                (println (path-normalize to-file)))))
+                          files))
+            
+            to-file))))))))
 
 
 ;;(module-compile-bunch "std/build.ob"
