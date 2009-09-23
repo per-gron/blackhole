@@ -955,6 +955,19 @@
          (table-set! *load-and-init-registry*
                      fn
                      result)
+
+         (let ((missing-constants
+                (vector-ref result 1)))
+           (for-each
+            (lambda (pair)
+              (let ((var (car pair))
+                    (mod (cdr pair)))
+                (print "*** WARNING -- Variable \""
+                       var
+                       "\" used in module \""
+                       mod
+                       "\" is undefined\n")))
+            missing-constants))
          
          (let* ((exec-vect (vector-ref result 0))
                 (exec-len (vector-length exec-vect))
