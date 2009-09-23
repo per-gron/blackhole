@@ -1111,7 +1111,11 @@
      (path-normalize (string-append (symbol->string path) ".scm")
                      #f ;; Don't allow relative paths
                      (if ref
-                         (path-directory ref)
+                         (path-normalize
+                          ;; This ensures that (path-directory ref)
+                          ;; actually exists. Otherwise path-normalize
+                          ;; might segfault.
+                          (path-directory ref))
                          (current-directory))))
 
    ;; absolute-file
