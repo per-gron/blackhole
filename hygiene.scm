@@ -1268,7 +1268,7 @@
    
    (module
     (nh-macro-transformer
-     (lambda (name)
+     (lambda (#!optional name)
        (module-module name))))
 
    (quote

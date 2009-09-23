@@ -97,3 +97,16 @@
                   ret)))))
   (set! ##expand-source (hook #f))
   (set! c#expand-source (hook #t)))
+
+(##vector-set!
+ (##thread-repl-channel-get! (current-thread))
+ 6
+ (lambda (channel level depth)
+   (let ((mod (environment-module (top-environment))))
+     (if mod
+         (begin
+           (print (module-name mod))
+           (if (##fixnum.< 0 level)
+               (print "/")))))
+   (##repl-channel-ports-read-command channel level depth)))
+

@@ -644,6 +644,11 @@
    (lambda (mod)
      ((loader-load (module-loader mod)) mod))))
 
+(define module-name
+  (make-module-util-function
+   (lambda (mod)
+     ((loader-module-name (module-loader mod)) mod))))
+
 (define module-needs-compile?
   (make-module-util-function
    (lambda (mod)
@@ -1197,6 +1202,7 @@
               module-path
               module-info
               module-load
+              module-name
               module-needs-compile?
               module-compile!
               module-clean!
