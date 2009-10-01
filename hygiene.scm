@@ -1610,6 +1610,10 @@
       (extract-synclosure-crawler source)))
 
    ;; TODO Add c-define
+
+   (c-define-type
+    (lambda (source env mac-env)
+      (extract-synclosure-crawler source)))
    
    (receive
     (lambda (code env mac-env)
