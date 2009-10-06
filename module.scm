@@ -90,12 +90,15 @@
        ids))
 
 (define (package-module-resolver path)
-  (lambda (_ __ . ids)
-    (map (lambda (id)
-           (make-module
-            local-loader
-            ((loader-path-absolutize local-loader) id path)))
-         ids)))
+  (let ((path
+         (string-append
+          (path-strip-trailing-directory-separator path) "/")))
+    (lambda (_ __ . ids)
+      (map (lambda (id)
+             (make-module
+              local-loader
+              ((loader-path-absolutize local-loader) id path)))
+           ids))))
 
 ;; This is a helper function for singleton loaders, for instance 'module
 (define (make-singleton-module-resolver pkg)
