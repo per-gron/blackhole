@@ -76,15 +76,29 @@
        (module-files-in-dir top-dir)))
 
 (define (module-deps mod #!optional recursive)
-  (if recursive
-      (remove-duplicates
-       (flatten
-        (let loop ((mod mod))
-          (let ((uses (module-deps mod)))
-            (cons uses
-                  (map loop uses)))))
-       equal?)
-      (module-info-uses (module-info mod))))
+  (with-module-cache
+   (lambda ()
+     (if recursive
+         (let ((mods
+                (flatten
+                 (let loop ((mod mod))
+                   (let ((uses (module-info-uses
+                                (module-info mod))))
+                     (cons uses
+                           (map loop uses)))))))
+           ;; Sort the modules in the order of which they depend on
+           ;; each other. This algorithm is ridiculously inefficient.
+           (remove-duplicates
+            (reverse
+             (apply
+              append
+              (map (lambda (x)
+                     (cons x
+                           (module-info-uses
+                            (module-info x))))
+                   mods)))
+            equal?))
+         (module-info-uses (module-info mod))))))
 
 (define (module-compile/deps! mod #!optional continue-on-error port)
   (modules-compile! (cons mod (module-deps mod #t)) continue-on-error port))
