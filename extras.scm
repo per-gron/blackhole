@@ -125,7 +125,8 @@
 (define (module-compile-c-file-to-o c-filename
                                     #!key
                                     output
-                                    (cc-options ""))
+                                    (cc-options "")
+                                    verbose)
   (if (not (and (or (not output)
                     (string? output))
                 (string? cc-options)))
@@ -145,14 +146,15 @@
               cc-options
               "" ;; ld-options-prelude
               "" ;; ld-options
-              #f)) ;; verbose
+              verbose))
 
 (define (module-link-files o-files
                            o1-file
                            #!key
                            standalone
                            (ld-options-prelude "")
-                           (ld-options ""))
+                           (ld-options "")
+                           verbose)
   (if (not (and (string? o1-file)
                 (string? ld-options-prelude)
                 (string? ld-options)))
@@ -170,13 +172,14 @@
               "" ;; cc-options
               ld-options-prelude
               ld-options
-              #f)) ;; Verbose?
+              verbose))
 
 (define (module-compile-bunch mode
                               to-file
                               files
-                              #!optional
-                              (port (current-output-port)))
+                              #!key
+                              (port (current-output-port))
+                              verbose)
   (generate-tmp-dir
    (lambda (dir)
      (let* ((mods (map module-from-file files))
@@ -231,7 +234,7 @@
                                    file
                                    to-c: c-file)
              (display "." port)
-             (module-compile-c-file-to-o c-file)
+             (module-compile-c-file-to-o c-file verbose: verbose)
              (display "." port)
              (newline))
            mods c-files files)
@@ -249,7 +252,7 @@
             output: link-c-file))
 
           (display "Compiling link file..\n" port)
-          (module-compile-c-file-to-o link-c-file)
+          (module-compile-c-file-to-o link-c-file verbose: verbose)
           
           (display "Linking files..\n" port)
           (module-link-files
@@ -258,7 +261,8 @@
                                  ".o"))
                 (cons link-c-file c-files))
            (path-expand to-file (current-directory))
-           standalone: standalone)
+           standalone: standalone
+           verbose: verbose)
           
           (if save-links
               (for-each (lambda (file)
@@ -271,8 +275,8 @@
           
           to-file))))))
 
-
-;;(module-compile-bunch "std/build.ob"
+;;(module-compile-bunch 'link
+;;                      "std/build.ob"
 ;;                      (module-files-in-dir
 ;;                       "~~/lib/modules/std"))
 
