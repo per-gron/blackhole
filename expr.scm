@@ -31,6 +31,16 @@
 	  (else
 	   (fn obj)))))
 
+(define (vector-map fn vec)
+  (let* ((size (vector-length vec))
+         (nvec (make-vector size)))
+    (let loop ((i 0))
+      (if (< i size)
+          (begin
+            (vector-set! nvec i (fn (vector-ref vec i)))
+            (loop (+ i 1)))
+          nvec))))
+
 
 ;; cj Sat, 01 Jul 2006 19:51:48 +0200
 ;; moved some stuff from my unfinished cj-syntax module here, and added some more.
@@ -91,9 +101,11 @@
 
 (define (expr:strip-locationinfo expr)
   (let ((v (expr:value expr)))
-    (if (pair? v)
-	(dotted-map expr:strip-locationinfo v)
-	v)))
+    (cond ((pair? v)
+           (dotted-map expr:strip-locationinfo v))
+          ((vector? v)
+           (vector-map expr:strip-locationinfo v))
+          (else v))))
 
 
 ;" (define (syntax-type syn) ;; returns false, if it discovers   ach. wirr.
@@ -414,6 +426,8 @@
 
 (define (expr*:strip-locationinfo expr)
   (let ((v (expr*:value expr)))
-    (if (pair? v)
-	(dotted-map expr*:strip-locationinfo v)
-	v)))
+    (cond ((pair? v)
+           (dotted-map expr*:strip-locationinfo v))
+          ((vector? v)
+           (vector-map expr*:strip-locationinfo v))
+          (else v))))
