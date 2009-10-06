@@ -104,6 +104,11 @@
 
 (define *module-resolvers* '())
 
+(define (module-resolver-add! name res)
+  (set! *module-resolvers*
+        (cons (cons name res)
+              *module-resolvers*)))
+
 (define (resolve-module name #!optional cm)
   (if (module? name)
       (list name)
@@ -1178,6 +1183,11 @@
               resolve-module
               resolve-modules
               resolve-one-module
+              make-singleton-module-resolver
+              package-module-resolver
+              module-resolver-add!
+              make-external-module-loader
+              make-external-module-resolver
               
               current-module
               current-loader
@@ -1216,6 +1226,42 @@
    (lambda (mod) #f)
    ;; module-name
    (lambda (mod) "module")))
+
+(define (make-external-module-loader module-name
+                                     files
+                                     identifiers
+                                     #!optional
+                                     (ns ""))
+
+  (make-loader
+   ;; load
+   (lambda (mod) files)
+   ;; calculate-info
+   (lambda (mod)
+     (make-module-info
+      '()
+      (map (lambda (x)
+             (list x 'def (gen-symbol ns x)))
+           identifiers)
+      '() '() '() "" "" "" #f builtin-environment))
+   ;; path-absolutize
+   (lambda (path #!optional ref) #f)
+   ;; absolute-file
+   (lambda (mod) #f)
+   ;; module-name
+   (lambda (mod) module-name)))
+
+(define (make-external-module-resolver module-name
+                                       files
+                                       identifiers
+                                       #!optional
+                                       (ns ""))
+  (make-singleton-module-resolver
+   (make-external-module-loader
+    module-name
+    files
+    identifiers
+    ns)))
 
 
 
