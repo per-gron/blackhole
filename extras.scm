@@ -122,32 +122,15 @@
             (delete-directory fn)
             (set! fn #f))))))
 
-;; More or less copied from _gsclib.scm
-(define (module-compile-c-file c-filename
-                               #!key
-                               output
-                               directory
-                               (cc-options "")
-                               (ld-options-prelude "")
-                               (ld-options ""))
-  
-  (define (arg name val)
-    (##string-append "GSC_CC_O_" name "=" val))
-  
-  (define (install-dir path)
-    (parameterize
-     ((##current-directory
-       (##path-expand path)))
-     (##current-directory)))
-  
-  (if (not (and (string? c-filename)
-                (string? cc-options)
-                (string? ld-options-prelude)
-                (string? ld-options)
-                (or (not output)
-                    (string? output))))
+(define (module-compile-c-file-to-o c-filename
+                                    #!key
+                                    output
+                                    (cc-options ""))
+  (if (not (and (or (not output)
+                    (string? output))
+                (string? cc-options)))
       (error "Invalid parameters"))
-  
+
   (if (not output)
       (set! output (path-normalize
                     (string-append (path-strip-extension
@@ -155,91 +138,44 @@
                                    ".o")
                     #f)))
   
-  (let* ((gambcdir-bin
-          (install-dir "~~bin"))
-         (gambcdir-include
-          (install-dir "~~include"))
-         (gambcdir-lib
-          (install-dir "~~lib"))
-         (c-filename-dir
-          (or directory
-              (parameterize
-               ((##current-directory (##path-directory c-filename)))
-               (##current-directory))))
-         (c-filename-base
-          (if directory
-              c-filename
-              (##path-strip-directory c-filename))))
-    (##open-process-generic
-     3 ;; (macro-direction-inout)
-     #t
-     (lambda (port)
-       (let ((status (##process-status port)))
-         (##close-port port)
-         status))
-     open-process
-     (##list path:
-             (##string-append gambcdir-bin "gsc-cc-o.bat")
-             arguments:
-             '()
-             environment:
-             (##append
-              (let ((env (##os-environ)))
-                (if (##fixnum? env) '() env))
-              (##list (arg "GAMBCDIR_BIN"
-                           (##path-strip-trailing-directory-separator
-                            gambcdir-bin))
-                      (arg "GAMBCDIR_INCLUDE"
-                           (##path-strip-trailing-directory-separator
-                            gambcdir-include))
-                      (arg "GAMBCDIR_LIB"
-                           (##path-strip-trailing-directory-separator
-                            gambcdir-lib))
-                      (arg "OBJ_FILENAME" output)
-                      (arg "C_FILENAME_DIR"
-                           (##path-strip-trailing-directory-separator
-                            c-filename-dir))
-                      (arg "C_FILENAME_BASE" c-filename-base)
-                      (arg "CC_OPTIONS" cc-options)
-                      (arg "LD_OPTIONS_PRELUDE" ld-options-prelude)
-                      (arg "LD_OPTIONS" ld-options)))
-             stdin-redirection: #f
-             stdout-redirection: #f
-             stderr-redirection: #f))))
-
-(define (module-compile-c-file-to-o c-filename
-                                    #!key
-                                    output
-                                    (cc-options ""))
-  (module-compile-c-file c-filename
-                         output: output
-                         cc-options: (string-append "-c "
-                                                    cc-options)))
+  (##gambc-cc 'obj
+              (path-directory output)
+              (list c-filename)
+              output
+              cc-options
+              "" ;; ld-options-prelude
+              "" ;; ld-options
+              #f)) ;; verbose
 
 (define (module-link-files o-files
                            o1-file
                            #!key
+                           standalone
                            (ld-options-prelude "")
                            (ld-options ""))
-  ;; TODO Does this support spaces in filenames?
-  (module-compile-c-file ""
-                         output: o1-file
-                         directory: (current-directory)
-                         ld-options-prelude: ld-options-prelude
-                         ld-options:
-                         (string-append
-                          (apply
-                           string-append
-                           (map (lambda (fn)
-                                  (string-append (path-normalize fn)
-                                                 " "))
-                                o-files))
-                          ld-options)))
+  (if (not (and (string? o1-file)
+                (string? ld-options-prelude)
+                (string? ld-options)))
+      (error "Invalid parameters"))
 
-(define (module-compile-bunch to-file
+  (for-each (lambda (x)
+              (if (not (string? x))
+                  (error "Invalid parameters")))
+            o-files)
+  
+  (##gambc-cc (if standalone 'exe 'dyn)
+              (current-directory)
+              o-files
+              o1-file
+              "" ;; cc-options
+              ld-options-prelude
+              ld-options
+              #f)) ;; Verbose?
+
+(define (module-compile-bunch mode
+                              to-file
                               files
-                              #!key
-                              (save-links #t)
+                              #!optional
                               (port (current-output-port)))
   (generate-tmp-dir
    (lambda (dir)
@@ -266,7 +202,20 @@
                            (path-strip-directory
                             to-file)
                            ".c")
-                          dir)))
+                          dir))
+
+            (standalone #f)
+            (save-links #f))
+
+       (case mode
+         ((exe)
+          (set! standalone #t))
+         ((dyn)
+          #!void) ;; Nothing to be done
+         ((link)
+          (set! save-links #t))
+         (else
+          (error "Unknown module-compile-bunch mode" mode)))
        
        (with-module-cache
         (lambda ()
@@ -292,21 +241,25 @@
            ;; Suppress warning messages from link-flat
            ((current-output-port
              (open-output-u8vector)))
-           (link-flat (map path-strip-extension
-                           c-files)
-                      output: link-c-file))
+           ((if standalone
+                link-incremental
+                link-flat)
+            (map path-strip-extension
+                 c-files)
+            output: link-c-file))
 
           (display "Compiling link file..\n" port)
           (module-compile-c-file-to-o link-c-file)
-
+          
           (display "Linking files..\n" port)
           (module-link-files
            (map (lambda (fn)
                   (string-append (path-strip-extension fn)
                                  ".o"))
                 (cons link-c-file c-files))
-           (path-expand to-file (current-directory)))
-
+           (path-expand to-file (current-directory))
+           standalone: standalone)
+          
           (if save-links
               (for-each (lambda (file)
                           (with-output-to-file
@@ -315,21 +268,11 @@
                             (lambda ()
                               (println (path-normalize to-file)))))
                         files))
-
+          
           to-file))))))
 
 
 ;;(module-compile-bunch "std/build.ob"
 ;;                      (module-files-in-dir
 ;;                       "~~/lib/modules/std"))
-
-
-
-
-
-
-
-
-
-
 
