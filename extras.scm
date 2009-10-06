@@ -170,7 +170,8 @@
           (if directory
               c-filename
               (##path-strip-directory c-filename))))
-    (##open-process
+    (##open-process-generic
+     3 ;; (macro-direction-inout)
      #t
      (lambda (port)
        (let ((status (##process-status port)))
