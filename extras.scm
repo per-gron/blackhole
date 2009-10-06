@@ -289,6 +289,20 @@
           
           to-file))))))
 
+(define (module-compile-to-standalone name mod
+                                      #!key
+                                      verbose
+                                      (port (current-output-port)))
+  (let ((mod (resolve-one-module mod)))
+    (module-compile-bunch
+     'exe
+     name
+     (map module-path
+          (append (module-deps mod #t)
+                  (list mod)))
+     verbose: verbose
+     port: port)))
+
 ;;(module-compile-bunch 'link
 ;;                      "std/build.ob"
 ;;                      (module-files-in-dir

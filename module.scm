@@ -1218,6 +1218,7 @@
               module-clean/deps!
               module-generate-export-list
               module-compile-bunch
+              module-compile-to-standalone
               module-files-in-dir
               
               loader
