@@ -214,12 +214,6 @@
                           dir)
                          (loop (cdr mods)
                                (+ 1 i))))))))
-            (link-c-file
-             (path-expand (string-append
-                           (path-strip-directory
-                            to-file)
-                           ".c")
-                          dir))
 
             (standalone #f)
             (save-links #f))
@@ -253,30 +247,47 @@
              (newline))
            mods c-files files)
 
-          (display "Creating link file..\n" port)
-          (parameterize
-           ;; Suppress warning messages from link-flat
-           ((current-output-port
-             (open-output-u8vector)))
-           ((if standalone
-                link-incremental
-                link-flat)
-            (map path-strip-extension
-                 c-files)
-            output: link-c-file))
-
-          (display "Compiling link file..\n" port)
-          (module-compile-c-file-to-o link-c-file verbose: verbose)
-          
-          (display "Linking files..\n" port)
-          (module-link-files
-           (map (lambda (fn)
-                  (string-append (path-strip-extension fn)
-                                 ".o"))
-                (cons link-c-file c-files))
-           (path-expand to-file (current-directory))
-           standalone: standalone
-           verbose: verbose)
+          (let ((link-c-file
+                 (let ((file-name (path-strip-directory
+                                   to-file)))
+                   (let loop ((attempt 0))
+                     (let ((try
+                            (path-expand (string-append file-name
+                                                        (if (zero? attempt)
+                                                            ""
+                                                            (number->string attempt))
+                                                        ".c")
+                                         dir)))
+                       (if (file-exists? try)
+                           (loop (+ 1 attempt))
+                           try))))))
+            
+            (display "Creating link file..\n" port)
+            (parameterize
+             ;; Suppress warning messages from link-flat
+             ((current-output-port
+               (open-output-u8vector)))
+             ((if standalone
+                  link-incremental
+                  link-flat)
+              (map path-strip-extension
+                   c-files)
+              output: link-c-file))
+            
+            (##repl)
+            
+            (display "Compiling link file..\n" port)
+            (module-compile-c-file-to-o link-c-file verbose: verbose)
+            
+            (display "Linking files..\n" port)
+            (module-link-files
+             (map (lambda (fn)
+                    (string-append (path-strip-extension fn)
+                                   ".o"))
+                  (cons link-c-file c-files))
+             (path-expand to-file (current-directory))
+             standalone: standalone
+             verbose: verbose))
           
           (if save-links
               (for-each (lambda (file)
