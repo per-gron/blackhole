@@ -274,8 +274,6 @@
                    c-files)
               output: link-c-file))
             
-            (##repl)
-            
             (display "Compiling link file..\n" port)
             (module-compile-c-file-to-o link-c-file verbose: verbose)
             
