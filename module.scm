@@ -964,30 +964,41 @@
                      fn
                      result)
          
-         (let* ((exec-vect (vector-ref result 0))
-                (exec-len (vector-length exec-vect))
-                (ns (let ((str (module-namespace mod)))
-                      (substring str 0 (- (string-length str) 1)))))
-           ((if (= exec-len 1)
-                (vector-ref exec-vect 0)
-                (let loop ((i 0))
-                  (cond
-                   ((>= i exec-len)
-                    (error "Module initializer not found for:" ns))
-                   
-                   ((let ((name-sym (##procedure-name
-                                     (vector-ref exec-vect i))))
-                      (and
-                       name-sym
-                       (let* ((name-str (symbol->string name-sym))
-                              (name (substring name-str
+         (let* ((exec-vect
+                 (vector-ref result 0))
+                (exec-len
+                 (vector-length exec-vect))
+                (ns
+                 (let ((str (module-namespace mod)))
+                   (substring str 0 (- (string-length str) 1))))
+                (procedure-or-vector
+                 (if (= exec-len 1)
+                     (vector-ref exec-vect 0)
+                     (let loop ((i 0))
+                       (cond
+                        ((>= i exec-len)
+                         (error "Module initializer not found for:" ns))
+                        
+                        ((let ((name-sym (##procedure-name
+                                          (vector-ref exec-vect i))))
+                           (and
+                            name-sym
+                            (let* ((name-str
+                                    (symbol->string name-sym))
+                                   (name
+                                    (substring name-str
                                                1
                                                (string-length name-str))))
-                         (equal? name ns))))
-                    (vector-ref exec-vect i))
-                   
-                   (else
-                    (loop (+ 1 i))))))))))))))
+                              (equal? name ns))))
+                         (vector-ref exec-vect i))
+                        
+                        (else
+                         (loop (+ 1 i))))))))
+           ;; The API for this changed in Gambit 4.5.3. This is to be
+           ;; compatible with Gambits both newer and older than this.
+           ((if (vector? procedure-or-vector)
+               (vector-ref procedure-or-vector 1)
+               procedure-or-vector)))))))))
 
 (define (load-once file-with-extension module)
   (let ((module (and module (resolve-one-module module))))
