@@ -1585,7 +1585,7 @@
                    
                    (cons (extract-synclosure-crawler
                           (car inner-code))
-                         (expand-macro (cdr inner-code)))))
+                         (expand-macro (cdr inner-code) env))))
                (cdr code)))))))
 
    (case

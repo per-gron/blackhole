@@ -997,8 +997,8 @@
            ;; The API for this changed in Gambit 4.5.3. This is to be
            ;; compatible with Gambits both newer and older than this.
            ((if (vector? procedure-or-vector)
-               (vector-ref procedure-or-vector 1)
-               procedure-or-vector)))))))))
+                (vector-ref procedure-or-vector 1)
+                procedure-or-vector)))))))))
 
 (define (load-once file-with-extension module)
   (let ((module (and module (resolve-one-module module))))
