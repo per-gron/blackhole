@@ -40,7 +40,7 @@
           (display ")\n" port)
           ;; The module might have been compiled by load-once earlier.
           (if (module-needs-compile? mod)
-              (module-compile! mod continue-on-error))
+              (module-compile! mod continue-on-error: continue-on-error))
           (set! file-number (+ file-number 1)))
         mods-sorted)))))
 

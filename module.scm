@@ -661,7 +661,10 @@
            (not (file-newer? of path))
            'not-compiled)))))
 
-(define (module-compile! mod #!optional continue-on-error)
+(define (module-compile! mod
+                         #!key
+                         continue-on-error
+                         to-c)
   (let ((mod (resolve-one-module mod)))
     (with-module-cache
      (lambda ()
@@ -680,6 +683,7 @@
                (let ((result (compile-with-options
                               mod
                               (module-file mod)
+                              to-c: to-c
                               options: (module-info-options info)
                               cc-options: (module-info-cc-options info)
                               ld-options-prelude: (module-info-ld-options-prelude
@@ -1050,7 +1054,9 @@
     (calc-mode 'load))
    (if to-c
        (compile-file-to-c fn
-                          output: (and (string? to-c) to-c)
+                          output: (or (and (string? to-c) to-c)
+                                      (string-append (path-strip-extension fn)
+                                                     ".c"))
                           options: (append options *compiler-options*))
        (compile-file fn
                      options: (append options *compiler-options*)
