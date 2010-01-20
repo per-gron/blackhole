@@ -883,19 +883,16 @@
                               #f))
               (table-set! load-table
                           (module-path module)
-                          module)
+                          #t)
               
               (for-each rec
                         (module-info-uses
-                         (module-info module)))))))
-        modules)
+                         (module-info module)))
 
-       (table-for-each
-        (lambda (_ module)
-          (let ((fn (module-file module)))
-            (if fn
-                (load-once fn module))))
-        load-table)))))
+              (let ((fn (module-file module)))
+                (if fn
+                    (load-once fn module)))))))
+        modules)))))
 
 
 (define (module-import modules #!optional (env (top-environment)))
