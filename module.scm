@@ -15,9 +15,6 @@
 (define-type loader
   id: 786F06E1-BAF1-45A5-B31F-ED09AE93514F
 
-  ;; Returns a list of lists. The inner list is arguments to the
-  ;; load-once function, will be called like (apply load-once ...)
-  (load unprintable: equality-skip: read-only:)
   ;; Returns a module-info object for the given module
   (calculate-info unprintable: equality-skip: read-only:)
   ;; Takes a relative module identifier symbol and optionally an
@@ -626,8 +623,7 @@
   (if (*calc-info-cache*)
       (thunk)
       (parameterize
-       ((*calc-info-cache*
-         (make-table)))
+       ((*calc-info-cache* (make-table)))
        (suspend-ns-table-changes thunk))))
 
 (define (make-module-util-function fn)
@@ -646,11 +642,6 @@
                        mod)))
              (table-set! (*calc-info-cache*) mp ret)
              ret))))))
-
-(define module-load
-  (make-module-util-function
-   (lambda (mod)
-     ((loader-load (module-loader mod)) mod))))
 
 (define module-needs-compile?
   (make-module-util-function
@@ -879,16 +870,32 @@
              (cadddr def))))
       defs))))
 
-(define (module-load/deps module)
+(define (module-load/deps modules)
   (with-module-cache
    (lambda ()
-     (for-each module-load/deps
-               (module-info-uses
-                (module-info module)))
-     
-     (for-each (lambda (args)
-                 (apply load-once args))
-               (module-load module)))))
+     (let ((load-table (make-table)))
+       (for-each
+        (lambda (module)
+          (let rec ((module module))
+            (cond
+             ((not (table-ref load-table
+                              (module-path module)
+                              #f))
+              (table-set! load-table
+                          (module-path module)
+                          module)
+              
+              (for-each rec
+                        (module-info-uses
+                         (module-info module)))))))
+        modules)
+
+       (table-for-each
+        (lambda (_ module)
+          (let ((fn (module-file module)))
+            (if fn
+                (load-once fn module))))
+        load-table)))))
 
 
 (define (module-import modules #!optional (env (top-environment)))
@@ -899,7 +906,7 @@
        (lambda (defs mods)
          (if (or (eq? (calc-mode) 'repl)
                  (> (environment-phase env) 0))
-             (for-each module-load/deps mods))
+             (module-load/deps mods))
          
          (module-add-defs-to-env defs env))))))
 
@@ -911,7 +918,7 @@
                     (set! repl-environment (top-environment)))
 
                 (top-environment (make-top-environment mod))
-                (module-load/deps mod)
+                (module-load/deps (list mod))
                 
                 (let ((info (module-info mod)))
                   (module-add-defs-to-env (module-info-imports info))
@@ -1118,15 +1125,6 @@
 
 (define local-loader
   (make-loader
-   ;; load
-   (lambda (mod)
-     (cons (list (path-strip-extension (module-path mod))
-                 mod)
-           (apply append
-                  (map module-load
-                       (module-info-uses
-                        (module-info mod))))))
-   
    ;; calculate-info
    (lambda (mod)
      (module-info-calculate mod (module-file mod)))
@@ -1155,8 +1153,6 @@
 
 (define module-module-loader
   (make-loader
-   ;; load
-   (lambda (mod) '())
    ;; calculate-info
    (lambda (mod)
      (make-module-info
@@ -1218,7 +1214,6 @@
               module-loader
               module-path
               module-info
-              module-load
               module-needs-compile?
               module-compile!
               module-clean!
@@ -1247,42 +1242,6 @@
    (lambda (mod) #f)
    ;; module-name
    (lambda (mod) "module")))
-
-(define (make-external-module-loader module-name
-                                     files
-                                     identifiers
-                                     #!optional
-                                     (ns ""))
-
-  (make-loader
-   ;; load
-   (lambda (mod) files)
-   ;; calculate-info
-   (lambda (mod)
-     (make-module-info
-      '()
-      (map (lambda (x)
-             (list x 'def (gen-symbol ns x)))
-           identifiers)
-      '() '() '() "" "" "" #f builtin-environment))
-   ;; path-absolutize
-   (lambda (path #!optional ref) #f)
-   ;; absolute-file
-   (lambda (mod) #f)
-   ;; module-name
-   (lambda (mod) module-name)))
-
-(define (make-external-module-resolver module-name
-                                       files
-                                       identifiers
-                                       #!optional
-                                       (ns ""))
-  (make-singleton-module-resolver
-   (make-external-module-loader
-    module-name
-    files
-    identifiers
-    ns)))
 
 
 
