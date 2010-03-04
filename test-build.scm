@@ -1096,6 +1096,61 @@
   
   (test-mac))
 
+;; Test macros that define thigns
+(let ((test #f))
+  (let-syntax
+      ((one
+        (syntax-rules ()
+          ((one xx)
+           (define xx #t)))))
+    (one test)
+    test))
+
+;; Test macros that define macros
+(let ((test (lambda () #f)))
+  (let-syntax
+      ((one
+        (syntax-rules ()
+          ((one xx)
+           (define-macro (xx) #t)))))
+    (one test)
+    (test)))
+
+;; This is a quirky case. I don't know exactly what the results of
+;; this one should be. SISC returns #t on this one. Gauche gives an
+;; error.
+(let-syntax
+    ((mac
+      (syntax-rules ()
+        ((mac)
+         (define-syntax xx
+           (syntax-rules ()
+             ((xx) #t)))))))
+  (define-syntax xx
+    (syntax-rules ()
+      ((xx) #f)))
+  (mac)
+  (xx))
+
+;; Test that we don't leak scope over expansion phase borders
+(begin
+  (syntax-begin (define ---test-variable #t))
+  (eval
+   `(let ((---test-variable #f))
+      ,(capture-syntactic-environment
+        (lambda (env)
+          (expand-macro
+           `(syntax-begin
+             ,(make-syntactic-closure env '() '---test-variable))))))))
+
+
+
+
+
+
+
+
+
 
 
 ;;; Problematic things:
@@ -1108,23 +1163,6 @@
 
 ;; calcing is never set back to #f. It probably should, at least in
 ;; load-once.
-
-;; This is a quirky case. I don't know exactly what the results of
-;; this one should be. SISC returns #t on this one. Gauche gives an
-;; error.
-(expand-macro
- '(let-syntax
-      ((mac
-        (syntax-rules ()
-          ((mac)
-           (define-syntax xx
-             (syntax-rules ()
-               ((xx) #t)))))))
-    (define-syntax xx
-      (syntax-rules ()
-        ((xx) #f)))
-    (mac)
-    (xx)))
 
 
 (expand-macro
@@ -1146,74 +1184,11 @@
     (mac aa)))
 
 
-;; If this gives the error "Unbound variable: 1#a", something is
-;; wrong. It means that the SC inside syntax-begin expanded into a
-;; reference to the outermost defined a.
-(expand-macro
- `(let ((a 5))
-    ,(capture-syntactic-environment
-      (lambda (env)
-        (pp
-         (expand-macro
-          `(syntax-begin
-            ,(make-syntactic-closure env '() 'a))))
-        5))))
 
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-;; This test probably ought make it to the real tests.
-;; What does this mean?
-(expand-macro
- '(let ()
-    (define a 1)
-    (define a 2)
-    a))
-
-;; This test probably ought make it to the real tests
-(let ((test #f))
-  (let-syntax
-      ((one
-        (syntax-rules ()
-          ((one xx)
-           (define xx #t)))))
-    (one test)
-    test))
-
-;; This test probably ought make it to the real tests
-(let ((test (lambda () #f)))
-  (let-syntax
-      ((one
-        (syntax-rules ()
-          ((one xx)
-           (define-macro (xx) #t)))))
-    (one test)
-    (test)))
-
-
-
-
-(expand-macro
- '(let ((a #f))
-    ((lambda (a #!key (b a))
-       b) #t)))
 
 
 
@@ -1255,92 +1230,7 @@
         (syntax-rules ()
           ((_ rest)
            (let ((rest #t))
+             rest
              (mac-1 rest))))))
     (mac aa)))
 
-
-
-(let ((a (lambda () #t)))
-  (let-syntax
-      ((a (syntax-rules () ((_) #f)))
-       (b (syntax-rules () ((_) (a)))))
-    (b)))
-
-
-;; should return 1
-(let ((x 1))
-  (let-syntax
-      ((foo (syntax-rules ()
-              ((_ y)
-               (let-syntax
-                   ((bar (syntax-rules ()
-                           ((_) (let ((x 2)) y)))))
-                      (bar))))))
-    (foo x)))
-
-
-
-
-
-
-
-
-
-
-
-
-
-;; This is REALLY a corner case
-;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
-;; says that this should return 1, and SISC returns 1.
-(expand-macro
- '(let ((x 1))
-    (let-syntax
-        ((foo (syntax-rules ()
-                ((_ y)
-                 (let-syntax
-                     ((bar (syntax-rules ()
-                             ((_) (let ((x 2)) y)))))
-                   (bar))))))
-      (foo x))))
-
-(expand-macro
- '(let ((x 1))
-    (let-syntax
-        ((foo
-          (syntax-rules ()
-            ((_ y)
-             (let-syntax
-                 ((bar
-                   (sc-macro-transformer
-                    (lambda (form env)
-                      `(let ((x 2)) y)))))
-               (bar))))))
-      (foo x))))
-
-;; This is REALLY a corner case
-;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
-;; says that this should return 2, but SISC and Gauche returns 1.
-(expand-macro
- '(let ((x 1))
-    (let-syntax
-        ((foo (syntax-rules ()
-                ((_ y)
-                 (let-syntax
-                     ((bar (syntax-rules ()
-                             ((_ x) y))))
-                   (bar 2))))))
-      (foo x))))
-
-(expand-macro
- '(let ((x 1))
-    (let-syntax
-        ((foo (syntax-rules ()
-                ((_ y)
-                 (let-syntax
-                     ((bar
-                       (sc-macro-transformer
-                        (lambda (form env)
-                          `y))))
-                   (bar 2))))))
-      (foo x))))

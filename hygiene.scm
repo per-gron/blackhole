@@ -62,7 +62,9 @@
                      (equal? (caadr ns-form) "")))
            (error "Wrong format on gambit header."))
        (for-each (lambda (name)
-                   (table-set! table name (list 'def name)))
+                   (table-set! table
+                               (cons #f name)
+                               (list 'def name)))
                  (cdadr ns-form)))
      (parse-gambit-header-file "~~lib/gambit#.scm"))
     table))
@@ -82,13 +84,6 @@
 ;; is the practical implementation of the concept that there is a
 ;; potentially infinite number of macro expansion phases, each with a
 ;; unique set of availible identifiers.
-;;
-;; In practise this is implemented by letting top level environments'
-;; parent field be the phase number, and having a lazily initialized
-;; next-phase field that contains the next phase environment. It is
-;; intentionally impossible to find the next phase of a non-top-level
-;; environment. To do that, first go up to the top level, then find
-;; the next phase.
 ;;
 ;; So far I've been talking about top-level and non-top-level
 ;; environments without defining them. This refers to lexical
@@ -111,9 +106,9 @@
 ;; * A pair of two datastructures of the this type. Lookups are done
 ;;   first in the car, and if nothing was found, search in the
 ;;   cdr.
-;; * A procedure returning a datastructure. Lookups are done on the
-;;   return value. This is used for built-in
-;;   names.
+;; * A procedure returning two values; a ns datastructure and a value
+;;   that will be used as the phase. Lookups are done on the ns return
+;;   value. This is used for built-in names.
 ;;
 ;; An important thing to note here is that tables, pairs and
 ;; procedures are used exclusively for top-level bindings. Only the
@@ -129,16 +124,10 @@
   ;; a number means that it is a top-level environment, an environment
   ;; means that the scope above this one is that environment.
   ;;
-  ;; If the environment is top-level, this should be a number, which
-  ;; is the phase of the environment.
+  ;; If the environment is top-level, this should be #f.
   (parent unprintable: read-only:)
   ;; The module of this environment. #f if REPL.
   (module unprintable: read-only:)
-  ;; The next phase environment. This is part of the implementation of
-  ;; proper separation between run-time and compile-time. When an
-  ;; environment is created, this is set to #f, and is then lazily
-  ;; initialized to an environment object when it is asked for.
-  (next-phase unprintable:)
   
   ;; The namespace string of the current environment. Lazily
   ;; initialized, so it's #f on a newly created environment.
@@ -169,13 +158,10 @@
                           #!optional
                           (ns (box '()))
                           (introduces-scope? #t))
-  (let ((res (make-env (if (env? parent)
-                           parent
-                           0)
+  (let ((res (make-env (and (env? parent) parent)
                        (if (env? parent)
                            (environment-module parent)
                            parent)
-                       #f
                        (and (env? parent)
                             (env-ns-string parent))
                        ns
@@ -187,46 +173,13 @@
     res))
 
 (define (environment-find-top env)
-  (let ((parent (environment-parent env)))
+  (let ((parent (env-parent env)))
     (if (environment? parent)
         (environment-find-top parent)
         env)))
 
-(define (environment-phase env)
-  (env-parent (environment-find-top env)))
-
 (define (environment-top? env)
   (not (env? (env-parent env))))
-
-(define (environment-next-phase env)
-  (or (env-next-phase env)
-      (if (environment-top? env)
-          (let* ((ns (cons (make-table)
-                           builtin-ns-phase))
-                 (val (make-env (+ 1 (env-parent env))
-                                (env-module env)
-                                #f
-                                #f
-                                ns
-                                #f)))
-            (env-scope-env-set! val val)
-            (env-next-phase-set! env val)
-            val)
-          (let* ((next-phase-parent
-                  (environment-next-phase
-                   (environment-parent env)))
-                 (val (make-env next-phase-parent
-                                (env-module env)
-                                #f
-                                #f
-                                (box '())
-                                #f)))
-            (env-next-phase-set! env val) ;; This has to be done
-                                          ;; before the next
-                                          ;; expression
-            (env-scope-env-set! val (environment-next-phase
-                                     (env-scope-env env)))
-            val))))
 
 (define environment? env?)
 
@@ -235,7 +188,7 @@
 (define environment-module env-module)
 
 (define (environment-ancestor-of? env descendant #!optional (distance 0))
-  ;; FIXME Make this test constant-time
+  ;; FIXME Make this test constant-time (is that possible)
   (if (eq? env descendant)
       distance
       (let ((p (env-parent descendant)))
@@ -244,7 +197,10 @@
 
 ;; This is one of the really core functions of the hygiene system.
 (define (environment-get orig-env name
-                         #!key (sc-environment orig-env) ignore-globals)
+                         #!key
+                         (sc-environment orig-env)
+                         ignore-globals
+                         (phase (expansion-phase)))
   (let* ((gone-through-sc-env #f)
          (best-def #f)
          (best-distance #f)
@@ -260,7 +216,7 @@
     
     (let env-get ((env orig-env))
       (let ((scope-env (env-scope-env env)))
-        (let ns-get ((ns (env-ns env)))
+        (let ns-get ((ns (env-ns env)) (phase phase))
           (cond
            ((and (not gone-through-sc-env)
                  (eq? env sc-environment))
@@ -275,28 +231,31 @@
                     sc-environment)))
               (for-each
                (lambda (def)
-                 (let ((n (car def)))
-                   (maybe-update-best-def
-                    (cond
-                     ((syntactic-closure? n)
-                      (and (eq? name
-                                (syntactic-closure-symbol n))
-                           (environment-ancestor-of?
-                            (env-scope-env
-                             (syntactic-closure-env n))
-                            sc-environment)))
-                     
-                     (else
-                      (and (eq? name n)
-                           env-ancestor-of?-env-sc-env)))
-                    (cdr def))))
-               (unbox ns)))
+                 (let* ((phase/name-pair (car def))
+                        (p (car phase/name-pair))
+                        (n (cdr phase/name-pair)))
+                   (and (= p phase)
+                        (maybe-update-best-def
+                         (cond
+                          ((syntactic-closure? n)
+                           (and (eq? name
+                                     (syntactic-closure-symbol n))
+                                (environment-ancestor-of?
+                                 (env-scope-env
+                                  (syntactic-closure-env n))
+                                 sc-environment)))
+                          
+                          (else
+                           (and (eq? name n)
+                                env-ancestor-of?-env-sc-env)))
+                         (cdr def)))))
+                 (unbox ns)))
             
             (env-get (env-parent env)))
            
            ((pair? ns)
-            (or (ns-get (car ns))
-                (ns-get (cdr ns))))
+            (or (ns-get (car ns) phase)
+                (ns-get (cdr ns) phase)))
            
            ((table? ns)
             (if (not gone-through-sc-env)
@@ -306,12 +265,16 @@
                       (environment-ancestor-of?
                        scope-env
                        sc-environment)
-                      (table-ref ns name #f)))))
+                      (table-ref ns
+                                 (cons phase name)
+                                 #f)))))
            
            ((procedure? ns)
             (if (not gone-through-sc-env)
                 (env-get sc-environment)
-                (ns-get (ns))))
+                (call-with-values ns
+                  (lambda (new-ns new-phase)
+                    (ns-get new-ns new-phase)))))
            
            (else
             (error "Invalid ns" ns))))))
@@ -328,7 +291,7 @@
 (define (environment-namespace env)
   (or (env-ns-string env)
       (let ((ns-string
-             (let ((phase (environment-phase env))
+             (let ((phase (expansion-phase))
                    (ns (module-namespace
                         (environment-module env))))
                (if (zero? phase)
@@ -345,51 +308,32 @@
         (env-ns-string-set! env ns-string)
         ns-string)))
 
-(define (traverse-code-find-next-phase source)
-  (let ((code (expr*:value source)))
-    (expr*:value-set
-     source
-     (cond
-      ((pair? code)
-       (cons (traverse-code-find-next-phase (car code))
-             (traverse-code-find-next-phase (cdr code))))
-      
-      ((vector? code)
-       (vector-map traverse-code-find-next-phase code))
-      
-      ((syntactic-closure? code)
-       (make-syntactic-closure-internal
-        (environment-next-phase
-         (syntactic-closure-env code))
-        (syntactic-closure-symbol code)))
-      
-      (else
-       code)))))
-
 (define (eval-in-next-phase code env)
-  (pp code)
-  (let ((np (environment-next-phase env)))
-    (parameterize
-     ((top-environment np)
-      ;; Inside-letrec must be set to #f, otherwise strange errors
-      ;; will occur when the continuation that is within that closure
-      ;; gets invoked at the wrong time.
-      (inside-letrec #f))
-     (eval-no-hook
-      (expand-macro code np)))))
+  (parameterize
+   ((expansion-phase (+ 1 (expansion-phase)))
+    ;; Inside-letrec must be set to #f, otherwise strange errors
+    ;; will occur when the continuation that is within that closure
+    ;; gets invoked at the wrong time.
+    (inside-letrec #f))
+   (eval-no-hook
+    (expand-macro code env))))
 
-(define (ns-add! ns name val)
+(define (ns-add! ns phase name val)
   (cond
    ((table? ns)
-    (table-set! ns name val))
+    (table-set! ns
+                (cons phase name)
+                val))
 
    ((box? ns)
     (set-box! ns
-              (cons (cons name val)
+              (cons (cons (cons phase
+                                name)
+                          val)
                     (unbox ns))))
 
    ((pair? ns)
-    (ns-add! (car ns) name val))
+    (ns-add! (car ns) phase name val))
 
    ((procedure? ns)
     (error "Cannot modify procedure ns" ns))
@@ -399,17 +343,19 @@
 
 
 
-(define (environment-add-def! env exported-name actual-name)
+(define (environment-add-def! env exported-name actual-name
+                              #!key (phase (expansion-phase)))
   (ns-add! (env-ns env)
+           phase
            exported-name
            (list 'def actual-name)))
 
-(define (environment-add-mac! env exported-name fun m-env)
+(define (environment-add-mac! env exported-name fun m-env
+                              #!key (phase (expansion-phase)))
   (ns-add! (env-ns env)
+           phase
            exported-name
-           (list 'mac
-                 fun
-                 m-env)))
+           (list 'mac fun m-env)))
 
 
 (define-type syntactic-closure
@@ -531,29 +477,30 @@
 ;; Names is a list of identifiers or pairs, where the car is the
 ;; identifier and the cdr is its namespace.
 (define (environment-add-defines env names #!key mutate)
-  (environment-add-to-ns
-   env
-   names
-   (lambda (n new-env)
-     (if (pair? n)
-         (list (car n)
-               'def
-               (gen-symbol (cdr n)
-                           (let ((sc (car n)))
-                             (if (syntactic-closure? sc)
-                                 (syntactic-closure-symbol sc)
-                                 sc)))
-               new-env)
-         (begin
-           (scope-level (+ 1 (scope-level)))
-           (list n
+  (let ((phase (expansion-phase)))
+    (environment-add-to-ns
+     env
+     names
+     (lambda (n new-env)
+       (if (pair? n)
+           (list (cons phase (car n))
                  'def
-                 (gen-symbol (generate-namespace)
-                             (if (syntactic-closure? n)
-                                 (syntactic-closure-symbol n)
-                                 n))
-                 new-env))))
-   mutate: mutate))
+                 (gen-symbol (cdr n)
+                             (let ((sc (car n)))
+                               (if (syntactic-closure? sc)
+                                   (syntactic-closure-symbol sc)
+                                   sc)))
+                 new-env)
+           (begin
+             (scope-level (+ 1 (scope-level)))
+             (list (cons phase n)
+                   'def
+                   (gen-symbol (generate-namespace)
+                               (if (syntactic-closure? n)
+                                   (syntactic-closure-symbol n)
+                                   n))
+                   new-env))))
+     mutate: mutate)))
 
 ;; Macs is a list of lists where car is name, cadr is the sexp
 ;; of the macro transformer
@@ -562,20 +509,22 @@
                                 #!key
                                 mutate
                                 (mac-env env))
-  (environment-add-to-ns
-   env
-   macs
-   (lambda (m new-env)
-     (list (car m)
-           'mac
-           (eval-in-next-phase (cadr m) env)
-           mac-env))
-   mutate: mutate
-   introduces-scope?: #f))
+  (let ((phase (expansion-phase)))
+    (environment-add-to-ns
+     env
+     macs
+     (lambda (m new-env)
+       (list (cons phase (car m))
+             'mac
+             (eval-in-next-phase (cadr m) env)
+             mac-env))
+     mutate: mutate
+     introduces-scope?: #f)))
 
 ;; (inside-letrec) implies (not (top-level))
 (define top-level (make-parameter #t))
 (define inside-letrec (make-parameter #f))
+(define expansion-phase (make-parameter 0))
 
 
 (define transform-forms-to-triple-define-constant
@@ -1171,20 +1120,20 @@
 
 ;; Tools for defining macros
 
-(define (sc-macro-transformer-proc thunk)
+(define (sc-macro-transformer thunk)
   (lambda (form env mac-env)
     (expand-macro (thunk (expr*:strip-locationinfo form)
                          env)
                   mac-env)))
 
-(define (rsc-macro-transformer-proc thunk)
+(define (rsc-macro-transformer thunk)
   (lambda (form env mac-env)
     (expand-macro (thunk (expr*:strip-locationinfo form)
                          mac-env)
                   env)))
 
-(define (nh-macro-transformer-proc thunk)
-  (rsc-macro-transformer-proc
+(define (nh-macro-transformer thunk)
+  (rsc-macro-transformer
    (lambda (form env)
      (apply thunk (cdr form)))))
 
@@ -1217,7 +1166,7 @@
                (list
                 ,@(map (lambda (mac mac-name)
                          (list 'list
-                               `',(car mac)
+                               `(cons #f ',(car mac))
                                ''mac
                                mac-name
                                name))
@@ -1304,7 +1253,7 @@
       (void)))
    
    (module
-    (nh-macro-transformer-proc
+    (nh-macro-transformer
      (lambda (#!optional name)
        (module-module name))))
 
@@ -1393,8 +1342,7 @@
    (syntax-begin
     (lambda (code env mac-env)
       (eval-in-next-phase `(begin
-                             ,@(cdr (traverse-code-find-next-phase
-                                     (expr*:value code))))
+                             ,@(cdr (expr*:value code)))
                           env)))
    
    (begin
@@ -1486,8 +1434,7 @@
                 '()
                 'define-syntax)
               ,(car src)
-              (module#nh-macro-transformer
-               ,(traverse-code-find-next-phase (cadr src))))
+              (module#nh-macro-transformer ,(cadr src)))
             env)))))
 
    (declare
@@ -1638,7 +1585,7 @@
             env)))))
    
    (compile-options
-    (nh-macro-transformer-proc
+    (nh-macro-transformer
      (lambda (#!key options
                     cc-options
                     ld-options-prelude
@@ -1647,11 +1594,11 @@
        (void))))
 
    (define-type
-     (nh-macro-transformer-proc
+     (nh-macro-transformer
       (lambda args
         (expand 'define-type #f #f args))))
 
    (define-structure
-     (nh-macro-transformer-proc
+     (nh-macro-transformer
       (lambda args
         (expand 'define-type #f #f args))))))

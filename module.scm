@@ -462,7 +462,7 @@
                (or (*module-loadenv-exports*) '())))))
    
    (compile-options
-    (nh-macro-transformer-proc
+    (nh-macro-transformer
      (lambda (#!key options
                     cc-options
                     ld-options-prelude
@@ -858,7 +858,9 @@
       ;; This function might be called with #f as argument
       (if mod (fn mod) "~#"))))
 
-(define (module-add-defs-to-env defs #!optional (te (top-environment)))
+(define (module-add-defs-to-env defs
+                                #!optional (te (top-environment))
+                                #!key (phase (expansion-phase)))
   (with-module-cache
    (lambda ()
      (for-each
@@ -868,7 +870,8 @@
             (environment-add-def!
              te
              (car def) ;; The name it's imported as
-             (caddr def)) ;; The name it's imported from
+             (caddr def) ;; The name it's imported from
+             phase: phase)
             ;; Macro
             (environment-add-mac!
              te
@@ -877,7 +880,8 @@
              ;; The macro procedure
              (caddr def)
              ;; The macro's environment
-             (cadddr def))))
+             (cadddr def)
+             phase: phase)))
       defs))))
 
 (define (module-load/deps module)
@@ -1168,27 +1172,6 @@
                  `(apply module#syntax-rules-proc
                          ',(expr*:cdr code)))
                builtin-environment)
-        ,(list 'sc-macro-transformer
-               'mac
-               (lambda (code env mac-env)
-                 `(module#sc-macro-transformer-proc
-                   ,(traverse-code-find-next-phase
-                     (car (expr*:value (cdr (expr*:value code)))))))
-               builtin-environment)
-        ,(list 'rsc-macro-transformer
-               'mac
-               (lambda (code env mac-env)
-                 `(module#rsc-macro-transformer-proc
-                   ,(traverse-code-find-next-phase
-                     (car (expr*:value (cdr (expr*:value code)))))))
-               builtin-environment)
-        ,(list 'nh-macro-transformer
-               'mac
-               (lambda (code env mac-env)
-                 `(module#nh-macro-transformer-proc
-                   ,(traverse-code-find-next-phase
-                     (car (expr*:value (cdr (expr*:value code)))))))
-               builtin-environment)
         ,@(map (lambda (x)
                  (list x 'def (gen-symbol "module#" x)))
                '(expand-macro
@@ -1197,6 +1180,9 @@
                  extract-syntactic-closure-list
                  identifier?
                  identifier=?
+                 sc-macro-transformer
+                 rsc-macro-transformer
+                 nh-macro-transformer
                  
                  make-loader
                  loader-load
@@ -1272,10 +1258,12 @@
     (module-add-defs-to-env
      (module-info-exports
       ((loader-calculate-info module-module-loader) #f))
-     env)
+     env
+     phase: #f)
     ns))
 
-(define (builtin-ns-fun phase?)
+
+(define builtin-ns
   (let* ((builtin-pair
           (cons (env-ns builtin-environment)
                 gambit-builtin-table))
@@ -1288,30 +1276,25 @@
           (cons inside-letrec-table
                 builtin-pair)))
     (lambda ()
-      (cond
-       ((and (not phase?)
-             (eq? (calc-mode) 'calc))
-        calcing-table)
-       
-       ((inside-letrec)
-        inside-letrec-pair)
-
-       (else
-        builtin-pair)))))
-
-(define builtin-ns
-  (builtin-ns-fun #f))
-
-(define builtin-ns-phase
-  (cons module-env-table (builtin-ns-fun #t)))
+      (let ((ns
+             (cond
+              ((eq? (calc-mode) 'calc)
+               calcing-table)
+              
+              ((inside-letrec)
+               inside-letrec-pair)
+              
+              (else
+               builtin-pair))))
+      (values (if (or (not (zero? (expansion-phase)))
+                      (not (environment-module (top-environment))))
+                  (cons module-env-table ns)
+                  ns)
+              #f)))))
 
 (define (make-top-environment module)
-  (let ((ns (cons
-             (make-table)
-             (if module
-                 builtin-ns
-                 (cons module-env-table
-                       builtin-ns)))))
+  (let ((ns (cons (make-table)
+                  builtin-ns)))
     (make-environment module ns)))
 
 (define empty-environment
