@@ -166,7 +166,7 @@
        ((< i len)
         (vector-set! v
                      i
-                     (fn (vector-ref form i)))
+                     (fn (vector-ref vec i)))
         (loop (+ 1 i)))))
     v))
 

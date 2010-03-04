@@ -417,14 +417,22 @@
      (lambda (source env mac-env)
        (let* ((code (expr*:value source))
               (src (transform-to-lambda (cdr code)))
-              (sym (synclosure-extract-form (car src))))
-         (environment-add-def! env
-                               sym
-                               (gen-symbol
-                                  (module-namespace (current-module))
-                                  sym))
+
+              (name-form (car (expr*:value src)))
+              (name (expand-synclosure name-form env))
+              (def-env (if (syntactic-closure? name-form)
+                           (syntactic-closure-env name-form)
+                           env))
+              (sym (if (syntactic-closure? name-form)
+                       (syntactic-closure-symbol name-form)
+                       name-form)))
+         
+         (environment-add-define! def-env
+                                  (expr*:value name))
+         
          (*module-loadenv-symbols*
-          (cons (cons sym 'def) (*module-loadenv-symbols*)))
+          (cons (cons sym 'def)
+                (*module-loadenv-symbols*)))
          (void))))
    
    (module#define-macro-register
@@ -454,7 +462,7 @@
                (or (*module-loadenv-exports*) '())))))
    
    (compile-options
-    (nh-macro-transformer
+    (nh-macro-transformer-proc
      (lambda (#!key options
                     cc-options
                     ld-options-prelude
@@ -1154,79 +1162,96 @@
    (lambda (mod)
      (make-module-info
       '()
-      (cons
-       (list 'syntax-rules
-             'mac
-             (lambda (code env mac-env)
-               `(apply module#syntax-rules-proc
-                       ',(expr*:cdr code)))
-             builtin-environment)
-       (map (lambda (x)
-              (list x 'def (gen-symbol "module#" x)))
-            '(expand-macro
-              make-syntactic-closure
-              capture-syntactic-environment
-              extract-syntactic-closure-list
-              identifier?
-              identifier=?
-              sc-macro-transformer
-              rsc-macro-transformer
-              nh-macro-transformer
-              
-              make-loader
-              loader-load
-              loader-calculate-info
-              loader-needs-compile?
-              loader-clean!
-              loader-compile!
-              
-              make-module-info
-              module-info-symbols
-              module-info-exports
-              module-info-uses
-              module-info-options
-              module-info-cc-options
-              module-info-ld-options-prelude
-              module-info-ld-options
-              module-info-force-compile?
-              module-info-environment
-              module-info-calculate
-              
-              resolve-module
-              resolve-modules
-              resolve-one-module
-              
-              current-module
-              current-loader
-              
-              with-module-cache
-              
-              make-module
-              module-loader
-              module-path
-              module-info
-              module-load
-              module-name
-              module-needs-compile?
-              module-compile!
-              module-clean!
-              module-namespace
-              module-load/deps
-              module-import
-              module-module
-
-              modules-compile!
-              modules-clean!
-              modules-in-dir
-              module-deps
-              module-compile/deps!
-              module-clean/deps!
-              module-generate-export-list
-              module-compile-bunch
-              module-files-in-dir
-              
-              loader
-              module-module-loader)))
+      `(,(list 'syntax-rules
+               'mac
+               (lambda (code env mac-env)
+                 `(apply module#syntax-rules-proc
+                         ',(expr*:cdr code)))
+               builtin-environment)
+        ,(list 'sc-macro-transformer
+               'mac
+               (lambda (code env mac-env)
+                 `(module#sc-macro-transformer-proc
+                   ,(traverse-code-find-next-phase
+                     (car (expr*:value (cdr (expr*:value code)))))))
+               builtin-environment)
+        ,(list 'rsc-macro-transformer
+               'mac
+               (lambda (code env mac-env)
+                 `(module#rsc-macro-transformer-proc
+                   ,(traverse-code-find-next-phase
+                     (car (expr*:value (cdr (expr*:value code)))))))
+               builtin-environment)
+        ,(list 'nh-macro-transformer
+               'mac
+               (lambda (code env mac-env)
+                 `(module#nh-macro-transformer-proc
+                   ,(traverse-code-find-next-phase
+                     (car (expr*:value (cdr (expr*:value code)))))))
+               builtin-environment)
+        ,@(map (lambda (x)
+                 (list x 'def (gen-symbol "module#" x)))
+               '(expand-macro
+                 make-syntactic-closure
+                 capture-syntactic-environment
+                 extract-syntactic-closure-list
+                 identifier?
+                 identifier=?
+                 
+                 make-loader
+                 loader-load
+                 loader-calculate-info
+                 loader-needs-compile?
+                 loader-clean!
+                 loader-compile!
+                 
+                 make-module-info
+                 module-info-symbols
+                 module-info-exports
+                 module-info-uses
+                 module-info-options
+                 module-info-cc-options
+                 module-info-ld-options-prelude
+                 module-info-ld-options
+                 module-info-force-compile?
+                 module-info-environment
+                 module-info-calculate
+                 
+                 resolve-module
+                 resolve-modules
+                 resolve-one-module
+                 
+                 current-module
+                 current-loader
+                 
+                 with-module-cache
+                 
+                 make-module
+                 module-loader
+                 module-path
+                 module-info
+                 module-load
+                 module-name
+                 module-needs-compile?
+                 module-compile!
+                 module-clean!
+                 module-namespace
+                 module-load/deps
+                 module-import
+                 module-module
+                 
+                 modules-compile!
+                 modules-clean!
+                 modules-in-dir
+                 module-deps
+                 module-compile/deps!
+                 module-clean/deps!
+                 module-generate-export-list
+                 module-compile-bunch
+                 module-files-in-dir
+                 
+                 loader
+                 module-module-loader)))
       '() '() '() "" "" "" #f builtin-environment))
    ;; path-absolutize
    (lambda (path #!optional ref) #f)

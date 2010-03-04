@@ -212,10 +212,21 @@
             (env-scope-env-set! val val)
             (env-next-phase-set! env val)
             val)
-          ;; Non-top-level environment.
-          (make-environment
-            (environment-next-phase
-             (environment-find-top env))))))
+          (let* ((next-phase-parent
+                  (environment-next-phase
+                   (environment-parent env)))
+                 (val (make-env next-phase-parent
+                                (env-module env)
+                                #f
+                                #f
+                                (box '())
+                                #f)))
+            (env-next-phase-set! env val) ;; This has to be done
+                                          ;; before the next
+                                          ;; expression
+            (env-scope-env-set! val (environment-next-phase
+                                     (env-scope-env env)))
+            val))))
 
 (define environment? env?)
 
@@ -334,10 +345,36 @@
         (env-ns-string-set! env ns-string)
         ns-string)))
 
+(define (traverse-code-find-next-phase source)
+  (let ((code (expr*:value source)))
+    (expr*:value-set
+     source
+     (cond
+      ((pair? code)
+       (cons (traverse-code-find-next-phase (car code))
+             (traverse-code-find-next-phase (cdr code))))
+      
+      ((vector? code)
+       (vector-map traverse-code-find-next-phase code))
+      
+      ((syntactic-closure? code)
+       (make-syntactic-closure-internal
+        (environment-next-phase
+         (syntactic-closure-env code))
+        (syntactic-closure-symbol code)))
+      
+      (else
+       code)))))
+
 (define (eval-in-next-phase code env)
+  (pp code)
   (let ((np (environment-next-phase env)))
     (parameterize
-     ((top-environment np))
+     ((top-environment np)
+      ;; Inside-letrec must be set to #f, otherwise strange errors
+      ;; will occur when the continuation that is within that closure
+      ;; gets invoked at the wrong time.
+      (inside-letrec #f))
      (eval-no-hook
       (expand-macro code np)))))
 
@@ -918,7 +955,7 @@
       (else
        source))))
 
-;; FIXME Remove this. It's used in one place though
+;; FIXME Remove this. It's used in one place though. And also in module.scm
 (define (expand-synclosure sc env #!optional ns)
   (cond
    ((and ns (symbol? sc))
@@ -1134,20 +1171,20 @@
 
 ;; Tools for defining macros
 
-(define (sc-macro-transformer thunk)
+(define (sc-macro-transformer-proc thunk)
   (lambda (form env mac-env)
     (expand-macro (thunk (expr*:strip-locationinfo form)
                          env)
                   mac-env)))
 
-(define (rsc-macro-transformer thunk)
+(define (rsc-macro-transformer-proc thunk)
   (lambda (form env mac-env)
     (expand-macro (thunk (expr*:strip-locationinfo form)
                          mac-env)
                   env)))
 
-(define (nh-macro-transformer thunk)
-  (rsc-macro-transformer
+(define (nh-macro-transformer-proc thunk)
+  (rsc-macro-transformer-proc
    (lambda (form env)
      (apply thunk (cdr form)))))
 
@@ -1267,7 +1304,7 @@
       (void)))
    
    (module
-    (nh-macro-transformer
+    (nh-macro-transformer-proc
      (lambda (#!optional name)
        (module-module name))))
 
@@ -1356,7 +1393,8 @@
    (syntax-begin
     (lambda (code env mac-env)
       (eval-in-next-phase `(begin
-                             ,@(cdr (expr*:value code)))
+                             ,@(cdr (traverse-code-find-next-phase
+                                     (expr*:value code))))
                           env)))
    
    (begin
@@ -1448,7 +1486,8 @@
                 '()
                 'define-syntax)
               ,(car src)
-              (module#nh-macro-transformer ,(cadr src)))
+              (module#nh-macro-transformer
+               ,(traverse-code-find-next-phase (cadr src))))
             env)))))
 
    (declare
@@ -1523,7 +1562,8 @@
                    
                    (cons (extract-synclosure-crawler
                           (car inner-code))
-                         (expand-macro (cdr inner-source)))))
+                         (expand-macro (cdr inner-source)
+                                       env))))
                (cdr code)))))))
 
    (case
@@ -1598,7 +1638,7 @@
             env)))))
    
    (compile-options
-    (nh-macro-transformer
+    (nh-macro-transformer-proc
      (lambda (#!key options
                     cc-options
                     ld-options-prelude
@@ -1607,11 +1647,11 @@
        (void))))
 
    (define-type
-     (nh-macro-transformer
+     (nh-macro-transformer-proc
       (lambda args
         (expand 'define-type #f #f args))))
 
    (define-structure
-     (nh-macro-transformer
+     (nh-macro-transformer-proc
       (lambda args
         (expand 'define-type #f #f args))))))

@@ -1127,6 +1127,47 @@
     (xx)))
 
 
+(expand-macro
+ '(letrec-syntax
+      ((mac-1
+        (lambda (form env mac-env)
+          (let ((arg (cadr form)))
+            (pp (list env: env mac-env: mac-env arg: arg))
+            (expand-macro (make-syntactic-closure mac-env '() arg) env))))
+       (mac
+        (syntax-rules ()
+          ((_ rest)
+           (begin
+             (mac-1 (let ((rest 0))
+                      rest
+                      (mac-1 rest)))
+             (let ((rest 0))
+               rest))))))
+    (mac aa)))
+
+
+;; If this gives the error "Unbound variable: 1#a", something is
+;; wrong. It means that the SC inside syntax-begin expanded into a
+;; reference to the outermost defined a.
+(expand-macro
+ `(let ((a 5))
+    ,(capture-syntactic-environment
+      (lambda (env)
+        (pp
+         (expand-macro
+          `(syntax-begin
+            ,(make-syntactic-closure env '() 'a))))
+        5))))
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1173,3 +1214,133 @@
  '(let ((a #f))
     ((lambda (a #!key (b a))
        b) #t)))
+
+
+
+
+
+
+
+(expand-macro
+ '(letrec-syntax
+      ((mac-1
+        (lambda (form env mac-env)
+          (let ((arg (cadr form)))
+            (pp (list env: env
+                      mac-env: mac-env
+                      arg: arg
+                      (expand-macro arg env)
+                      (expand-macro arg mac-env)))
+            (expand-macro (make-syntactic-closure mac-env '() arg) env))))
+       (mac
+        (syntax-rules ()
+          ((_ rest)
+           (begin
+             (mac-1 (let ((rest 0))
+                      rest
+                      (mac-1 rest)))
+             (let ((rest 0))
+               rest))))))
+    (mac aa)))
+
+
+
+
+(expand-macro
+ '(letrec-syntax
+      ((mac-1
+        (syntax-rules ()
+          ((_ a) a)))
+       (mac
+        (syntax-rules ()
+          ((_ rest)
+           (let ((rest #t))
+             (mac-1 rest))))))
+    (mac aa)))
+
+
+
+(let ((a (lambda () #t)))
+  (let-syntax
+      ((a (syntax-rules () ((_) #f)))
+       (b (syntax-rules () ((_) (a)))))
+    (b)))
+
+
+;; should return 1
+(let ((x 1))
+  (let-syntax
+      ((foo (syntax-rules ()
+              ((_ y)
+               (let-syntax
+                   ((bar (syntax-rules ()
+                           ((_) (let ((x 2)) y)))))
+                      (bar))))))
+    (foo x)))
+
+
+
+
+
+
+
+
+
+
+
+
+
+;; This is REALLY a corner case
+;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
+;; says that this should return 1, and SISC returns 1.
+(expand-macro
+ '(let ((x 1))
+    (let-syntax
+        ((foo (syntax-rules ()
+                ((_ y)
+                 (let-syntax
+                     ((bar (syntax-rules ()
+                             ((_) (let ((x 2)) y)))))
+                   (bar))))))
+      (foo x))))
+
+(expand-macro
+ '(let ((x 1))
+    (let-syntax
+        ((foo
+          (syntax-rules ()
+            ((_ y)
+             (let-syntax
+                 ((bar
+                   (sc-macro-transformer
+                    (lambda (form env)
+                      `(let ((x 2)) y)))))
+               (bar))))))
+      (foo x))))
+
+;; This is REALLY a corner case
+;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
+;; says that this should return 2, but SISC and Gauche returns 1.
+(expand-macro
+ '(let ((x 1))
+    (let-syntax
+        ((foo (syntax-rules ()
+                ((_ y)
+                 (let-syntax
+                     ((bar (syntax-rules ()
+                             ((_ x) y))))
+                   (bar 2))))))
+      (foo x))))
+
+(expand-macro
+ '(let ((x 1))
+    (let-syntax
+        ((foo (syntax-rules ()
+                ((_ y)
+                 (let-syntax
+                     ((bar
+                       (sc-macro-transformer
+                        (lambda (form env)
+                          `y))))
+                   (bar 2))))))
+      (foo x))))
