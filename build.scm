@@ -105,7 +105,7 @@
    (let ((mod (environment-module (top-environment))))
      (if mod
          (begin
-           (print (module-name mod))
+           (print ((loader-module-name (module-loader mod)) mod))
            (if (##fixnum.< 0 level)
                (print "/")))))
    (##repl-channel-ports-read-command channel level depth)))

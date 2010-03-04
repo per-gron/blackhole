@@ -311,6 +311,7 @@
 (define (eval-in-next-phase code env)
   (parameterize
    ((expansion-phase (+ 1 (expansion-phase)))
+    (calc-mode 'load)
     ;; Inside-letrec must be set to #f, otherwise strange errors
     ;; will occur when the continuation that is within that closure
     ;; gets invoked at the wrong time.

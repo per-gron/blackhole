@@ -574,7 +574,7 @@
         (values
          (loadenv-symbol-defs (*module-loadenv-symbols*)
                               env)
-           '()))))
+         '()))))
 
 (define calc-mode (make-parameter 'repl)) ;; one of 'repl, 'calc, 'load
 
@@ -914,7 +914,7 @@
          (lambda () (resolve-imports modules))
        (lambda (defs mods)
          (if (or (eq? (calc-mode) 'repl)
-                 (> (environment-phase env) 0))
+                 (> (expansion-phase) 0))
              (module-load/deps mods))
          
          (module-add-defs-to-env defs env))))))
@@ -1183,9 +1183,8 @@
        (list 'syntax-rules
              'mac
              (lambda (code env mac-env)
-               `(module#sc-macro-transformer
-                 (apply module#syntax-rules-proc
-                        ',(expr*:cdr code))))
+               `(apply module#syntax-rules-proc
+                       ',(expr*:cdr code)))
              builtin-environment)
        (map (lambda (x)
               (list x 'def (gen-symbol "module#" x)))
