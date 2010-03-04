@@ -81,7 +81,7 @@
         (module . ,(make-singleton-module-resolver
                     module-module-loader))
         (lib . ,lib-module-resolver)
-        (std . ,(package-module-resolver "~~/lib/modules/std/"))))
+        (std . ,(package-module-resolver "~~/lib/modules/std"))))
 
 
 

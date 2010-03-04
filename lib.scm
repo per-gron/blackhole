@@ -155,16 +155,6 @@
 
 (define lib-loader
   (make-loader
-   ;; load
-   (lambda (mod)
-     (let ((fn (module-file mod)))
-       (cons (list (path-strip-extension fn)
-                   mod)
-             (apply append
-                    (map module-load
-                         (module-info-uses
-                          (module-info mod)))))))
-   
    ;; calculate-info
    (lambda (mod)
      (module-info-calculate mod (module-file mod)))

@@ -1509,8 +1509,7 @@
                    
                    (cons (extract-synclosure-crawler
                           (car inner-code))
-                         (expand-macro (cdr inner-source)
-                                       env))))
+                         (expand-macro (cdr inner-code) env))))
                (cdr code)))))))
 
    (case
@@ -1548,6 +1547,10 @@
       (extract-synclosure-crawler source)))
 
    ;; TODO Add c-define
+
+   (c-define-type
+    (lambda (source env mac-env)
+      (extract-synclosure-crawler source)))
    
    (receive
     (lambda (code env mac-env)

@@ -15,9 +15,6 @@
 (define-type loader
   id: 786F06E1-BAF1-45A5-B31F-ED09AE93514F
 
-  ;; Returns a list of lists. The inner list is arguments to the
-  ;; load-once function, will be called like (apply load-once ...)
-  (load unprintable: equality-skip: read-only:)
   ;; Returns a module-info object for the given module
   (calculate-info unprintable: equality-skip: read-only:)
   ;; Takes a relative module identifier symbol and optionally an
@@ -90,12 +87,15 @@
        ids))
 
 (define (package-module-resolver path)
-  (lambda (_ __ . ids)
-    (map (lambda (id)
-           (make-module
-            local-loader
-            ((loader-path-absolutize local-loader) id path)))
-         ids)))
+  (let ((path
+         (string-append
+          (path-strip-trailing-directory-separator path) "/")))
+    (lambda (_ __ . ids)
+      (map (lambda (id)
+             (make-module
+              local-loader
+              ((loader-path-absolutize local-loader) id path)))
+           ids))))
 
 ;; This is a helper function for singleton loaders, for instance 'module
 (define (make-singleton-module-resolver pkg)
@@ -103,6 +103,11 @@
     (list (make-module pkg #f))))
 
 (define *module-resolvers* '())
+
+(define (module-resolver-add! name res)
+  (set! *module-resolvers*
+        (cons (cons name res)
+              *module-resolvers*)))
 
 (define (resolve-module name #!optional cm)
   (if (module? name)
@@ -626,8 +631,7 @@
   (if (*calc-info-cache*)
       (thunk)
       (parameterize
-       ((*calc-info-cache*
-         (make-table)))
+       ((*calc-info-cache* (make-table)))
        (suspend-ns-table-changes thunk))))
 
 (define (make-module-util-function fn)
@@ -647,16 +651,6 @@
              (table-set! (*calc-info-cache*) mp ret)
              ret))))))
 
-(define module-load
-  (make-module-util-function
-   (lambda (mod)
-     ((loader-load (module-loader mod)) mod))))
-
-(define module-name
-  (make-module-util-function
-   (lambda (mod)
-     ((loader-module-name (module-loader mod)) mod))))
-
 (define module-needs-compile?
   (make-module-util-function
    (lambda (mod)
@@ -666,7 +660,10 @@
            (not (file-newer? of path))
            'not-compiled)))))
 
-(define (module-compile! mod #!optional continue-on-error)
+(define (module-compile! mod
+                         #!key
+                         continue-on-error
+                         to-c)
   (let ((mod (resolve-one-module mod)))
     (with-module-cache
      (lambda ()
@@ -685,6 +682,7 @@
                (let ((result (compile-with-options
                               mod
                               (module-file mod)
+                              to-c: to-c
                               options: (module-info-options info)
                               cc-options: (module-info-cc-options info)
                               ld-options-prelude: (module-info-ld-options-prelude
@@ -884,16 +882,29 @@
              phase: phase)))
       defs))))
 
-(define (module-load/deps module)
+(define (module-load/deps modules)
   (with-module-cache
    (lambda ()
-     (for-each module-load/deps
-               (module-info-uses
-                (module-info module)))
-     
-     (for-each (lambda (args)
-                 (apply load-once args))
-               (module-load module)))))
+     (let ((load-table (make-table)))
+       (for-each
+        (lambda (module)
+          (let rec ((module module))
+            (cond
+             ((not (table-ref load-table
+                              (module-path module)
+                              #f))
+              (table-set! load-table
+                          (module-path module)
+                          #t)
+              
+              (for-each rec
+                        (module-info-uses
+                         (module-info module)))
+
+              (let ((fn (module-file module)))
+                (if fn
+                    (load-once fn module)))))))
+        modules)))))
 
 
 (define (module-import modules #!optional (env (top-environment)))
@@ -904,7 +915,7 @@
        (lambda (defs mods)
          (if (or (eq? (calc-mode) 'repl)
                  (> (environment-phase env) 0))
-             (for-each module-load/deps mods))
+             (module-load/deps mods))
          
          (module-add-defs-to-env defs env))))))
 
@@ -916,7 +927,7 @@
                     (set! repl-environment (top-environment)))
 
                 (top-environment (make-top-environment mod))
-                (module-load/deps mod)
+                (module-load/deps (list mod))
                 
                 (let ((info (module-info mod)))
                   (module-add-defs-to-env (module-info-imports info))
@@ -986,30 +997,41 @@
                        "\" is undefined\n")))
             missing-constants))
          
-         (let* ((exec-vect (vector-ref result 0))
-                (exec-len (vector-length exec-vect))
-                (ns (let ((str (module-namespace mod)))
-                      (substring str 0 (- (string-length str) 1)))))
-           ((if (= exec-len 1)
-                (vector-ref exec-vect 0)
-                (let loop ((i 0))
-                  (cond
-                   ((>= i exec-len)
-                    (error "Module initializer not found for:" ns))
-                   
-                   ((let ((name-sym (##procedure-name
-                                     (vector-ref exec-vect i))))
-                      (and
-                       name-sym
-                       (let* ((name-str (symbol->string name-sym))
-                              (name (substring name-str
+         (let* ((exec-vect
+                 (vector-ref result 0))
+                (exec-len
+                 (vector-length exec-vect))
+                (ns
+                 (let ((str (module-namespace mod)))
+                   (substring str 0 (- (string-length str) 1))))
+                (procedure-or-vector
+                 (if (= exec-len 1)
+                     (vector-ref exec-vect 0)
+                     (let loop ((i 0))
+                       (cond
+                        ((>= i exec-len)
+                         (error "Module initializer not found for:" ns))
+                        
+                        ((let ((name-sym (##procedure-name
+                                          (vector-ref exec-vect i))))
+                           (and
+                            name-sym
+                            (let* ((name-str
+                                    (symbol->string name-sym))
+                                   (name
+                                    (substring name-str
                                                1
                                                (string-length name-str))))
-                         (equal? name ns))))
-                    (vector-ref exec-vect i))
-                   
-                   (else
-                    (loop (+ 1 i))))))))))))))
+                              (equal? name ns))))
+                         (vector-ref exec-vect i))
+                        
+                        (else
+                         (loop (+ 1 i))))))))
+           ;; The API for this changed in Gambit 4.5.3. This is to be
+           ;; compatible with Gambits both newer and older than this.
+           ((if (vector? procedure-or-vector)
+                (vector-ref procedure-or-vector 1)
+                procedure-or-vector)))))))))
 
 (define (load-once file-with-extension module)
   (let ((module (and module (resolve-one-module module))))
@@ -1061,7 +1083,9 @@
     (calc-mode 'load))
    (if to-c
        (compile-file-to-c fn
-                          output: (and (string? to-c) to-c)
+                          output: (or (and (string? to-c) to-c)
+                                      (string-append (path-strip-extension fn)
+                                                     ".c"))
                           options: (append options *compiler-options*))
        (compile-file fn
                      options: (append options *compiler-options*)
@@ -1123,15 +1147,6 @@
 
 (define local-loader
   (make-loader
-   ;; load
-   (lambda (mod)
-     (cons (list (path-strip-extension (module-path mod))
-                 mod)
-           (apply append
-                  (map module-load
-                       (module-info-uses
-                        (module-info mod))))))
-   
    ;; calculate-info
    (lambda (mod)
      (module-info-calculate mod (module-file mod)))
@@ -1160,84 +1175,88 @@
 
 (define module-module-loader
   (make-loader
-   ;; load
-   (lambda (mod) '())
    ;; calculate-info
    (lambda (mod)
      (make-module-info
       '()
-      `(,(list 'syntax-rules
-               'mac
-               (lambda (code env mac-env)
-                 `(apply module#syntax-rules-proc
-                         ',(expr*:cdr code)))
-               builtin-environment)
-        ,@(map (lambda (x)
-                 (list x 'def (gen-symbol "module#" x)))
-               '(expand-macro
-                 make-syntactic-closure
-                 capture-syntactic-environment
-                 extract-syntactic-closure-list
-                 identifier?
-                 identifier=?
-                 sc-macro-transformer
-                 rsc-macro-transformer
-                 nh-macro-transformer
-                 
-                 make-loader
-                 loader-load
-                 loader-calculate-info
-                 loader-needs-compile?
-                 loader-clean!
-                 loader-compile!
-                 
-                 make-module-info
-                 module-info-symbols
-                 module-info-exports
-                 module-info-uses
-                 module-info-options
-                 module-info-cc-options
-                 module-info-ld-options-prelude
-                 module-info-ld-options
-                 module-info-force-compile?
-                 module-info-environment
-                 module-info-calculate
-                 
-                 resolve-module
-                 resolve-modules
-                 resolve-one-module
-                 
-                 current-module
-                 current-loader
-                 
-                 with-module-cache
-                 
-                 make-module
-                 module-loader
-                 module-path
-                 module-info
-                 module-load
-                 module-name
-                 module-needs-compile?
-                 module-compile!
-                 module-clean!
-                 module-namespace
-                 module-load/deps
-                 module-import
-                 module-module
-                 
-                 modules-compile!
-                 modules-clean!
-                 modules-in-dir
-                 module-deps
-                 module-compile/deps!
-                 module-clean/deps!
-                 module-generate-export-list
-                 module-compile-bunch
-                 module-files-in-dir
-                 
-                 loader
-                 module-module-loader)))
+      (cons
+       (list 'syntax-rules
+             'mac
+             (lambda (code env mac-env)
+               `(module#sc-macro-transformer
+                 (apply module#syntax-rules-proc
+                        ',(expr*:cdr code))))
+             builtin-environment)
+       (map (lambda (x)
+              (list x 'def (gen-symbol "module#" x)))
+            '(expand-macro
+              make-syntactic-closure
+              capture-syntactic-environment
+              extract-syntactic-closure-list
+              identifier?
+              identifier=?
+              sc-macro-transformer
+              rsc-macro-transformer
+              nh-macro-transformer
+              
+              make-loader
+              loader-load
+              loader-calculate-info
+              loader-needs-compile?
+              loader-clean!
+              loader-compile!
+              
+              make-module-info
+              module-info-symbols
+              module-info-exports
+              module-info-uses
+              module-info-options
+              module-info-cc-options
+              module-info-ld-options-prelude
+              module-info-ld-options
+              module-info-force-compile?
+              module-info-environment
+              module-info-calculate
+              
+              resolve-module
+              resolve-modules
+              resolve-one-module
+              make-singleton-module-resolver
+              package-module-resolver
+              module-resolver-add!
+              make-external-module-loader
+              make-external-module-resolver
+              
+              current-module
+              current-loader
+              
+              with-module-cache
+              
+              make-module
+              module-loader
+              module-path
+              module-info
+              module-needs-compile?
+              module-compile!
+              module-clean!
+              module-namespace
+              module-load/deps
+              module-import
+              module-module
+
+              modules-compile!
+              modules-clean!
+              modules-in-dir
+              module-deps
+              module-compile/deps!
+              module-clean/deps!
+              module-generate-export-list
+              module-compile-bunch
+              module-compile-to-standalone
+              module-files-in-dir
+              
+              loader
+              module-module-loader)))
       '() '() '() "" "" "" #f builtin-environment))
    ;; path-absolutize
    (lambda (path #!optional ref) #f)
