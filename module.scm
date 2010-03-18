@@ -699,7 +699,7 @@
 
 ;;; This is the functionality for choosing unique namespaces
 
-(define ns-file "~~/lib/modules/ns.dat")
+(define ns-file #f)
 (define ns-table #f)
 (define ns-table-timestamp #f)
 (define *ns-table-dont-read-file*
@@ -707,16 +707,20 @@
 
 (define (ns-file-timestamp)
   (time->seconds
-   (file-info-last-modification-time
-    (file-info ns-file))))
+   (if ns-file
+       (file-info-last-modification-time
+        (file-info ns-file))
+       (current-time))))
 
 (define (ns-table-up-to-date?)
-  (and ns-table-timestamp
-       (>= ns-table-timestamp
-           (ns-file-timestamp))))
+  (or (not ns-file)
+      (and ns-table-timestamp
+           (>= ns-table-timestamp
+               (ns-file-timestamp)))))
 
 (define (read-ns-table)
-  (if (file-exists? ns-file)
+  (if (and ns-file
+           (file-exists? ns-file))
       (let* ((size (file-info-size
                     (file-info ns-file)))
              (vec (make-u8vector size)))
@@ -735,13 +739,14 @@
 (define (save-ns-table tbl)
   (if (not tbl)
       (error "Cannot save non-existent ns-table"))
-  (with-output-to-file
-      ns-file
-    (lambda ()
-      (let ((vect (object->u8vector tbl)))
-        (write-subu8vector vect
-                           0
-                           (u8vector-length vect)))))
+  (if ns-file
+      (with-output-to-file
+          ns-file
+        (lambda ()
+          (let ((vect (object->u8vector tbl)))
+            (write-subu8vector vect
+                               0
+                               (u8vector-length vect))))))
   (set! ns-table-timestamp
         (ns-file-timestamp)))
 
