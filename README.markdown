@@ -112,8 +112,8 @@ The hygiene system doesn't do DSSSL parameter scoping quite right. In
 particular, `#!key` and `#!optional` parameters with default values of
 other parameters in the same parameter list don't work:
 
-    (define (fun a #!key (b a))
-      b)
+    > (define (fun a #!key (b a))
+        b)
     > (fun a)
     *** ERROR IN (console)@6.6 -- Unbound variable: ~#a
     1> 

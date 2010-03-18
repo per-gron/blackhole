@@ -699,7 +699,14 @@
 
 ;;; This is the functionality for choosing unique namespaces
 
-(define ns-file #f)
+(##define-syntax get-path
+  (lambda (a)
+    (vector-ref a 2)))
+
+(define ns-file (path-expand "ns.dat"
+                             (path-expand
+                              (path-directory
+                               (get-path)))))
 (define ns-table #f)
 (define ns-table-timestamp #f)
 (define *ns-table-dont-read-file*
