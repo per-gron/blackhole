@@ -21,7 +21,7 @@ merely for convenience:
   the Black Hole source directory.
 * Make a symbolic link called `bsc` that points to `gsc` and put it
   in your `PATH`.
-* Put this in your ~/.gambcini file, changing `blackhole-path` to
+* Put this in your `~/.gambcini` file, changing `blackhole-path` to
   point to where Black Hole is installed:
 
         (let ((blackhole-path "~~lib/modules"))
@@ -36,8 +36,8 @@ merely for convenience:
 
 # Usage
 
-In Black Hole, a module corresponds directly to a .scm source code
-file. To create a new module, create a .scm file.
+In Black Hole, a module corresponds directly to a `.scm` source code
+file. To create a new module, create a `.scm` file.
 
 Black Hole is designed to add as little extra syntax as possible from
 plain R5RS code. A simple R5RS .scm file without any external
@@ -63,9 +63,10 @@ several things, but the most common kind of module identifier is a
 symbol. `(import a-module)` will import the module in the file
 "a-module.scm".
 
-These paths are always relative to the directory of the module (or the
-working directory if in the REPL). `(import ../dir/module)` imports
-the module that is found at "../dir/module.scm"
+These paths are always relative to the directory where the module file
+is located (or the working directory if in the REPL).
+`(import ../dir/module)` imports the module that is found at
+"../dir/module.scm"
 
 ## Compiling modules
 
@@ -75,17 +76,17 @@ They are compiled from the REPL:
 * `(module-compile! 'test)` compiles the module found in "test.scm".
 * `(module-compile/deps! 'test)` compiles the module found in
    "test.scm" and all its dependencies.
-* `(module-compile-to-standalone "a.out" 'test) compiles the module
+* `(module-compile-to-standalone "a.out" 'test)` compiles the module
    found in "test.scm" to a standalone executable "a.out"
 
 ## Macros
 
 In essence, Black Hole is a macro expander. Black Hole extends Gambit
 with hygienic macros. It adds support for the special forms
-`define-syntax`, `let-syntax`, `letrec-syntax`. Currently, Black Hole
-supports macros through explicit renaming (`er-macro-transformer`),
-syntactic closures (`sc-macro-transformer` and
-`rsc-macro-transformer`) and R5RS `syntax-rules`.
+`define-syntax`, `let-syntax` and `letrec-syntax`. Currently, Black
+Hole supports macros through explicit renaming
+(`er-macro-transformer`), syntactic closures (`sc-macro-transformer`
+and `rsc-macro-transformer`) and R5RS `syntax-rules`.
 
 It also adds a macro expansion function, `expand-macro`. It can be
 used to inspect what is happening with the macro expansion:
@@ -113,5 +114,6 @@ these issues will never arise.
 Please drop me a line at per.eckerdal@gmail.com or use the Gambit
 mailing list if you have any questions.
 
-The blackhole page at the Gambit wiki might also be of interest,
-http://dynamo.iro.umontreal.ca/~gambit/wiki/index.php/Black_Hole
+The [Black Hole page at the Gambit
+wiki](http://dynamo.iro.umontreal.ca/~gambit/wiki/index.php/Black_Hole)
+might also be of interest.
