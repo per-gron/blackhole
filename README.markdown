@@ -14,7 +14,7 @@ macro expander. The installation of Black Hole basically consists of
 downloading it, compiling it, and making sure it is `load`ed at the
 proper times. Compilation isn't necessary, and it can be loaded
 manually from the REPL by `load`ing "build.scm". This approach is
-merely for convenience.
+merely for convenience:
 
 * Download Black Hole
 * Compile Black Hole by running `gsc build` from a terminal inside
@@ -23,12 +23,12 @@ merely for convenience.
   in your `PATH`.
 * Put this in your ~/.gambcini file:
 
-    (let ((blackhole-path "~~lib/modules"))
-      (and (equal? (path-strip-directory (car (command-line))) "bsc")
-           (load (path-expand "build" blackhole-path))
-           (begin 
-             (set! module#ns-file (path-expand "ns.dat" blackhole-path))
-             (println "Loaded Black Hole."))))
+     (let ((blackhole-path "~~lib/modules"))
+       (and (equal? (path-strip-directory (car (command-line))) "bsc")
+            (load (path-expand "build" blackhole-path))
+            (begin 
+              (set! module#ns-file (path-expand "ns.dat" blackhole-path))
+              (println "Loaded Black Hole."))))
 
 * Edit `blackhole-path` to point to where Black Hole is located.
 * You can now run Black Hole with the command `bsc`
