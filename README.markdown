@@ -111,8 +111,8 @@ these issues will never arise.
 
 # More information / Contact
 
-Please drop me a line at per.eckerdal@gmail.com or use the Gambit
-mailing list if you have any questions.
+Please drop me a line at *per dot eckerdal at gmail dot com* or use
+the Gambit mailing list if you have any questions.
 
 The [Black Hole page at the Gambit
 wiki](http://dynamo.iro.umontreal.ca/~gambit/wiki/index.php/Black_Hole)
