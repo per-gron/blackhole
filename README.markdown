@@ -47,8 +47,8 @@ dependencies is without modification a valid Black Hole module.
 
 By default, all defined functions, globals and macros are exported. To
 control that, place an `export` form at the top of the file, that
-enumerates the name that should be exported. For instance you could
-create a file called a-module.scm with the following contents:
+enumerates the names that should be exported. For instance you could
+create a file named "a-module.scm" with the following contents:
 
     (export a-procedure a-number)
     
@@ -107,6 +107,17 @@ The syntactic tower is only partially implemented. This can lead to
 confusion about what code is executed on compile-time versus
 run-time. If you don't use macros, or only use `syntax-rules` macros,
 these issues will never arise.
+
+The hygiene system doesn't do DSSSL parameter scoping quite right. In
+particular, `#!key` and `#!optional` parameters with default values of
+other parameters in the same parameter list don't work:
+
+    (define (fun a #!key (b a))
+      b)
+    > (fun a)
+    *** ERROR IN (console)@6.6 -- Unbound variable: ~#a
+    1> 
+    > 
 
 
 # More information / Contact
