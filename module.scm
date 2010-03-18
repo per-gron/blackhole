@@ -1196,6 +1196,7 @@
               identifier=?
               sc-macro-transformer
               rsc-macro-transformer
+              er-macro-transformer
               nh-macro-transformer
               
               make-loader

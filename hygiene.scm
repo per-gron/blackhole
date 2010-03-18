@@ -101,8 +101,8 @@
 ;; The ns field is the field that contain the hygiene information. 
 ;;
 ;; The actual data structure looks like this. It is one of:
-;; * A box of an alist, where the cars are identifiers.
-;; * A table, where the keys are symbols.
+;; * A box of an alist, where the cars are pairs of (phase . identifier).
+;; * A table, where the keys are pairs of (phase . symbol).
 ;; * A pair of two datastructures of the this type. Lookups are done
 ;;   first in the car, and if nothing was found, search in the
 ;;   cdr.
@@ -1132,6 +1132,16 @@
     (expand-macro (thunk (expr*:strip-locationinfo form)
                          mac-env)
                   env)))
+
+(define (er-macro-transformer thunk)
+  (lambda (form env mac-env)
+    (expand-macro
+     (thunk (expr*:strip-locationinfo form)
+            (lambda (sym)
+              (make-syntactic-closure mac-env '() sym))
+            (lambda (a b)
+              (identifier=? env a env b)))
+     env)))
 
 (define (nh-macro-transformer thunk)
   (rsc-macro-transformer
