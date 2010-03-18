@@ -1,3 +1,4 @@
-(use test2)
+(import test2)
 
-(pp (mac))
+(define module#test-ran #t)
+(define module#test-result (mac))
