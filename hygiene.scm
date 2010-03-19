@@ -387,13 +387,23 @@
                 form))
 
    ((syntactic-capture? form)
-    (if (not (eq? ids '()))
-        (error "Calling make-syntactic-closure with a \
-                syncapture and not '() as ids isn't implemented."))
-    (make-syntactic-capture
-     (lambda (inner-env)
-       ;; FIXME This is not correct when ids isn't '()
-       ((syntactic-capture-proc form) env))))
+    (cond
+     ((eq? ids '())
+      (make-syntactic-capture
+       (lambda (inner-env)
+         ((syntactic-capture-proc form) env))))
+     
+     (else
+      (make-syntactic-capture
+       (lambda (inner-env)
+         (let ((created-env (make-environment env (box '()) #f)))
+           (for-each (lambda (symbol)
+                       (ns-add! (env-ns created-env)
+                                (expansion-phase)
+                                symbol
+                                (environment-get inner-env symbol)))
+                     ids)
+           ((syntactic-capture-proc form) created-env)))))))
    
    ;; Forms that are not symbols, pairs, vectors or syntactic closures
    ;; (for instance null, numbers or strings) don't need to be wrapped
