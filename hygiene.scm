@@ -1579,26 +1579,6 @@
               env)))
          (cdr code)))))
    
-   (define-once
-     ;; TODO This doesn't quite work yet.
-     ;; Idea stolen from Christian Jaeger
-     (lambda (code env mac-env)
-       ;; TODO This doesn't generate source code locations correctly
-       (let ((code (expr*:strip-locationinfo code)))
-         (let ((src (transform-to-lambda code)))
-           (expand-macro
-            `(,(make-syntactic-closure empty-environment
-                                       '()
-                                       'define)
-              ,(car src)
-              (,(make-syntactic-closure empty-environment
-                                        '()
-                                        'if)
-               (module#defined? ',(car src))
-               ',(car src)
-               ,(cadr src)))
-            env)))))
-   
    (compile-options
     (nh-macro-transformer
      (lambda (#!key options
