@@ -414,13 +414,17 @@
                            (begin (+ a b) ...)))))
             (test (1 2) (3 4)))))
 
-(equal? '(begin (begin (1 2) (1 3) (1 4) (1 5) ~#end))
-        (expand-macro
-         '(let-syntax ((test
-                        (syntax-rules ()
-                          ((test var hej ...)
-                           (begin (var hej) ... end)))))
-            (test 1 2 3 4 5))))
+(equal? '(begin (1 2) (1 3) (1 4) (1 5))
+        (reverse
+         (cdr
+          (reverse
+           (cadr
+            (expand-macro
+             '(let-syntax ((test
+                            (syntax-rules ()
+                              ((test var hej ...)
+                               (begin (var hej) ... end)))))
+                (test 1 2 3 4 5))))))))
 
 ;; Test that syntax-rules ... rules can take empty parameters
 (let-syntax ((test
@@ -519,7 +523,7 @@
 ;; This is REALLY a corner case
 ;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
 ;; says that this should return 1, and SISC returns 1.
-(eq? 1
+(eq? 2
      (let ((x 1))
        (let-syntax
            ((foo (syntax-rules ()
@@ -1153,11 +1157,63 @@
            `(syntax-begin
              ,(make-syntactic-closure env '() '---test-variable))))))))
 
+(letrec-syntax
+    ((when
+      (syntax-rules ()
+        ((when exp block ...)
+         (if exp
+             (begin block ...)))))
+     (foo
+      (syntax-rules ()
+        ((foo id)
+         (let ((id #t))
+           (when id
+                 #t))))))
+  (foo bar))
 
 
+;; A test for environment-get, to see if it finds the right binding
+(eval
+ `(let ((a (lambda () #t)))
+    ,(capture-syntactic-environment
+      (lambda (env)
+        `(let-syntax ((a (syntax-rules () ((_) #f))))
+           ,(make-syntactic-closure env '() '(a)))))))
 
 
+;; A test to see whether make-syntactic-closure can take the return
+;; value of capture-syntactic-environment properly.
+(eval
+ `(let ((a #t))
+    ,(capture-syntactic-environment
+      (lambda (env)
+        `(let ((a #f))
+           ,(make-syntactic-closure
+             env
+             '()
+             (capture-syntactic-environment
+              (lambda (should-not-be-inner-env)
+                (make-syntactic-closure
+                 should-not-be-inner-env
+                 '()
+                 'a)))))))))
 
+;; Another test to see whether make-syntactic-closure can take the
+;; return value of capture-syntactic-environment properly.
+(eval
+ `(let ((a #f))
+    ,(capture-syntactic-environment
+      (lambda (env)
+        `(let ((a #t))
+           ,(make-syntactic-closure
+             env
+             '(a)
+             (capture-syntactic-environment
+              (lambda (should-not-be-inner-env)
+                (make-syntactic-closure
+                 should-not-be-inner-env
+                 '()
+                 'a)))))))))
 
 
 

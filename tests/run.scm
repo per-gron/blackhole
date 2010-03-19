@@ -1,4 +1,4 @@
-(define (print-fail expression result)
+(define (print-fail expression result fail success)
   (println "  Test number " (+ fail success) " failed:")
   (write expression)
   (println "\n  With result:")
@@ -13,14 +13,19 @@
         (fail 0))
     (for-each
      (lambda (expression)
-       (let ((result (eval expression)))
+       (let ((result
+              (with-exception-catcher
+               (lambda (e)
+                 e)
+               (lambda ()
+                 (eval expression)))))
          (cond
           ((eq? result #t)
            (set! success (+ 1 success)))
           
           (else
            (set! fail (+ 1 fail))
-           (print-fail expression result)))))
+           (print-fail expression result fail success)))))
      test-expressions)
     
     (println "\nRan " (+ fail success) " tests. " fail " tests failed.")))

@@ -150,7 +150,7 @@
   ;;     (define (b) #t))
   ;;   (b))
   ;;
-  ;; It is not read-only, to be able to actually implement the
+  ;; It is not read-only, but that's only to be able to implement the
   ;; circular pointer.
   (scope-env unprintable:))
 
@@ -196,11 +196,18 @@
              (environment-ancestor-of? env p (+ 1 distance))))))
 
 ;; This is one of the really core functions of the hygiene system.
+;;
+;; It does a lookup in an orig-env for name. When looking up a
+;; syntactic closure, sc-environment is the closure's environment.
+;;
+;; 
 (define (environment-get orig-env name
                          #!key
-                         (sc-environment orig-env)
+                         sc-environment
                          ignore-globals
                          (phase (expansion-phase)))
+  (if (not sc-environment)
+      (set! sc-environment orig-env))
   (let* ((gone-through-sc-env #f)
          (best-def #f)
          (best-distance #f)
@@ -215,69 +222,64 @@
                        (set! best-distance distance)))))))
     
     (let env-get ((env orig-env))
-      (let ((scope-env (env-scope-env env)))
-        (let ns-get ((ns (env-ns env)) (phase phase))
-          (cond
-           ((and (not gone-through-sc-env)
-                 (eq? env sc-environment))
-            (set! gone-through-sc-env #t)
-            (env-get env))
-           
-           ((box? ns)
-            (let ((env-ancestor-of?-env-sc-env
-                   ;; Avoid caculating this many times
-                   (environment-ancestor-of?
-                    scope-env
-                    sc-environment)))
-              (for-each
-               (lambda (def)
-                 (let* ((phase/name-pair (car def))
-                        (p (car phase/name-pair))
-                        (n (cdr phase/name-pair)))
-                   (and (= p phase)
-                        (maybe-update-best-def
-                         (cond
-                          ((syntactic-closure? n)
-                           (and (eq? name
-                                     (syntactic-closure-symbol n))
-                                (environment-ancestor-of?
-                                 (env-scope-env
-                                  (syntactic-closure-env n))
-                                 sc-environment)))
-                          
-                          (else
-                           (and (eq? name n)
-                                env-ancestor-of?-env-sc-env)))
-                         (cdr def)))))
-                 (unbox ns)))
-            
-            (env-get (env-parent env)))
-           
-           ((pair? ns)
-            (or (ns-get (car ns) phase)
-                (ns-get (cdr ns) phase)))
-           
-           ((table? ns)
-            (if (not gone-through-sc-env)
-                (env-get sc-environment)
-                (and (not ignore-globals)
-                     (maybe-update-best-def
-                      (environment-ancestor-of?
-                       scope-env
-                       sc-environment)
-                      (table-ref ns
-                                 (cons phase name)
-                                 #f)))))
-           
-           ((procedure? ns)
-            (if (not gone-through-sc-env)
-                (env-get sc-environment)
-                (call-with-values ns
-                  (lambda (new-ns new-phase)
-                    (ns-get new-ns new-phase)))))
-           
-           (else
-            (error "Invalid ns" ns))))))
+      (let ns-get ((ns (env-ns env)) (phase phase))
+        (cond
+         ((and (not gone-through-sc-env)
+               (eq? env sc-environment))
+          (set! gone-through-sc-env #t)
+          (env-get env))
+         
+         ((box? ns)
+          (let ((env-ancestor-of?-env-sc-env
+                 ;; Avoid caculating this many times
+                 (environment-ancestor-of? env sc-environment)))
+            (for-each
+             (lambda (def)
+               (let* ((phase/name-pair (car def))
+                      (p (car phase/name-pair))
+                      (n (cdr phase/name-pair)))
+                 (and (= p phase)
+                      (maybe-update-best-def
+                       (cond
+                        ((syntactic-closure? n)
+                         (and (eq? name
+                                   (syntactic-closure-symbol n))
+                              (environment-ancestor-of?
+                               (env-scope-env
+                                (syntactic-closure-env n))
+                               sc-environment)))
+                        
+                        (else
+                         (and (eq? name n)
+                              env-ancestor-of?-env-sc-env)))
+                       (cdr def)))))
+             (unbox ns)))
+          
+          (env-get (env-parent env)))
+         
+         ((pair? ns)
+          (or (ns-get (car ns) phase)
+              (ns-get (cdr ns) phase)))
+         
+         ((table? ns)
+          (if (not gone-through-sc-env)
+              (env-get sc-environment)
+              (and (not ignore-globals)
+                   (maybe-update-best-def
+                    (environment-ancestor-of? env sc-environment)
+                    (table-ref ns
+                               (cons phase name)
+                               #f)))))
+         
+         ((procedure? ns)
+          (if (not gone-through-sc-env)
+              (env-get sc-environment)
+              (call-with-values ns
+                (lambda (new-ns new-phase)
+                  (ns-get new-ns new-phase)))))
+         
+         (else
+          (error "Invalid ns" ns)))))
     
     best-def))
 
@@ -383,6 +385,15 @@
     (vector-map (lambda (x)
                   (make-syntactic-closure env ids x))
                 form))
+
+   ((syntactic-capture? form)
+    (if (not (eq? ids '()))
+        (error "Calling make-syntactic-closure with a \
+                syncapture and not '() as ids isn't implemented."))
+    (make-syntactic-capture
+     (lambda (inner-env)
+       ;; FIXME This is not correct when ids isn't '()
+       ((syntactic-capture-proc form) env))))
    
    ;; Forms that are not symbols, pairs, vectors or syntactic closures
    ;; (for instance null, numbers or strings) don't need to be wrapped
@@ -905,7 +916,7 @@
       (else
        source))))
 
-;; FIXME Remove this. It's used in one place though. And also in module.scm
+;; TODO Remove this. It's used in one place though. And also in module.scm
 (define (expand-synclosure sc env #!optional ns)
   (cond
    ((and ns (symbol? sc))
@@ -1124,9 +1135,12 @@
 
 (define (sc-macro-transformer thunk)
   (lambda (form env mac-env)
-    (expand-macro (thunk (expr*:strip-locationinfo form)
-                         env)
-                  mac-env)))
+    (expand-macro (make-syntactic-closure
+                   mac-env
+                   '()
+                   (thunk (expr*:strip-locationinfo form)
+                          env))
+                  env)))
 
 (define (rsc-macro-transformer thunk)
   (lambda (form env mac-env)

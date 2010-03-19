@@ -161,7 +161,7 @@
               (transform-ellipsis-to-prefix (cdr form)))))
 
    (else form)))
-  
+
 
 (define (substitute env pattern-vars subs form)
   (cond
@@ -278,11 +278,14 @@
                    (lambda (subs)
                      (let ((res
                             (expand-macro
-                             (substitute env
-                                         pattern-vars
-                                         (list subs)
-                                         pe)
-                             mac-env)))
+                             (make-syntactic-closure
+                              mac-env
+                              '()
+                              (substitute env
+                                          pattern-vars
+                                          (list subs)
+                                          pe))
+                             env)))
                        (ret res)))))))
             rules prefix-ellipsis)
            (error "Ill-formed special form: "
