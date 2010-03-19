@@ -1215,6 +1215,14 @@
                  '()
                  'a)))))))))
 
+;; This should produce an error
+(with-exception-catcher
+ (lambda (e)
+   #t)
+ (lambda ()
+  (expand-macro '(let ((a 5) (a 6)) a))
+  #f))
+
 
 
 
