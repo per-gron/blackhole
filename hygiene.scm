@@ -921,7 +921,8 @@
      (lambda (val)
        (if (eq? 'def (car val))
            (cadr val)
-           (error "Macro name can't be used as a variable:" code))))
+           (error "Macro name can't be used as a variable:"
+                  (syntactic-closure-symbol sc)))))
    
    (else
     (gen-symbol (environment-namespace env)
