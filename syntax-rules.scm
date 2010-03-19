@@ -80,7 +80,10 @@
                              env form)
                '())
           (list (cons pattern
-                      (make-syntactic-closure env '() form)))))
+                      ;; Was previously: (make-syntactic-closure env '() form)
+                      ;; I don't dare to remove that yet, but I *think* this
+                      ;; is correct.
+                      form))))
      
      ((and (pair? pattern)
            (pair? (cdr pattern))
@@ -163,7 +166,7 @@
    (else form)))
 
 
-(define (substitute env pattern-vars subs form)
+(define (substitute mac-env env pattern-vars subs form)
   (cond
    ((identifier? form)
     (if (sc-memq env form pattern-vars)
@@ -175,7 +178,7 @@
           (if pair
               (cdr pair)
               (error "Unbound pattern variable" form)))
-        form))
+        (make-syntactic-closure mac-env '() form)))
    
    ((pair? form)
     (if (and (pair? (car form))
@@ -216,7 +219,8 @@
                  (loop '()))
                (lambda ()
                  (append
-                  (substitute env
+                  (substitute mac-env
+                              env
                               pattern-vars
                               (cons (car inner-subs)
                                     subs)
@@ -224,9 +228,9 @@
                   (loop (cdr inner-subs))))))
              
              ((null? inner-subs)
-              (substitute env pattern-vars subs (cdr form))))))
-        (cons (substitute env pattern-vars subs (car form))
-              (substitute env pattern-vars subs (cdr form)))))
+              (substitute mac-env env pattern-vars subs (cdr form))))))
+        (cons (substitute mac-env env pattern-vars subs (car form))
+              (substitute mac-env env pattern-vars subs (cdr form)))))
    
    ;; TODO Vectors?
    
@@ -278,13 +282,11 @@
                    (lambda (subs)
                      (let ((res
                             (expand-macro
-                             (make-syntactic-closure
-                              mac-env
-                              '()
-                              (substitute env
-                                          pattern-vars
-                                          (list subs)
-                                          pe))
+                             (substitute mac-env
+                                         env
+                                         pattern-vars
+                                         (list subs)
+                                         pe)
                              env)))
                        (ret res)))))))
             rules prefix-ellipsis)
