@@ -8,14 +8,6 @@
 ;; * Lägg till stöd för att detektera namespace-konflikter
 ;; * Jag borde nästan helt kasta expr.scm
 ;; * Kolla möjligheten att implementera kompatibilitetslager för R6RS
-;; * Ändra så att inget som krävs för runtime i build är exporterat by
-;;   default i moduler. Däremot ska allt vara importerat by default i
-;;   REPLen.
-;;
-;; Enkel TODO
-;; * Implementera lib
-;; * Källkodsplatser
-;; * do, time, parameterize form för hygiensystemet
 
 ;; Design limitations
 ;; * Just nu om man har en fil som kräver kompilering kommer
@@ -26,10 +18,6 @@
 ;;   kräver kompilering som (use)ar en annan fil som kräver
 ;;   kompilering, då (use) av den första filen alltid kommer
 ;;   krascha om inte den andra redan är kompilerad.
-;; * #!key parameters är omöjligt att implementera hygien till.
-
-;; Feature requests
-;; * Something to be able to work around #!key parameter hygiene
 
 (##namespace ("module#"))
 
