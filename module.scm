@@ -1049,6 +1049,7 @@
   (let ((module (and module (resolve-one-module module))))
     (parameterize
      ((top-environment (make-top-environment module))
+      (expansion-phase 0)
       (calc-mode 'load))
      (with-module-cache
       (lambda ()
