@@ -12,3 +12,6 @@
   (info read-only:)
   (loader read-only:)
   (path read-only:))
+
+;; To be implemented
+;; (define (load-module path loader) ...)

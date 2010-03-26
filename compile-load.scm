@@ -159,3 +159,49 @@
                                           *compiler-ld-options-prelude*)
                      ld-options: (string-append
                                   ld-options " " *compiler-ld-options*)))))
+
+
+
+(define (object-files path)
+  (let* ((dir (path-directory path))
+         (begin-str (string-append (path-strip-directory
+                                    (path-strip-extension path))
+                                   ".o")))
+    (map (lambda (fn)
+           (path-expand fn dir))
+         (filter (lambda (fn) (string-begins-with fn begin-str))
+                 (directory-files dir)))))
+
+(define (object-file-extract-number fn)
+  (or (string->number
+       (substring fn
+                  (let loop ((i (string-length fn)))
+                    (if (zero? i)
+                        0
+                        (let ((chr
+                               (char->integer
+                                (string-ref fn (- i 1)))))
+                          (if (and (>= chr (char->integer #\0))
+                                   (<= chr (char->integer #\9)))
+                              (loop (- i 1))
+                              i))))
+                  (string-length fn)))
+      0))
+
+(define (last-object-file path)
+  (let ((lst (object-files path))
+        (max-num -1)
+        (res #f))
+    (let loop ((lst lst))
+      (if (not (null? lst))
+          (let ((num (object-file-extract-number (car lst))))
+            (if (> num max-num)
+                (begin
+                  (set! max-num num)
+                  (set! res (car lst))))
+            (loop (cdr lst)))))
+    res))
+
+(define (clean-file path)
+  (for-each delete-file
+            (object-files path)))
