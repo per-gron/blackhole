@@ -125,37 +125,29 @@
    (else
     str)))
 
-(define (namespace-choose-unique mod)
-  (or (module-ns mod)
-      (let ((ns
-             (let ((abs-path (module-file mod))
-                   (loader (module-loader mod)))
-               (get-ns-table)
-               
-               (or (table-ref ns-table abs-path #f)
-                   (let ((ns-no-reserved
-                          (namespace-rename-reserved
-                           ((loader-module-name loader) mod))))
-                     (let loop ((i 0))
-                       (let* ((name
-                               (if (eq? i 0)
-                                   ns-no-reserved
-                                   (string-append
-                                    ns-no-reserved
-                                    "_"
-                                    (number->string i))))
-                              (found #f))
-                         
-                         (table-for-each
-                          (lambda (k v)
-                            (if (equal? v name)
-                                (set! found #t)))
-                          ns-table)
-                         
-                         (if found
-                             (loop (+ 1 i))
-                             (begin
-                               (update-ns-table name abs-path)
-                               name)))))))))
-        (module-ns-set! mod ns)
-        ns)))
+(define (namespace-choose-unique module-name absolute-path)
+  (get-ns-table)
+  (or (table-ref ns-table absolute-path #f)
+      (let ((ns-no-reserved
+             (namespace-rename-reserved module-name)))
+        (let loop ((i 0))
+          (let* ((name
+                  (if (eq? i 0)
+                      ns-no-reserved
+                      (string-append
+                       ns-no-reserved
+                       "_"
+                       (number->string i))))
+                 (found #f))
+            
+            (table-for-each
+             (lambda (k v)
+               (if (equal? v name)
+                   (set! found #t)))
+             ns-table)
+            
+            (if found
+                (loop (+ 1 i))
+                (begin
+                  (update-ns-table name absolute-path)
+                  name)))))))
