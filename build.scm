@@ -21,6 +21,9 @@
 ;; Module, import and export resolvers
 (##include "resolvers.scm")
 
+;; Namespace choosing functionality
+(##include "namespace.scm")
+
 ;; The module system core
 (##include "module.scm")
 
