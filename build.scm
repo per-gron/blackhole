@@ -6,35 +6,20 @@
 	 (extended-bindings)
 	 (block))
 
-;; Utility functions. There because I can't include libraries from here
-(##include "util.scm")
 
-;; Library for handling Gambit source objects
-(##include "expr.scm")
-
-;; The syntax closures implementation
-(##include "hygiene.scm")
-
-;; The syntax-rules implementation
-(##include "syntax-rules.scm")
-
-;; Module, import and export resolvers
-(##include "resolvers.scm")
-
-;; Namespace choosing functionality
-(##include "namespace.scm")
-
-;; Utilities for compiling and loading
-(##include "compile-load.scm")
-
-;; The module system core
-(##include "module.scm")
-
-;; The lib (fetching remote modules) implementation
-(##include "lib.scm")
-
-;; Some utilities, for instance module-compile/deps!
-(##include "extras.scm")
+(##include "util.scm")             ;; Utility functions. There because
+                                   ;; I can't include libraries from
+                                   ;; here
+(##include "expr.scm")             ;; Library for handling Gambit source objects
+(##include "hygiene.scm")          ;; The syntax closures implementation
+(##include "syntax-rules.scm")     ;; The syntax-rules implementation
+(##include "resolvers.scm")        ;; Module, import and export resolvers
+(##include "namespace.scm")        ;; Namespace choosing functionality
+(##include "compile-load.scm")     ;; Utilities for compiling and loading
+(##include "syntactic-tower.scm")  ;; Syntactic tower data structure
+(##include "module.scm")           ;; The module system core
+(##include "lib.scm")              ;; The lib (fetching remote modules) implementation
+(##include "extras.scm")           ;; Some utilities, for instance module-compile/deps!
 
 
 
