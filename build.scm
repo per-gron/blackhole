@@ -18,6 +18,9 @@
 ;; The syntax-rules implementation
 (##include "syntax-rules.scm")
 
+;; Module, import and export resolvers
+(##include "resolvers.scm")
+
 ;; The module system core
 (##include "module.scm")
 
