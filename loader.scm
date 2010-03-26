@@ -19,6 +19,7 @@
 
 (define-type loader
   id: 786F06E1-BAF1-45A5-B31F-ED09AE93514F
+  constructor: make-loader/internal
 
   ;; Takes a possible relative path and an origin path to which the
   ;; path should be interpreted relative to, and returns an absolute
@@ -28,6 +29,18 @@
   ;; Takes a module and returns a string for the name of the module
   (module-name unprintable: equality-skip: read-only:))
 
+(define (make-loader #!key
+                     path-absolutize
+                     load-module
+                     module-name)
+  (if (not (and (procedure? path-absolutize)
+                (procedure? load-module)
+                (procedure? module-name)))
+      (error "Invalid parameters"))
+  (make-loader/internal path-absolutize
+                        load-module
+                        module-name))
+
 
 
 
@@ -35,39 +48,39 @@
 
 (define local-loader
   (make-loader   
-   ;; path-absolutize
+   path-absolutize:
    (lambda (path ref)
      (path-normalize (string-append (symbol->string path) ".scm")
                      #f ;; Don't allow relative paths
                      (path-normalize
                       (path-directory ref))))
    
-   ;; load-module
+   load-module:
    (lambda (path)
      (load-module path local-loader))
 
-   ;; module-name
+   module-name:
    (lambda (path)
      (path-strip-directory
       (path-strip-extension path)))))
 
 (define module-module-loader
   (make-loader
-   ;; path-absolutize
+   path-absolutize:
    (lambda (path ref) #f)
 
-   ;; load-module
+   load-module:
    (lambda (path)
      (make-loaded-module
-      ;; instantiate-runtime
+      instantiate-runtime:
       (lambda ()
         #!void)
 
-      ;; instantiate-compiletime
+      instantiate-compiletime:
       (lambda (phase loaded-module syntactic-tower)
         ...)
 
-      ;; info
+      info:
       (make-module-info
        ;; TODO Make sure these parameters are right
        '()
@@ -151,12 +164,12 @@
                module-module-loader)))
        '() '() '() "" "" "" #f builtin-environment)
 
-      ;; loader
+      loader:
       module-module-loader
 
-      ;; path
+      path:
       #f))
 
-   ;; module-name
+   module-name:
    (lambda (path) "module")))
 
