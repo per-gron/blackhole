@@ -39,18 +39,12 @@
 (define *compiler-ld-options-prelude* "")
 (define *compiler-ld-options* "")
 
-;;(set! *compiler-options* '(debug))
-;;(set! *compiler-cc-options* "-I/usr/local/BerkeleyDB.4.7/include")
-;;(set! *compiler-ld-options-prelude* "-L/usr/local/BerkeleyDB.4.7/lib")
-
 (set! *module-resolvers*
       `((here . ,current-module-resolver)
         (module . ,(make-singleton-module-resolver
                     module-module-loader))
         (lib . ,lib-module-resolver)
         (std . ,(package-module-resolver "~~lib/modules/std"))))
-
-
 
 
 ;; ---------- Add the hooks =) ----------
