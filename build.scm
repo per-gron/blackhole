@@ -19,6 +19,7 @@
 (##include "syntactic-tower.scm")  ;; Syntactic tower data structure
 (##include "module-reference.scm") ;; Module reference data structure
 (##include "module-info.scm")      ;; Module info data structure
+(##include "loaded-module.scm")    ;; Loaded module data structure
 (##include "loader.scm")           ;; Loader data structure
 (##include "module.scm")           ;; The module system core
 (##include "lib.scm")              ;; The lib (fetching remote modules) implementation
