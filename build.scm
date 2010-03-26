@@ -24,6 +24,9 @@
 ;; Namespace choosing functionality
 (##include "namespace.scm")
 
+;; Utilities for compiling and loading
+(##include "compile-load.scm")
+
 ;; The module system core
 (##include "module.scm")
 
