@@ -18,6 +18,7 @@
 (##include "compile-load.scm")     ;; Utilities for compiling and loading
 (##include "syntactic-tower.scm")  ;; Syntactic tower data structure
 (##include "module-reference.scm") ;; Module reference data structure
+(##include "module-info.scm")      ;; Module info data structure
 (##include "module.scm")           ;; The module system core
 (##include "lib.scm")              ;; The lib (fetching remote modules) implementation
 (##include "extras.scm")           ;; Some utilities, for instance module-compile/deps!
