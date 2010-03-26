@@ -346,7 +346,7 @@
       (else
        (error "Invalid exports declaration" val))))))
 
-;; TODO This code is pretty much a copy/pase of resolve-imports, which
+;; TODO This code is pretty much a copy/paste of resolve-imports, which
 ;; is bad.
 (define (resolve-exports vals env)
   (with-module-cache

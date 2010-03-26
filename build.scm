@@ -1,24 +1,3 @@
-;; TODO
-;; * implementera include
-;; * Den kompilerar inte om dependencies när det behövs (pga
-;;   makro-expansion)
-;; * Stöd för att kompilera till annan mapp
-;; * Gör en funktion som söker och visar vilka moduler som
-;;   definierar en viss symbol
-;; * Lägg till stöd för att detektera namespace-konflikter
-;; * Jag borde nästan helt kasta expr.scm
-;; * Kolla möjligheten att implementera kompatibilitetslager för R6RS
-
-;; Design limitations
-;; * Just nu om man har en fil som kräver kompilering kommer
-;;   den att kompileras när den (use)as, oavsett om det redan
-;;   är en kompilering igång. Detta kraschar Gambit.
-;;     Compile-all-modules går runt denna begränsning, så såvitt
-;;   jag vet visar sig detta endast när man har en fil som
-;;   kräver kompilering som (use)ar en annan fil som kräver
-;;   kompilering, då (use) av den första filen alltid kommer
-;;   krascha om inte den andra redan är kompilerad.
-
 (##namespace ("module#"))
 
 (##include "~~/lib/gambit#.scm")
