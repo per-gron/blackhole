@@ -7,7 +7,7 @@
 ;;;; ---------- Module utility functions ----------
 
 (define (current-module)
-  (environment-module (top-environment)))
+  (environment-module-reference (top-environment)))
 
 (define (current-loader)
   (let ((cm (current-module)))
@@ -93,10 +93,13 @@
          (make-module-util-function
           (lambda (mod)
             (string-append
-             (let ((loader (module-loader mod)))
+             (let ((loader (module-reference-loader mod)))
                (if (eq? loader module-module-loader)
                    "module"
-                   (namespace-choose-unique mod)))
+                   (namespace-choose-unique
+                    ((loader-module-name loader)
+                     (module-reference-path mod))
+                    (module-reference-path mod))))
              "#")))))
     (lambda (mod)
       ;; This function might be called with #f as argument
@@ -333,7 +336,8 @@
                  inside-letrec-pair
                  builtin-pair)))
         (values (if (or (not (zero? (expansion-phase)))
-                        (not (environment-module (top-environment))))
+                        (not (environment-module-reference
+                              (top-environment))))
                     (cons module-env-table ns)
                     ns)
                 #f)))))
@@ -358,11 +362,16 @@
 (define local-loader
   (make-loader   
    path-absolutize:
-   (lambda (path ref)
+   (lambda (path #!optional ref)
      (path-normalize (string-append (symbol->string path) ".scm")
                      #f ;; Don't allow relative paths
-                     (path-normalize
-                      (path-directory ref))))
+                     (if ref
+                         (path-normalize
+                          ;; This ensures that (path-directory ref)
+                          ;; actually exists. Otherwise path-normalize
+                          ;; might segfault.
+                          (path-directory ref))
+                         (current-directory))))
    
    load-module:
    (lambda (path)
@@ -376,7 +385,7 @@
 (define module-module-loader
   (make-loader
    path-absolutize:
-   (lambda (path ref) #f)
+   (lambda (path #!optional ref) #f)
 
    load-module:
    (lambda (path)
@@ -395,7 +404,7 @@
       info:
       (make-module-info
        namespace-string:
-       "module"
+       "module#"
 
        exports:
        module-exports-list

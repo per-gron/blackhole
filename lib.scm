@@ -156,7 +156,10 @@
 (define lib-loader
   (make-loader
    path-absolutize:
-   (lambda (path ref)
+   (lambda (path #!optional ref)
+     (if (not ref)
+         (error "lib-loader's path-absolutize \
+                 function requires ref argument"))
      (module-path-absolutize
       (string-append (symbol->string path) ".scm")
       (path-directory ref)))

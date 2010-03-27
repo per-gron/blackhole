@@ -14,7 +14,7 @@
 ;; This is the 'here module resolver function
 (define (current-module-resolver loader path . ids)
   (map (lambda (id)
-         (make-module
+         (make-module-reference
           loader
           ((loader-path-absolutize loader) id path)))
        ids))
@@ -25,7 +25,7 @@
           (path-strip-trailing-directory-separator path) "/")))
     (lambda (_ __ . ids)
       (map (lambda (id)
-             (make-module
+             (make-module-reference
               local-loader
               ((loader-path-absolutize local-loader) id path)))
            ids))))
@@ -33,7 +33,7 @@
 ;; This is a helper function for singleton loaders, for instance 'module
 (define (make-singleton-module-resolver pkg)
   (lambda (_ __)
-    (list (make-module pkg #f))))
+    (list (make-module-reference pkg #f))))
 
 (define *module-resolvers* '())
 
@@ -43,7 +43,7 @@
               *module-resolvers*)))
 
 (define (resolve-module name #!optional cm)
-  (if (module? name)
+  (if (module-reference? name)
       (list name)
       (call-with-values
           (lambda ()
