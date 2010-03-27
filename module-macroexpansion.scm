@@ -6,6 +6,7 @@
 
 ;;;; ---------- Module info utilities ----------
 
+;; TODO Right now, this isn't used. (I think)
 (define (macroexpansion-symbol-defs symbols env)
   (let ((ns (module-namespace
              (environment-module env))))
@@ -25,13 +26,15 @@
                          (caddr mac)))))) ;; macro environment
          symbols)))
 
-(define calc-mode (make-parameter 'repl)) ;; one of 'repl, 'calc, 'load
+;;;; ---------- Module macroexpansion utilities ----------
 
-(define (module-info-calculate module-reference #!optional filename)
-  (let ((symbols '()) ;; TODO double check that all these variables are used
-        (exports #f)
+(define (module-macroexpand module-reference
+                            sexpr
+                            #!optional (tower (make-syntactic-tower)))
+  (let ((definitions '())
         (imports '())
         (imports-for-syntax '())
+        (exports '())
         (options- '())
         (cc-options- "")
         (ld-options-prelude- "")
@@ -46,24 +49,23 @@
       (*module-macroexpansion-import-for-syntax*
        (lambda (pkgs)
          (set! imports-for-syntax
-               (cons imports-for-syntax pkgs))))
+               (cons imports pkgs))))
       
       (*module-macroexpansion-export*
        (lambda (e)
-         (set! exports
-               (append e (or e '())))))
+         (set! exports (cons e exports))))
       
       (*module-macroexpansion-define*
        (lambda (name)
-         (set! symbols
+         (set! definitions
                (cons (cons name 'def)
-                     symbols))))
+                     definitions))))
       
       (*module-macroexpansion-define-syntax*
        (lambda (name proc-sexp env)
-         (set! symbols
+         (set! definitions
                (cons (cons name 'mac)
-                     symbols))))
+                     definitions))))
       
       (*module-macroexpansion-force-compile*
        (lambda ()
@@ -86,52 +88,28 @@
          (if force-compile
              (set! force-compile- force-compile)))))
 
-
-     (let ((env #f))
-       (if filename
+     (call-with-values
+         (lambda ()
            (parameterize
-            ((calc-mode 'calc)
-             (top-environment (make-top-environment
+            ((top-environment (make-top-environment
+                               ;; TODO Is this right?
                                (resolve-one-module module-reference))))
-            (expand-macro
-             (expr*:strip-locationinfo
-              (file-read-as-expr filename)))
-            (set! env (top-environment))))
-
-       (call-with-values
-           (lambda ()
-             (if exports
-                 (resolve-exports exports env)
-                 (values
-                  (macroexpansion-symbol-defs symbols env)
-                  '())))
-         (lambda (exports export-uses)
-           ;; TODO Add something to check for duplicate imports and
-           ;; exports.
-           `("list of exported names and macros"
-             (namespace-string . ,(environment-namespace env))
-             (options . ,options)
-             (cc-options . ,cc-options)
-             (ld-options-prelude . ,ld-options-prelude)
-             (ld-options . ,ld-options)
-             (force-compile . ,force-compile)
-             (imports . ,imports)
-             "list of defined names and macros whether they are exported or not"
-             "list of the modules that the module's macros depend on")
-           (make-module-info
-            (reverse (*module-macroexpansion-symbols*))
-            exports
-            (*module-macroexpansion-imports*)
-            (remove-duplicates ;; TODO This is an n^2 algorithm = sloow
-             (append export-uses
-                     (*module-macroexpansion-uses*))
-             equal?)
-            (*module-macroexpansion-options*)
-            (*module-macroexpansion-cc-options*)
-            (*module-macroexpansion-ld-options-prelude*)
-            (*module-macroexpansion-ld-options*)
-            (*module-macroexpansion-force-compile*)
-            env)))))))
+            (values (expand-macro sexpr)
+                    (top-environment))))
+       (lambda (expanded-code env)
+         ;; TODO Add something to check for duplicate imports and
+         ;; exports.
+         
+         `((definitions . ,definitions)
+           (imports . ,imports)
+           (imports-for-syntax . ,imports-for-syntax)
+           (exports . ,exports)
+           (namespace-string . ,(environment-namespace env))
+           (options . ,options)
+           (cc-options . ,cc-options)
+           (ld-options-prelude . ,ld-options-prelude)
+           (ld-options . ,ld-options)
+           (force-compile . ,force-compile)))))))
 
 ;;;; ---------- Module macroexpansion utilities ----------
 

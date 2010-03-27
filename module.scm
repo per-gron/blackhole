@@ -167,7 +167,10 @@
      (call-with-values
          (lambda () (resolve-imports modules))
        (lambda (defs mods)
-         (if (or (eq? (calc-mode) 'repl)
+         (if (not (environment-top? env))
+             (error "Incorrectly placed import"))
+         
+         (if (or (not (environment-module env))
                  (> (expansion-phase) 0))
              (module-load/deps mods))
          
@@ -223,28 +226,19 @@
                 gambit-builtin-table))
          (inside-letrec-table
           (env-ns inside-letrec-environment))
-         (calcing-table
-          (cons (env-ns load-environment)
-                builtin-pair))
          (inside-letrec-pair
           (cons inside-letrec-table
                 builtin-pair)))
     (lambda ()
       (let ((ns
-             (cond
-              ((eq? (calc-mode) 'calc)
-               calcing-table)
-              
-              ((inside-letrec)
-               inside-letrec-pair)
-              
-              (else
-               builtin-pair))))
-      (values (if (or (not (zero? (expansion-phase)))
-                      (not (environment-module (top-environment))))
-                  (cons module-env-table ns)
-                  ns)
-              #f)))))
+             (if (inside-letrec)
+                 inside-letrec-pair
+                 builtin-pair)))
+        (values (if (or (not (zero? (expansion-phase)))
+                        (not (environment-module (top-environment))))
+                    (cons module-env-table ns)
+                    ns)
+                #f)))))
 
 (define (make-top-environment module)
   (let ((ns (cons (make-table)

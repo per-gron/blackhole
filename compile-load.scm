@@ -98,8 +98,7 @@
   (let ((module (and module (resolve-one-module module))))
     (parameterize
      ((top-environment (make-top-environment module))
-      (expansion-phase 0)
-      (calc-mode 'load))
+      (expansion-phase 0))
      (with-module-cache
       (lambda ()
         (let* ((file (path-strip-trailing-directory-separator
@@ -141,8 +140,7 @@
   (##gc) ;; Avoid out-of-memory related crashes
   (parameterize
    ((top-environment (make-top-environment
-                      (resolve-one-module module)))
-    (calc-mode 'load))
+                      (resolve-one-module module))))
    (if to-c
        (compile-file-to-c fn
                           output: (or (and (string? to-c) to-c)
