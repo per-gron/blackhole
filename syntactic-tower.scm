@@ -38,3 +38,4 @@
      (else
       (vector-ref phases (- phase 1))))))
 
+(define repl-syntactic-tower (make-syntactic-tower))

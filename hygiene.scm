@@ -1271,14 +1271,59 @@
                                 env))
         env)))))
 
+;; This stuff is for use by the machinery that extracts module information
+(define-macro (make-macroexpansion-vars . vars)
+  (let ((syms (map (lambda (var)
+                     (string->symbol
+                      (string-append
+                       "*module-macroexpansion-"
+                       (symbol->string (car var))
+                       "*")))
+                   vars))
+        (defaults (map cadr vars)))
+    `(begin
+       ,@(map (lambda (sym)
+                `(define ,sym (make-parameter #f)))
+              syms)
+       
+       (define (with-module-macroexpansion thunk)
+         (parameterize
+          ,(map (lambda (sym default)
+                  `(,sym ,default))
+                syms
+                defaults)
+          (thunk))))))
+
+(make-macroexpansion-vars (import
+                           (lambda (pkgs) (void)))
+                          (export
+                           (lambda (exports) (void)))
+                          (define
+                            (lambda (name) (void)))
+                          (define-syntax
+                            (lambda (name proc-sexp env) (void)))
+                          (force-compile
+                           (lambda () (void)))
+                          (compile-options
+                           (lambda (#!key options
+                                          cc-options
+                                          ld-options-prelude
+                                          ld-options
+                                          force-compile)
+                             (void))))
+
 (define-env builtin-environment
   "module#"
   ((import
     (lambda (source env mac-env)
-      (module-import
-       (extract-synclosure-crawler
-        (cdr (expr*:strip-locationinfo source)))
-       env)))
+      (if (not (environment-top? env))
+          (error "Incorrectly placed import form"
+                 (expr*:strip-locationinfo code)))
+
+      (let ((pkgs (extract-synclosure-crawler
+                   (cdr (expr*:strip-locationinfo source)))))
+        (module-import pkgs)
+        ((*module-macroexpansion-import*) pkgs))))
 
    (export
     (lambda (code env mac-env)
@@ -1286,11 +1331,17 @@
               (not (environment-module env)))
           (error "Incorrectly placed export form"
                  (expr*:strip-locationinfo code)))
+      ((*module-macroexpansion-export*)
+       (cdr (extract-synclosure-crawler code)))
       (void)))
    
    (module
     (nh-macro-transformer
      (lambda (#!optional name)
+       (if (or (not (environment-top? env))
+               (environment-module env))
+           (error "Incorrectly placed module form"
+                  (expr*:strip-locationinfo code)))
        (module-module name))))
 
    (quote
@@ -1322,11 +1373,14 @@
           ((top-level)
            (let* ((name-form (car (expr*:value src)))
                   (name (expand-synclosure name-form env))
+                  (name-symbol (expr*:value name))
                   (def-env (if (syntactic-closure? name-form)
                                (syntactic-closure-env name-form)
                                env))
                   (ns (environment-add-define! def-env
-                                               (expr*:value name))))
+                                               name-symbol)))
+             ((*module-macroexpansion-define*) name-symbol)
+             
              (expr*:value-set
               code
               `(define ,(expr*:value-set
@@ -1363,17 +1417,14 @@
                (environment-add-macro-fun before-name
                                           trans
                                           env)
-               (expand-macro
-                `(module#define-macro-register ,name ,trans)
+               ((*module-macroexpansion-define-syntax*)
+                before-name
+                trans
                 env)))
             
             (else
              (error "Incorrectly placed define-syntax:"
                     (expr*:strip-locationinfo code))))))))
-   
-   (module#define-macro-register
-     (lambda (form env mac-env)
-       (void)))
 
    (syntax-begin
     (lambda (code env mac-env)
@@ -1578,14 +1629,31 @@
                                       env))
            ',(cadr code))))))
 
-   (c-lambda
+   (c-declare
     (lambda (source env mac-env)
+      ((*module-macroexpansion-force-compile*))
       (extract-synclosure-crawler source)))
 
-   ;; TODO Add c-define
+   (c-initialize
+    (lambda (source env mac-env)
+      ((*module-macroexpansion-force-compile*))
+      (extract-synclosure-crawler source)))
 
    (c-define-type
     (lambda (source env mac-env)
+      ((*module-macroexpansion-force-compile*))
+      (extract-synclosure-crawler source)))
+
+   (c-lambda
+    (lambda (source env mac-env)
+      ((*module-macroexpansion-force-compile*))
+      (extract-synclosure-crawler source)))
+
+   (c-define
+    ;; TODO I'm pretty sure that this isn't correct; you have to
+    ;; macro-expand the body of the function.
+    (lambda (source env mac-env)
+      ((*module-macroexpansion-force-compile*))
       (extract-synclosure-crawler source)))
    
    (receive
@@ -1610,6 +1678,12 @@
                     ld-options-prelude
                     ld-options
                     force-compile)
+       ((*module-macroexpansion-compile-options*)
+        options: options
+        cc-options: cc-options
+        ld-options-prelude: ld-options-prelude
+        ld-options: ld-options
+        force-compile: force-compile)
        (void))))
 
    (define-type

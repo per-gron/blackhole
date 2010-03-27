@@ -10,7 +10,8 @@
 (##include "util.scm")             ;; Utility functions. There because
                                    ;; I can't include libraries from
                                    ;; here
-(##include "expr.scm")             ;; Library for handling Gambit source objects
+(##include "expr.scm")             ;; Library for handling Gambit
+                                   ;; source objects
 (##include "hygiene.scm")          ;; The syntax closures implementation
 (##include "syntax-rules.scm")     ;; The syntax-rules implementation
 (##include "resolvers.scm")        ;; Module, import and export resolvers
@@ -22,8 +23,10 @@
 (##include "loaded-module.scm")    ;; Loaded module data structure
 (##include "loader.scm")           ;; Loader data structure
 (##include "module.scm")           ;; The module system core
-(##include "lib.scm")              ;; The lib (fetching remote modules) implementation
-(##include "extras.scm")           ;; Some utilities, for instance module-compile/deps!
+(##include "lib.scm")              ;; The lib (fetching remote
+                                   ;; modules) implementation
+(##include "extras.scm")           ;; Some utilities, for instance
+                                   ;; module-compile/deps!
 
 
 
