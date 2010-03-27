@@ -126,8 +126,8 @@
   ;;
   ;; If the environment is top-level, this should be #f.
   (parent unprintable: read-only:)
-  ;; The module of this environment. #f if REPL.
-  (module unprintable: read-only:)
+  ;; The module reference of this environment. #f if REPL.
+  (module-reference unprintable: read-only:)
   
   ;; The namespace string of the current environment. Lazily
   ;; initialized, so it's #f on a newly created environment.
@@ -160,7 +160,7 @@
                           (introduces-scope? #t))
   (let ((res (make-env (and (env? parent) parent)
                        (if (env? parent)
-                           (environment-module parent)
+                           (environment-module-reference parent)
                            parent)
                        (and (env? parent)
                             (env-ns-string parent))
@@ -185,7 +185,7 @@
 
 (define environment-parent env-parent)
 
-(define environment-module env-module)
+(define environment-module-reference env-module-reference)
 
 (define (environment-ancestor-of? env descendant #!optional (distance 0))
   ;; FIXME Make this test constant-time (is that possible)
@@ -294,8 +294,10 @@
   (or (env-ns-string env)
       (let ((ns-string
              (let ((phase (expansion-phase))
-                   (ns (module-namespace
-                        (environment-module env))))
+                   (ns (module-namespace ;; FIXME I'm not sure that
+                                         ;; this procedure
+                                         ;; exists. Doublecheck it.
+                        (environment-module-reference env))))
                (if (zero? phase)
                    ns
                    (string-append
@@ -1340,7 +1342,7 @@
    (export
     (lambda (code env mac-env)
       (if (or (not (environment-top? env))
-              (not (environment-module env)))
+              (not (environment-module-reference env)))
           (error "Incorrectly placed export form"
                  (expr*:strip-locationinfo code)))
       ((*module-macroexpansion-export*)
@@ -1351,7 +1353,7 @@
     (nh-macro-transformer
      (lambda (#!optional name)
        (if (or (not (environment-top? env))
-               (environment-module env))
+               (environment-module-reference env))
            (error "Incorrectly placed module form"
                   (expr*:strip-locationinfo code)))
        (module-module name))))

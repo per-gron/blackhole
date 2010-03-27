@@ -100,21 +100,15 @@
          ;; TODO Add something to check for duplicate imports and
          ;; exports.
          
-         `((definitions . ,definitions)
-           (imports . ,imports)
-           (imports-for-syntax . ,imports-for-syntax)
-           (exports . ,exports)
-           (namespace-string . ,(environment-namespace env))
-           (options . ,options)
-           (cc-options . ,cc-options)
-           (ld-options-prelude . ,ld-options-prelude)
-           (ld-options . ,ld-options)
-           (force-compile . ,force-compile)))))))
-
-;;;; ---------- Module macroexpansion utilities ----------
-
-(define (module-macroexpand module sexpr #!optional (tower (make-syntactic-tower)))
-  (error "Not implemented")
-  (values runtime-code
-          compiletime-code
-          info-code))
+         (values 'runtime-code
+                 'compiletime-code
+                 `((definitions . ,definitions)
+                   (imports . ,imports)
+                   (imports-for-syntax . ,imports-for-syntax)
+                   (exports . ,exports)
+                   (namespace-string . ,(environment-namespace env))
+                   (options . ,options)
+                   (cc-options . ,cc-options)
+                   (ld-options-prelude . ,ld-options-prelude)
+                   (ld-options . ,ld-options)
+                   (force-compile . ,force-compile))))))))

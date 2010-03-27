@@ -64,10 +64,11 @@
  (##thread-repl-channel-get! (current-thread))
  6
  (lambda (channel level depth)
-   (let ((mod (environment-module (top-environment))))
+   (let ((mod (environment-module-reference (top-environment))))
      (if mod
          (begin
-           (print ((loader-module-name (module-loader mod)) mod))
+           (print ((loader-module-name (module-loader mod))
+                   (module-reference-path mod)))
            (if (##fixnum.< 0 level)
                (print "/")))))
    (##repl-channel-ports-read-command channel level depth)))

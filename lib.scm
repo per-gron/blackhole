@@ -155,29 +155,24 @@
 
 (define lib-loader
   (make-loader
-   ;; calculate-info
-   (lambda (mod)
-     (module-info-calculate mod (module-file mod)))
-   
-   ;; path-absolutize
-   (lambda (path #!optional ref)
-     (if (not ref)
-         (error "lib-loader's path-absolutize \
-                 function requires ref argument"))
+   path-absolutize:
+   (lambda (path ref)
      (module-path-absolutize
       (string-append (symbol->string path) ".scm")
       (path-directory ref)))
 
    ;; absolute-file
-   (lambda (mod)
-     (let* ((url (module-path mod))
-            (fn (lib-url-full-path url)))
-       (if (not (file-exists? fn))
-           (fetch-file url))
-       (path-normalize fn)))
+   ;;(lambda (mod)
+   ;;  (let* ((url (module-path mod))
+   ;;         (fn (lib-url-full-path url)))
+   ;;    (if (not (file-exists? fn))
+   ;;        (fetch-file url))
+   ;;    (path-normalize fn)))
 
-   ;; module-name
-   (lambda (mod)
+   load-module:
+   (lambda (path) TODO)
+
+   module-name:
+   (lambda (path)
      (path-strip-directory
-      (path-strip-extension
-       (module-path mod))))))
+      (path-strip-extension path)))))
