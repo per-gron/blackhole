@@ -173,6 +173,9 @@
          
          (module-add-defs-to-env defs env))))))
 
+(define (module-import-for-syntax modules #!optional (env (top-environment)))
+  (error "TODO To be implemented"))
+
 (define module-module
   (let* ((repl-environment #f)
          (fn (make-module-util-function

@@ -1296,6 +1296,8 @@
 
 (make-macroexpansion-vars (import
                            (lambda (pkgs) (void)))
+                          (import-for-syntax
+                           (lambda (pkgs) (void)))
                           (export
                            (lambda (exports) (void)))
                           (define
@@ -1324,6 +1326,17 @@
                    (cdr (expr*:strip-locationinfo source)))))
         (module-import pkgs)
         ((*module-macroexpansion-import*) pkgs))))
+
+   (import-for-syntax
+    (lambda (source env mac-env)
+      (if (not (environment-top? env))
+          (error "Incorrectly placed import-for-syntax form"
+                 (expr*:strip-locationinfo code)))
+
+      (let ((pkgs (extract-synclosure-crawler
+                   (cdr (expr*:strip-locationinfo source)))))
+        (module-import-fr-syntax pkgs)
+        ((*module-macroexpansion-import-for-syntax*) pkgs))))
 
    (export
     (lambda (code env mac-env)
@@ -1425,12 +1438,6 @@
             (else
              (error "Incorrectly placed define-syntax:"
                     (expr*:strip-locationinfo code))))))))
-
-   (syntax-begin
-    (lambda (code env mac-env)
-      (eval-in-next-phase `(begin
-                             ,@(cdr (expr*:value code)))
-                          env)))
    
    (begin
      (lambda (code env mac-env)

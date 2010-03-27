@@ -28,9 +28,10 @@
 (define calc-mode (make-parameter 'repl)) ;; one of 'repl, 'calc, 'load
 
 (define (module-info-calculate module-reference #!optional filename)
-  (let ((symbols '())
+  (let ((symbols '()) ;; TODO double check that all these variables are used
         (exports #f)
         (imports '())
+        (imports-for-syntax '())
         (options- '())
         (cc-options- "")
         (ld-options-prelude- "")
@@ -41,6 +42,11 @@
        (lambda (pkgs)
          (set! imports
                (cons imports pkgs))))
+
+      (*module-macroexpansion-import-for-syntax*
+       (lambda (pkgs)
+         (set! imports-for-syntax
+               (cons imports-for-syntax pkgs))))
       
       (*module-macroexpansion-export*
        (lambda (e)
@@ -103,7 +109,7 @@
            ;; TODO Add something to check for duplicate imports and
            ;; exports.
            `("list of exported names and macros"
-             (namespace-string . ,(TODO module-reference))
+             (namespace-string . ,(environment-namespace env))
              (options . ,options)
              (cc-options . ,cc-options)
              (ld-options-prelude . ,ld-options-prelude)
