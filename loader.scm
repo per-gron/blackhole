@@ -181,6 +181,9 @@
   id: 786F06E1-BAF1-45A5-B31F-ED09AE93514F
   constructor: make-loader/internal
 
+  ;; A unique symbol identifying this loader
+  (name read-only:)
+  (path-absolute? unprintable: equality-skip: read-only:)
   ;; Takes a possible relative path and an origin path to which the
   ;; path should be interpreted relative to, and returns an absolute
   ;; path object.
@@ -189,17 +192,38 @@
   ;; Takes a module and returns a string for the name of the module
   (module-name unprintable: equality-skip: read-only:))
 
+(define loader-registry (make-table))
+
 (define (make-loader #!key
+                     name
+                     path-absolute?
                      path-absolutize
                      load-module
                      module-name)
-  (if (not (and (procedure? path-absolutize)
+  (if (not (and (symbol? name)
+                (procedure? path-absolute?)
+                (procedure? path-absolutize)
                 (procedure? load-module)
                 (procedure? module-name)))
       (error "Invalid parameters"))
-  (make-loader/internal path-absolutize
-                        load-module
-                        module-name))
+  (let ((result
+         (make-loader/internal name
+                               path-absolute?
+                               path-absolutize
+                               load-module
+                               module-name)))
+    (table-set! loader-registry name result)
+    result))
+
+(define (loader->skeleton loader)
+  (make-loader/internal (loader-name loader)
+                        #f
+                        #f
+                        #f
+                        #f))
+
+(define (skeleton->loader loader)
+  (table-ref loader-registry (loader-name loader)))
 
 (define module-exports-list
   (cons
@@ -360,7 +384,13 @@
 ;;;; ---------- Loader implementations ----------
 
 (define local-loader
-  (make-loader   
+  (make-loader
+   name:
+   'local
+
+   path-absolute?:
+   path-absolute?
+   
    path-absolutize:
    (lambda (path #!optional ref)
      (path-normalize (string-append (symbol->string path) ".scm")
@@ -384,6 +414,12 @@
 
 (define module-module-loader
   (make-loader
+   name:
+   'module
+
+   path-absolute?:
+   (lambda (path) #t)
+   
    path-absolutize:
    (lambda (path #!optional ref) #f)
 
@@ -412,12 +448,8 @@
        environment:
        (make-top-environment #f))
 
-      loader:
-      module-module-loader
-
-      path:
-      #f))
+      reference:
+      (make-module-reference module-module-loader #f)))
 
    module-name:
    (lambda (path) "module")))
-

@@ -60,6 +60,15 @@
 (define (is-directory? dir)
   (file-exists? (string-append dir "/")))
 
+;; This probably won't work on non-Unix environments.
+;; I don't care right now.
+(define (path-absolute? path)
+  (and (string? path)
+       (> (string-length path) 0)
+       (or (positive? (string-length (path-volume path)))
+           (eq? #\\ (string-ref path 0))
+           (eq? #\/ (string-ref path 0)))))
+
 (define (recursively-delete-file dir)
   (if (is-directory? dir)
       (begin

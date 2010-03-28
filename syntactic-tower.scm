@@ -38,4 +38,7 @@
      (else
       (vector-ref phases (- phase 1))))))
 
+(define (syntactic-tower-module-instance tower phase absolute-path)
+  (table-ref (syntactic-tower-phase tower phase) absolute-path))
+
 (define repl-syntactic-tower (make-syntactic-tower))

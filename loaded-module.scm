@@ -11,25 +11,22 @@
   (instantiate-runtime read-only:)
   (instantiate-compiletime read-only:)
   (info read-only:)
-  (loader read-only:)
-  (path read-only:))
+  (reference read-only:))
 
 (define (make-loaded-module #!key
                             instantiate-runtime
                             instantiate-compiletime
                             info
-                            loader
-                            path)
+                            reference)
   (if (not (and (procedure? instantiate-runtime)
                 (procedure? instantiate-compiletime)
                 (module-info? info)
-                (module-loader? loader)))
+                (module-reference? reference)))
       (error "Invalid parameters"))
   (make-loaded-module/internal instantiate-runtime
                                instantiate-compiletime
                                info
-                               loader
-                               path))
+                               reference))
 
 ;; To be implemented
 ;; (define (load-module path loader) ...)

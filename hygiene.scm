@@ -437,7 +437,7 @@
            (environment-add-mac!
             (env-scope-env env)
             name ;; The exported name
-            (eval-in-next-phase fun env)
+            (eval-no-hook fun)
             env))))
     (cond
      ((symbol? name)
@@ -1423,18 +1423,25 @@
                     (expr*:strip-locationinfo source)))
          
          (let* ((name (cadr code))
-                (trans (caddr code))
+                (trans (caddr code)) ;; trans is for transformer expression
                 (before-name (expr*:value name)))
            (cond
             ((top-level)
-             (begin
+             (let ((expanded-trans
+                    (parameterize
+                     ((expansion-phase (+ 1 (expansion-phase)))
+                      (inside-letrec #f))
+                     (expand-macro trans env)))
+                   (transformer-name (gensym before-name)))
                (environment-add-macro-fun before-name
-                                          trans
+                                          expanded-trans
                                           env)
                ((*module-macroexpansion-define-syntax*)
                 before-name
-                trans
-                env)))
+                transformer-name
+                env)
+
+               `(define ,transformer-name ,expanded-trans)))
             
             (else
              (error "Incorrectly placed define-syntax:"

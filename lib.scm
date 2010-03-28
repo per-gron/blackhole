@@ -155,6 +155,13 @@
 
 (define lib-loader
   (make-loader
+   name:
+   'lib
+
+   path-absolute?:
+   (lambda (path)
+     TODO)
+   
    path-absolutize:
    (lambda (path #!optional ref)
      (if (not ref)

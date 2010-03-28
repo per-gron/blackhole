@@ -28,6 +28,12 @@
 
 ;;;; ---------- Module macroexpansion utilities ----------
 
+(define phase-sym (gensym 'phase))
+(define loaded-module-sym (gensym 'loaded-module))
+(define syntactic-tower-sym (gensym 'syntactic-tower))
+(define name-sym (gensym 'name))
+(define val-sym (gensym 'val))
+
 (define (module-macroexpand module-reference
                             sexpr
                             #!optional (tower (make-syntactic-tower)))
@@ -58,13 +64,13 @@
       (*module-macroexpansion-define*
        (lambda (name)
          (set! definitions
-               (cons (cons name 'def)
+               (cons (list name 'def)
                      definitions))))
       
       (*module-macroexpansion-define-syntax*
        (lambda (name proc-sexp env)
          (set! definitions
-               (cons (cons name 'mac)
+               (cons (list name 'mac proc-sexp env)
                      definitions))))
       
       (*module-macroexpansion-force-compile*
@@ -91,9 +97,7 @@
      (call-with-values
          (lambda ()
            (parameterize
-            ((top-environment (make-top-environment
-                               ;; TODO Is this right?
-                               (resolve-one-module module-reference))))
+            ((top-environment (make-top-environment module-reference)))
             (values (expand-macro sexpr)
                     (top-environment))))
        (lambda (expanded-code env)
@@ -101,7 +105,17 @@
          ;; exports.
          
          (values expanded-code
-                 'compiletime-code
+                 `(lambda (,phase-sym ,loaded-module-sym ,syntactic-tower-sym)
+                    (let ((module-instances #f))
+                      ,expanded-code
+
+                      (values
+                       (lambda (,name-sym)
+                         (case ,name-sym
+                           ((name) name)))
+                       (lambda (,name-sym ,val-sym)
+                         (case ,name-sym
+                           ((name) (set! name ,val-sym)))))))
                  `((definitions . ,definitions)
                    (imports . ,imports)
                    (imports-for-syntax . ,imports-for-syntax)
