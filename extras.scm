@@ -4,6 +4,44 @@
 ;;;                                                                  ;;;
 ;;;  --------------------------------------------------------------  ;;;
 
+;; TODO This doesn't work atm
+(define (module-needs-compile? mod)
+  (let ((mod (resolve-one-module mod)))
+    (let* ((path (module-file mod))
+           (of (last-object-file path)))
+      (if of
+          (not (file-newer? of path))
+          'not-compiled))))
+
+;; TODO This doesn't work atm
+(define (module-compile! mod
+                         #!key
+                         continue-on-error
+                         to-c)
+  (let ((mod (resolve-one-module mod)))
+    (with-exception-catcher
+     (lambda (e)
+       (if continue-on-error
+           (begin
+             (display "Warning: Compilation failed: ")
+             (display-exception e)
+             #f)
+           (raise e)))
+     (lambda ()
+       (let ((info (module-info mod)))
+         (TODO-with-module-macroexpansion ;; For *module-macroexpansion-uses* (??)
+          (lambda ()
+            (let ((result (compile-with-options
+                           mod
+                           (module-file mod)
+                           to-c: to-c
+                           options: (module-info-options info)
+                           cc-options: (module-info-cc-options info)
+                           ld-options-prelude: (module-info-ld-options-prelude
+                                                info)
+                           ld-options: (module-info-ld-options info))))
+              (if (not result)
+                  (error "Compilation failed"))))))))))
 
 (define (modules-compile! mods #!optional continue-on-error port)
   (let* ((mods (resolve-modules mods))

@@ -73,44 +73,8 @@
 
 ;;;; ---------- Module utility functions ----------
 
-(define (module-needs-compile? mod)
-  (let ((mod (resolve-one-module mod)))
-    (let* ((path (module-file mod))
-           (of (last-object-file path)))
-      (if of
-          (not (file-newer? of path))
-          'not-compiled))))
-
-(define (module-compile! mod
-                         #!key
-                         continue-on-error
-                         to-c)
-  (let ((mod (resolve-one-module mod)))
-    (with-exception-catcher
-     (lambda (e)
-       (if continue-on-error
-           (begin
-             (display "Warning: Compilation failed: ")
-             (display-exception e)
-             #f)
-           (raise e)))
-     (lambda ()
-       (let ((info (module-info mod)))
-         (TODO-with-module-macroexpansion ;; For *module-macroexpansion-uses*
-          (lambda ()
-            (let ((result (compile-with-options
-                           mod
-                           (module-file mod)
-                           to-c: to-c
-                           options: (module-info-options info)
-                           cc-options: (module-info-cc-options info)
-                           ld-options-prelude: (module-info-ld-options-prelude
-                                                info)
-                           ld-options: (module-info-ld-options info))))
-              (if (not result)
-                  (error "Compilation failed"))))))))))
-
-(define (module-load/deps modules)
+;; TODO This doesn't work atm
+(define (loaded-module-instantiate/deps modules)
   (let ((load-table (make-table)))
     (for-each
      (lambda (module)
@@ -136,12 +100,9 @@
   (call-with-values
       (lambda () (resolve-imports modules))
     (lambda (defs mods)
-      (if (not (environment-top? env))
-          (error "Incorrectly placed import"))
-      
       (if (or (not (environment-module env))
               (> phase 0))
-          (module-load/deps mods))
+          (loaded-module-instantiate/deps mods))
       
       (module-add-defs-to-env defs env phase: phase))))
 
