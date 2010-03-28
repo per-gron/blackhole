@@ -68,7 +68,7 @@
               (raise e)))
         (lambda ()
           (let ((info (module-info mod)))
-            (with-module-macroexpansion ;; For *module-macroexpansion-uses*
+            (TODO-with-module-macroexpansion ;; For *module-macroexpansion-uses*
              (lambda ()
                (let ((result (compile-with-options
                               mod

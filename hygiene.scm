@@ -1283,17 +1283,9 @@
                    vars))
         (defaults (map cadr vars)))
     `(begin
-       ,@(map (lambda (sym)
-                `(define ,sym (make-parameter #f)))
-              syms)
-       
-       (define (with-module-macroexpansion thunk)
-         (parameterize
-          ,(map (lambda (sym default)
-                  `(,sym ,default))
-                syms
-                defaults)
-          (thunk))))))
+       ,@(map (lambda (sym default)
+                `(define ,sym (make-parameter ,default)))
+              syms defaults))))
 
 (make-macroexpansion-vars (import
                            (lambda (pkgs) (void)))
@@ -1597,22 +1589,15 @@
 
    (cond-expand
     (lambda (source env mac-env)
-      (expr*:value-set
-       source
-       (let ((code (expr*:value source)))
-         (cons
-          (expr*:value-set (car code)
-                           'cond-expand)
-          (map (lambda (inner-source)
-                 (let ((inner-code (expr*:value inner-source)))
-                   (if (not (pair? inner-code))
-                       (error "Invalid cond-expand form: "
-                              (expr*:strip-locationinfo source)))
-                   
-                   (cons (extract-synclosure-crawler
-                          (car inner-code))
-                         (expand-macro (cdr inner-code) env))))
-               (cdr code)))))))
+      (expand-macro
+       (##deconstruct-call
+        source
+        -1
+        (lambda clauses
+          (cond-expand-build source
+                             clauses
+                             (cons 'black-hole ##cond-expand-features))))
+       env)))
 
    (case
        (lambda (source env mac-env)

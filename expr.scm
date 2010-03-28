@@ -116,6 +116,7 @@
 	      (vector-ref type-vec 0)))))
 
 
+;; TODO I think this does the same thing as ##source-code
 (define-unsafe/safe (expr:value expr)
   (vector-ref expr 1))
 
@@ -191,6 +192,7 @@
 	(else
 	 (error expr))))
 
+;; TODO This function does the same thing as ##source-strip
 (define (expr*:value obj)
   (if (expr? obj)
       (@expr:value obj)
@@ -261,6 +263,8 @@
 	  (vector-ref expr 2)
 	  (vector-ref expr 3)))
 
+;; I think ##expand-source-template (_nonstd.scm) does something
+;; similar to this
 (define (expr*:value-set expr val)
   (if (expr? expr)
       (@expr:value-set expr val)
@@ -290,12 +294,16 @@
 
 
 
+;; TODO This function does kindof the same thing as ##sourcify
 (define (expr:fixup expr) ;; without recursion
   (if (expr? expr)
       expr
       (make-expr expr ; '(fixup)
 		 )))
 
+;; TODO This function does the same thing as ##sourcify-deep. (Does
+;; ##sourcify-deep share structure?)
+;;
 ;; recursively, and peeks into existing expr's; functional, but
 ;; shares structure as much as possible
 (define (expr:deep-fixup obj
@@ -414,6 +422,9 @@
    (dotted-map (expr*:make-fun fn)
                (expr*:value expr))))
 
+;; TODO This function does a similar thing to ##desourcify. The
+;; difference is that this functions continues to search within
+;; s-exprs that are not sourcified.
 (define (expr*:strip-locationinfo expr)
   (let ((v (expr*:value expr)))
     (cond ((pair? v)

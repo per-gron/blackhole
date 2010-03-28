@@ -259,6 +259,51 @@
                     x))
               exp))))
 
+;; Helper for cond-expand. This function is more or less copied from
+;; Gambit's _nonstd.scm
+(define (cond-expand-build src clauses features)
+  (define (satisfied? feature-requirement)
+    (cond ((##symbol? feature-requirement)
+           (if (##member feature-requirement features)
+             #t
+             #f))
+          ((##pair? feature-requirement)
+           (let ((first (##source-strip (##car feature-requirement))))
+             (cond ((##eq? first 'not)
+                    (##shape src (##sourcify feature-requirement src) 2)
+                    (##not (satisfied?
+                            (##source-strip (##cadr feature-requirement)))))
+                   ((or (##eq? first 'and) (##eq? first 'or))
+                    (##shape src (##sourcify feature-requirement src) -1)
+                    (let loop ((lst (##cdr feature-requirement)))
+                      (if (##pair? lst)
+                        (let ((x (##source-strip (##car lst))))
+                          (if (##eq? (satisfied? x) (##eq? first 'and))
+                            (loop (##cdr lst))
+                            (##not (##eq? first 'and))))
+                        (##eq? first 'and))))
+                   (else
+                    (error "Ill-formed cond-expand form"
+                           (expr*:strip-locationinfo src))))))
+          (else
+           (error "Ill-formed cond-expand form"
+                  (expr*:strip-locationinfo src)))))
+
+  (define (build clauses)
+    (if (##pair? clauses)
+      (let ((clause (##source-strip (##car clauses))))
+        (##shape src (##sourcify clause src) -1)
+        (let ((feature-requirement (##source-strip (##car clause))))
+          (if (or (and (##eq? feature-requirement 'else)
+                       (##null? (##cdr clauses)))
+                  (satisfied? feature-requirement))
+            (##cons 'begin (##cdr clause))
+            (build (##cdr clauses)))))
+      (error "Unfulfilled cond-expand form"
+             (expr*:strip-locationinfo src))))
+
+  (build clauses))
+
 (define (eval-no-hook expr)
   (let ((hook ##expand-source))
     (dynamic-wind
@@ -268,22 +313,6 @@
           (eval expr))
         (lambda ()
           (set! ##expand-source hook)))))
-
-;; Taken from Christian Jaeger
-(define (defined? a)
-  (if (symbol? a)
-      (with-exception-catcher
-       (lambda (e)
-         ;; other exceptions shouldn't happen
-         ;; really, but who knows
-         (if (unbound-global-exception? e)
-             #f
-             (error "unexpected exception" e)))
-       (lambda ()
-         ;; TODO Should eval-no-hook be used?
-         (eval a) ;; throws exception if unbound
-         #t))
-      (error "Expected symbol argument" a)))
 
 ;; Beware of n^2 algorithms
 (define (remove-duplicates list #!optional (predicate eq?))
