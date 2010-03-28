@@ -28,6 +28,67 @@
 
 ;;;; ---------- Module macroexpansion utilities ----------
 
+(define (transform-to-define source)
+  (let ((code
+         (expr*:value source))
+        (default-action
+         (lambda ()
+           `(define ,(gensym)
+              ,source))))
+    (cond
+     ((pair? code)
+      (let ((code-car (expr*:value (car code))))
+        (case code-car
+         ((begin ##begin)
+          (expr*:value-set
+           source
+           (cons (car code)
+                 (map transform-to-define
+                      (cdr code)))))
+
+         ((c-define)
+          ;; TODO
+          (error "c-define is not implemented"))
+
+         ((c-define-type)
+          ;; TODO
+          (error "c-define-type is not implemented"))
+
+         ((c-initialize)
+          ;; TODO
+          (error "c-define-type is not implemented"))
+
+         ((c-declare)
+          ;; TODO
+          (error "c-declare is not implemented"))
+
+         ((define-cond-expand-feature cond-expand)
+          ;; TODO This should be implemented by fully expanding these
+          ;; forms in hygiene.scm using ##cond-expand-features see
+          ;; _nonstd.scm in Gambit
+          (error "cond-expand and define-cond-expand-feature not implemented"))
+
+         ((let-syntax letrec-syntax)
+          ;; This shouldn't happen
+          (error "Internal error in transform-to-define"))
+
+         ((declare
+           ##define
+           define
+           ;; The macro forms are rarely or never here, but we check
+           ;; for them just in case.
+           ##define-macro
+           ##define-syntax
+           define-macro
+           define-syntax)
+          source)
+
+         (else
+          (default-action)))))
+
+     (else
+      (default-action)))))
+
 (define phase-sym (gensym 'phase))
 (define loaded-module-sym (gensym 'loaded-module))
 (define syntactic-tower-sym (gensym 'syntactic-tower))
