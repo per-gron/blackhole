@@ -10,12 +10,12 @@
 (##include "util.scm")                  ;; Utility functions.
 (##include "expr.scm")                  ;; Library for handling Gambit
                                         ;; source objects
+(##include "syntactic-tower.scm")       ;; Syntactic tower data structure
 (##include "hygiene.scm")               ;; The hygiene system implementation
 (##include "syntax-rules.scm")          ;; The syntax-rules implementation
 (##include "resolvers.scm")             ;; Module, import and export resolvers
 (##include "namespace.scm")             ;; Namespace choosing functionality
 (##include "compile-load.scm")          ;; Utilities for compiling and loading
-(##include "syntactic-tower.scm")       ;; Syntactic tower data structure
 (##include "module-reference.scm")      ;; Module reference data structure
 (##include "module-info.scm")           ;; Module info data structure
 (##include "loader.scm")                ;; Loader data structure
