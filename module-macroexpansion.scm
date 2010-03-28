@@ -62,13 +62,7 @@
           ;; TODO
           (error "c-declare is not implemented"))
 
-         ((define-cond-expand-feature cond-expand)
-          ;; TODO This should be implemented by fully expanding these
-          ;; forms in hygiene.scm using ##cond-expand-features see
-          ;; _nonstd.scm in Gambit
-          (error "cond-expand and define-cond-expand-feature not implemented"))
-
-         ((let-syntax letrec-syntax)
+         ((let-syntax letrec-syntax cond-expand)
           ;; This shouldn't happen
           (error "Internal error in transform-to-define"))
 
@@ -94,6 +88,34 @@
 (define syntactic-tower-sym (gensym 'syntactic-tower))
 (define name-sym (gensym 'name))
 (define val-sym (gensym 'val))
+
+(define (generate-compiletime-code namespace-string expanded-code definitions)
+  (let ((names (map (lambda (x)
+                      (if (eq? 'def (cadr x))
+                          (cons (car x)
+                                (gen-symbol namespace-string
+                                            (car x)))
+                          (cons (car x) (caddr x))))
+                    definitions)))
+    `(lambda (,phase-sym ,loaded-module-sym ,syntactic-tower-sym)
+       (let ((module-instances #f))
+         ,(transform-to-define expanded-code)
+         
+         (values
+          (lambda (,name-sym)
+            (case ,name-sym
+              ,@(map (lambda (name)
+                       `((,(car name))
+                         ,name))
+                     names)
+              (else (error "Unbound variable" ,name-sym))))
+          (lambda (,name-sym ,val-sym)
+            (case ,name-sym
+              ,@(map (lambda (name)
+                       `((,(car name))
+                         (set! ,(cdr name) ,val-sym)))
+                     names)
+              (else (error "Unbound variable" ,name-sym)))))))))
 
 (define (module-macroexpand module-reference
                             sexpr
@@ -166,17 +188,9 @@
          ;; exports.
          
          (values expanded-code
-                 `(lambda (,phase-sym ,loaded-module-sym ,syntactic-tower-sym)
-                    (let ((module-instances #f))
-                      ,expanded-code
-
-                      (values
-                       (lambda (,name-sym)
-                         (case ,name-sym
-                           ((name) name)))
-                       (lambda (,name-sym ,val-sym)
-                         (case ,name-sym
-                           ((name) (set! name ,val-sym)))))))
+                 (generate-compiletime-code (environment-namespace env)
+                                            expanded-code
+                                            definitions)
                  `((definitions . ,definitions)
                    (imports . ,imports)
                    (imports-for-syntax . ,imports-for-syntax)
