@@ -7,12 +7,10 @@
 	 (block))
 
 
-(##include "util.scm")                  ;; Utility functions. There because
-                                        ;; I can't include libraries from
-                                        ;; here
+(##include "util.scm")                  ;; Utility functions.
 (##include "expr.scm")                  ;; Library for handling Gambit
                                         ;; source objects
-(##include "hygiene.scm")               ;; The syntax closures implementation
+(##include "hygiene.scm")               ;; The hygiene system implementation
 (##include "syntax-rules.scm")          ;; The syntax-rules implementation
 (##include "resolvers.scm")             ;; Module, import and export resolvers
 (##include "namespace.scm")             ;; Namespace choosing functionality
@@ -67,7 +65,7 @@
    (let ((mod (environment-module-reference (top-environment))))
      (if mod
          (begin
-           (print ((loader-module-name (module-loader mod))
+           (print ((loader-module-name (module-reference-loader mod))
                    (module-reference-path mod)))
            (if (##fixnum.< 0 level)
                (print "/")))))

@@ -64,12 +64,13 @@
                 (error "Module resolver not found:" resolver-id)
                 (apply resolver
                        `(,(if cm
-                              (module-loader cm)
+                              (module-reference-loader cm)
                               (current-loader))
                          ,(if cm
-                              (module-path cm)
-                              (let ((current-mod (current-module)))
-                                (and current-mod (module-path current-mod))))
+                              (module-reference-path cm)
+                              (let ((current-mod (current-module-reference)))
+                                (and current-mod
+                                     (module-reference-path current-mod))))
                          ,@resolver-args))))))))
 
 (define (resolve-modules names #!optional cm)
@@ -113,16 +114,17 @@
          (if (not resolver)
              (error "Import resolver not found:" resolver-id)
              (apply resolver
-                    (cons (or cm (current-module))
+                    (cons (or cm (current-module-reference))
                           (cdr val))))))
       
       (else
        (let ((mods (resolve-module val cm)))
          (values (apply
                   append
-                  (map (lambda (mod)
+                  (map (lambda (module-ref)
                          (module-info-exports
-                          (module-info mod)))
+                          (loaded-module-info
+                           (module-reference-load module-ref))))
                        mods))
                  mods)))))))
 

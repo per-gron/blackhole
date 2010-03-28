@@ -20,6 +20,12 @@
       (error "Invalid parameters"))
   (make-module-reference/internal loader path))
 
+(define (current-loader)
+  (let ((cm (current-module-reference)))
+    (if cm
+        (module-loader (current-module-reference))
+        local-loader)))
+
 (define (module-reference-absolute? module-reference)
   ((loader-path-absolute? module-reference)
    (module-reference-path module-reference)))
@@ -53,3 +59,14 @@
                       (if (loader? obj)
                           (skeleton->loader obj)
                           obj))))
+
+(define loaded-module-registry (make-table))
+
+(define (module-reference-load ref)
+  (if (not (module-reference-absolute? ref))
+      (error "Module reference must be absolute"))
+  (or (table-ref loaded-module-registry ref #f)
+      (let ((loaded-module (load-module (module-reference-path ref)
+                                        (module-reference-loader ref))))
+        (table-set! loaded-module-registry ref loaded-module)
+        loaded-module)))

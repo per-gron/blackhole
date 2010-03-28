@@ -89,7 +89,11 @@
 (define name-sym (gensym 'name))
 (define val-sym (gensym 'val))
 
-(define (generate-compiletime-code namespace-string expanded-code definitions)
+(define (generate-compiletime-code namespace-string
+                                   expanded-code
+                                   definitions
+                                   syntax-dependencies)
+  (pp syntax-dependencies)
   (let ((names (map (lambda (x)
                       (if (eq? 'def (cadr x))
                           (cons (car x)
@@ -138,7 +142,7 @@
       (*module-macroexpansion-import-for-syntax*
        (lambda (pkgs)
          (set! imports-for-syntax
-               (cons imports pkgs))))
+               (append pkgs imports))))
       
       (*module-macroexpansion-export*
        (lambda (e)
@@ -180,24 +184,32 @@
      (call-with-values
          (lambda ()
            (parameterize
-            ((top-environment (make-top-environment module-reference)))
+            ((*top-environment* (make-top-environment module-reference)))
             (values (expand-macro sexpr)
-                    (top-environment))))
+                    (*top-environment*))))
        (lambda (expanded-code env)
          ;; TODO Add something to check for duplicate imports and
          ;; exports.
-         
-         (values expanded-code
-                 (generate-compiletime-code (environment-namespace env)
-                                            expanded-code
-                                            definitions)
-                 `((definitions . ,definitions)
-                   (imports . ,imports)
-                   (imports-for-syntax . ,imports-for-syntax)
-                   (exports . ,exports)
-                   (namespace-string . ,(environment-namespace env))
-                   (options . ,options-)
-                   (cc-options . ,cc-options-)
-                   (ld-options-prelude . ,ld-options-prelude-)
-                   (ld-options . ,ld-options-)
-                   (force-compile . ,force-compile-))))))))
+
+         (let ((syntax-dependencies
+                (remove-duplicates
+                 (call-with-values
+                     (lambda ()
+                       (resolve-imports imports-for-syntax module-reference))
+                   (lambda (defines modules)
+                     modules)))))
+           (values expanded-code
+                   (generate-compiletime-code (environment-namespace env)
+                                              expanded-code
+                                              definitions
+                                              syntax-dependencies)
+                   `((definitions . ,definitions)
+                     (imports . ,imports)
+                     (imports-for-syntax . ,imports-for-syntax)
+                     (exports . ,exports)
+                     (namespace-string . ,(environment-namespace env))
+                     (options . ,options-)
+                     (cc-options . ,cc-options-)
+                     (ld-options-prelude . ,ld-options-prelude-)
+                     (ld-options . ,ld-options-)
+                     (force-compile . ,force-compile-)))))))))

@@ -28,5 +28,6 @@
                                info
                                reference))
 
-;; To be implemented
-;; (define (load-module path loader) ...)
+(define (load-module path loader)
+  ;; TODO
+  (error "load-module isn't implemented"))

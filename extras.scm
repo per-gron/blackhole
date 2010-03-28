@@ -20,7 +20,8 @@
                         (map (lambda (x)
                                (cons x
                                      (module-info-uses
-                                      (module-info x))))
+                                      (loaded-module-info
+                                       (module-reference-load x)))))
                              mods))))))
             (nmods (length mods-sorted))
             (port (or port (current-output-port)))
@@ -83,7 +84,8 @@
                 (flatten
                  (let loop ((mod mod))
                    (let ((uses (module-info-uses
-                                (module-info mod))))
+                                (loaded-module-info
+                                 (module-reference-load x)))))
                      (cons uses
                            (map loop uses)))))))
            ;; Sort the modules in the order of which they depend on
@@ -95,10 +97,13 @@
               (map (lambda (x)
                      (cons x
                            (module-info-uses
-                            (module-info x))))
+                            (loaded-module-info
+                             (module-reference-load x)))))
                    mods)))
             equal?))
-         (module-info-uses (module-info mod))))))
+         (module-info-uses
+          (loaded-module-info
+           (module-reference-load mod)))))))
 
 (define (module-compile/deps! mod #!optional continue-on-error port)
   (modules-compile! (cons mod (module-deps mod #t)) continue-on-error port))
@@ -110,7 +115,8 @@
   (cons 'export
         (append
          (map car (module-info-symbols
-                   (module-info mod))))))
+                   (loaded-module-info
+                    (module-reference-load mod)))))))
   
 (define (generate-tmp-dir thunk)
   (let ((compile-tmp-dir "~~/lib/modules/work/compile-tmp/"))

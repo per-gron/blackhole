@@ -154,6 +154,11 @@
   ;; circular pointer.
   (scope-env unprintable:))
 
+(define *top-environment* (make-parameter #f))
+
+(define (current-module-reference)
+  (environment-module-reference (*top-environment*)))
+
 (define (make-environment parent
                           #!optional
                           (ns (box '()))
@@ -952,7 +957,7 @@
 
 (define (expand-macro source
                       #!optional
-                      (env (top-environment)))
+                      (env (*top-environment*)))
   (let* ((source
           (expr*:value-set
            source
@@ -1328,7 +1333,7 @@
 
       (let ((pkgs (extract-synclosure-crawler
                    (cdr (expr*:strip-locationinfo source)))))
-        (module-import-fr-syntax pkgs)
+        (module-import-for-syntax pkgs)
         ((*module-macroexpansion-import-for-syntax*) pkgs))))
 
    (export

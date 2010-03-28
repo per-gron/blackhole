@@ -6,16 +6,6 @@
 
 ;;;; ---------- Module utility functions ----------
 
-(define (current-module)
-  (environment-module-reference (top-environment)))
-
-(define (current-loader)
-  (let ((cm (current-module)))
-    (if cm
-        (module-loader (current-module))
-        local-loader)))
-
-
 (define *calc-info-cache* (make-parameter #f))
 
 (define (with-module-cache thunk)
@@ -34,7 +24,7 @@
 (define module-info
   (make-module-util-function
    (lambda (mod)
-     (let ((mp (module-path mod)))
+     (let ((mp (module-reference-path mod)))
        (or (table-ref (*calc-info-cache*) mp #f)
            (let ((ret ((loader-calculate-info
                         (module-loader mod))
@@ -114,10 +104,10 @@
           (let rec ((module module))
             (cond
              ((not (table-ref load-table
-                              (module-path module)
+                              (module-reference-path module)
                               #f))
               (table-set! load-table
-                          (module-path module)
+                          (module-reference-path module)
                           #t)
               
               (for-each rec
@@ -130,7 +120,7 @@
         modules)))))
 
 
-(define (module-import modules #!optional (env (top-environment)))
+(define (module-import modules #!optional (env (*top-environment*)))
   (with-module-cache
    (lambda ()
      (call-with-values
@@ -145,33 +135,34 @@
          
          (module-add-defs-to-env defs env))))))
 
-(define (module-import-for-syntax modules #!optional (env (top-environment)))
-  (error "TODO To be implemented"))
+(define (module-import-for-syntax modules #!optional (env (*top-environment*)))
+  ;;(error "TODO To be implemented")
+  'TODO)
 
 (define module-module
   (let* ((repl-environment #f)
          (fn (make-module-util-function
               (lambda (mod)
-                (if (not (environment-module (top-environment)))
-                    (set! repl-environment (top-environment)))
+                (if (not (environment-module (*top-environment*)))
+                    (set! repl-environment (*top-environment*)))
 
-                (top-environment (make-top-environment mod))
+                (*top-environment* (make-top-environment mod))
                 (module-load/deps (list mod))
                 
                 (let ((info (module-info mod)))
                   (module-add-defs-to-env (module-info-imports info)
-                                          (top-environment))
+                                          (*top-environment*))
                   (module-add-defs-to-env
                    (macroexpansion-symbol-defs (module-info-symbols info)
                                                (module-info-environment info))
-                   (top-environment)))
+                   (*top-environment*)))
                 (void)))))
     (lambda (mod)
       ;; This function might be called with #f as argument
       (if mod
           (fn mod)
           (begin
-            (top-environment repl-environment)
+            (*top-environment* repl-environment)
             (void))))))
 
 
@@ -275,14 +266,14 @@
           make-external-module-loader
           make-external-module-resolver
           
-          current-module
+          current-module-reference
           current-loader
           
           with-module-cache
           
           make-module
-          module-loader
-          module-path
+          module-reference-loader
+          module-reference-path
           module-info
           module-needs-compile?
           module-compile!
@@ -361,7 +352,7 @@
                  builtin-pair)))
         (values (if (or (not (zero? (expansion-phase)))
                         (not (environment-module-reference
-                              (top-environment))))
+                              (*top-environment*))))
                     (cons module-env-table ns)
                     ns)
                 #f)))))
@@ -374,8 +365,7 @@
 (define empty-environment
   (make-top-environment #f))
 
-(define top-environment
-  (make-parameter (make-top-environment #f)))
+(*top-environment* (make-top-environment #f))
 
 
 
