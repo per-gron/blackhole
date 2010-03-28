@@ -63,7 +63,7 @@
                 (exec-len
                  (vector-length exec-vect))
                 (ns
-                 (let ((str (module-namespace mod)))
+                 (let ((str (module-reference-namespace mod)))
                    (substring str 0 (- (string-length str) 1))))
                 (procedure-or-vector
                  (if (= exec-len 1)
@@ -98,36 +98,34 @@
   (let ((module (and module (resolve-one-module module))))
     (parameterize
      ((top-environment (make-top-environment module))
-      (expansion-phase 0))
-     (with-module-cache
-      (lambda ()
-        (let* ((file (path-strip-trailing-directory-separator
-                      (path-strip-extension
-                       (path-normalize file-with-extension))))
-               (scm (string-append file ".scm"))
-               (scm-exists? (file-exists? scm))
-               (time (table-ref *load-once-registry* file #f)))
-          (if (not (equal? time
-                           (or (not scm-exists?)
-                               (file-last-changed-seconds scm))))
-              (let ((info (and module (module-info module))))
-                ;; If the file needs to be compiled, compile it (if it
-                ;; isn't compiled and is set to force-compile or if the
-                ;; scm file is newer than the object file.)
-                (if (and module
-                         (let ((res (module-needs-compile? module)))
-                           (if (module-info-force-compile? info)
-                               res
-                               (eq? res #t))))
-                    (begin
-                      (print file " is being compiled...\n")
-                      (module-compile! module)))
-                ;; Load it.
-                (let ((ret (load-and-init file module)))
-                  (table-set! *load-once-registry*
-                              file (or (not scm-exists?)
-                                       (file-last-changed-seconds scm)))
-                  ret)))))))))
+      (*expansion-phase* 0))
+     (let* ((file (path-strip-trailing-directory-separator
+                   (path-strip-extension
+                    (path-normalize file-with-extension))))
+            (scm (string-append file ".scm"))
+            (scm-exists? (file-exists? scm))
+            (time (table-ref *load-once-registry* file #f)))
+       (if (not (equal? time
+                        (or (not scm-exists?)
+                            (file-last-changed-seconds scm))))
+           (let ((info (and module (module-info module))))
+             ;; If the file needs to be compiled, compile it (if it
+             ;; isn't compiled and is set to force-compile or if the
+             ;; scm file is newer than the object file.)
+             (if (and module
+                      (let ((res (module-needs-compile? module)))
+                        (if (module-info-force-compile? info)
+                            res
+                            (eq? res #t))))
+                 (begin
+                   (print file " is being compiled...\n")
+                   (module-compile! module)))
+             ;; Load it.
+             (let ((ret (load-and-init file module)))
+               (table-set! *load-once-registry*
+                           file (or (not scm-exists?)
+                                    (file-last-changed-seconds scm)))
+               ret)))))))
 
 (define (compile-with-options module
                               fn

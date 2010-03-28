@@ -6,44 +6,42 @@
 
 
 (define (modules-compile! mods #!optional continue-on-error port)
-  (with-module-cache
-   (lambda ()
-     (let* ((mods (resolve-modules mods))
-            (mods-sorted
-             (filter (lambda (x)
-                       (and (memq x mods)
-                            (module-needs-compile? x)))
-                     (remove-duplicates
-                      (reverse
-                       (apply
-                        append
-                        (map (lambda (x)
-                               (cons x
-                                     (module-info-uses
-                                      (loaded-module-info
-                                       (module-reference-load x)))))
-                             mods))))))
-            (nmods (length mods-sorted))
-            (port (or port (current-output-port)))
-            (file-number 1))
-       
-       (display "Compiling " port)
+  (let* ((mods (resolve-modules mods))
+         (mods-sorted
+          (filter (lambda (x)
+                    (and (memq x mods)
+                         (module-needs-compile? x)))
+                  (remove-duplicates
+                   (reverse
+                    (apply
+                     append
+                     (map (lambda (x)
+                            (cons x
+                                  (module-info-uses
+                                   (loaded-module-info
+                                    (module-reference-ref x)))))
+                          mods))))))
+         (nmods (length mods-sorted))
+         (port (or port (current-output-port)))
+         (file-number 1))
+    
+    (display "Compiling " port)
+    (write nmods port)
+    (display " modules\n" port)
+    
+    (for-each
+     (lambda (mod)
+       (write (module-path mod) port)
+       (display " (" port)
+       (write file-number port)
+       (display "/" port)
        (write nmods port)
-       (display " modules\n" port)
-
-       (for-each
-        (lambda (mod)
-          (write (module-path mod) port)
-          (display " (" port)
-          (write file-number port)
-          (display "/" port)
-          (write nmods port)
-          (display ")\n" port)
-          ;; The module might have been compiled by load-once earlier.
-          (if (module-needs-compile? mod)
-              (module-compile! mod continue-on-error: continue-on-error))
-          (set! file-number (+ file-number 1)))
-        mods-sorted)))))
+       (display ")\n" port)
+       ;; The module might have been compiled by load-once earlier.
+       (if (module-needs-compile? mod)
+           (module-compile! mod continue-on-error: continue-on-error))
+       (set! file-number (+ file-number 1)))
+     mods-sorted)))
 
 (define (modules-clean! mods)
   (for-each module-clean! mods))
@@ -77,33 +75,31 @@
        (module-files-in-dir top-dir)))
 
 (define (module-deps mod #!optional recursive)
-  (with-module-cache
-   (lambda ()
-     (if recursive
-         (let ((mods
-                (flatten
-                 (let loop ((mod mod))
-                   (let ((uses (module-info-uses
-                                (loaded-module-info
-                                 (module-reference-load x)))))
-                     (cons uses
-                           (map loop uses)))))))
-           ;; Sort the modules in the order of which they depend on
-           ;; each other. This algorithm is ridiculously inefficient.
-           (remove-duplicates
-            (reverse
-             (apply
-              append
-              (map (lambda (x)
-                     (cons x
-                           (module-info-uses
-                            (loaded-module-info
-                             (module-reference-load x)))))
-                   mods)))
-            equal?))
-         (module-info-uses
-          (loaded-module-info
-           (module-reference-load mod)))))))
+  (if recursive
+      (let ((mods
+             (flatten
+              (let loop ((mod mod))
+                (let ((uses (module-info-uses
+                             (loaded-module-info
+                              (module-reference-ref x)))))
+                  (cons uses
+                        (map loop uses)))))))
+        ;; Sort the modules in the order of which they depend on
+        ;; each other. This algorithm is ridiculously inefficient.
+        (remove-duplicates
+         (reverse
+          (apply
+           append
+           (map (lambda (x)
+                  (cons x
+                        (module-info-uses
+                         (loaded-module-info
+                          (module-reference-ref x)))))
+                mods)))
+         equal?))
+      (module-info-uses
+       (loaded-module-info
+        (module-reference-ref mod)))))
 
 (define (module-compile/deps! mod #!optional continue-on-error port)
   (modules-compile! (cons mod (module-deps mod #t)) continue-on-error port))
@@ -116,7 +112,7 @@
         (append
          (map car (module-info-symbols
                    (loaded-module-info
-                    (module-reference-load mod)))))))
+                    (module-reference-ref mod)))))))
   
 (define (generate-tmp-dir thunk)
   (let ((compile-tmp-dir "~~/lib/modules/work/compile-tmp/"))
@@ -212,7 +208,7 @@
                  (let ((mod (car mods)))
                    (cons (path-expand
                           (string-append
-                           (let ((ns (module-namespace mod)))
+                           (let ((ns (module-reference-namespace mod)))
                              (substring ns
                                         0
                                         (- (string-length ns) 1)))
@@ -234,75 +230,73 @@
          (else
           (error "Unknown module-compile-bunch mode" mode)))
        
-       (with-module-cache
-        (lambda ()
-          (display "Compiling " port)
-          (display (length files) port)
-          (display " files...\n" port)
-          
-          (for-each
-           (lambda (mod c-file file)
-             (display file port)
-             (display " ." port)
-             (compile-with-options mod
-                                   file
-                                   to-c: c-file)
-             (display "." port)
-             (module-compile-c-file-to-o c-file verbose: verbose)
-             (display "." port)
-             (newline))
-           mods c-files files)
-
-          (let ((link-c-file
-                 (let ((file-name (path-strip-directory
-                                   to-file)))
-                   (let loop ((attempt 0))
-                     (let ((try
-                            (path-expand (string-append file-name
-                                                        (if (zero? attempt)
-                                                            ""
-                                                            (number->string attempt))
-                                                        ".c")
-                                         dir)))
-                       (if (file-exists? try)
-                           (loop (+ 1 attempt))
-                           try))))))
-            
-            (display "Creating link file..\n" port)
-            (parameterize
-             ;; Suppress warning messages from link-flat
-             ((current-output-port
-               (open-output-u8vector)))
-             ((if standalone
-                  link-incremental
-                  link-flat)
-              (map path-strip-extension
-                   c-files)
-              output: link-c-file))
-            
-            (display "Compiling link file..\n" port)
-            (module-compile-c-file-to-o link-c-file verbose: verbose)
-            
-            (display "Linking files..\n" port)
-            (module-link-files
-             (map (lambda (fn)
-                    (string-append (path-strip-extension fn)
-                                   ".o"))
-                  (cons link-c-file c-files))
-             (path-expand to-file (current-directory))
-             standalone: standalone
-             verbose: verbose))
-          
-          (if save-links
-              (for-each (lambda (file)
-                          (with-output-to-file
-                              (string-append (path-strip-extension file)
-                                             ".ol")
-                            (lambda ()
-                              (println (path-normalize to-file)))))
-                        files))
-          
-          to-file))))))
+       (display "Compiling " port)
+       (display (length files) port)
+       (display " files...\n" port)
+       
+       (for-each
+        (lambda (mod c-file file)
+          (display file port)
+          (display " ." port)
+          (compile-with-options mod
+                                file
+                                to-c: c-file)
+          (display "." port)
+          (module-compile-c-file-to-o c-file verbose: verbose)
+          (display "." port)
+          (newline))
+        mods c-files files)
+       
+       (let ((link-c-file
+              (let ((file-name (path-strip-directory
+                                to-file)))
+                (let loop ((attempt 0))
+                  (let ((try
+                         (path-expand (string-append file-name
+                                                     (if (zero? attempt)
+                                                         ""
+                                                         (number->string attempt))
+                                                     ".c")
+                                      dir)))
+                    (if (file-exists? try)
+                        (loop (+ 1 attempt))
+                        try))))))
+         
+         (display "Creating link file..\n" port)
+         (parameterize
+          ;; Suppress warning messages from link-flat
+          ((current-output-port
+            (open-output-u8vector)))
+          ((if standalone
+               link-incremental
+               link-flat)
+           (map path-strip-extension
+                c-files)
+           output: link-c-file))
+         
+         (display "Compiling link file..\n" port)
+         (module-compile-c-file-to-o link-c-file verbose: verbose)
+         
+         (display "Linking files..\n" port)
+         (module-link-files
+          (map (lambda (fn)
+                 (string-append (path-strip-extension fn)
+                                ".o"))
+               (cons link-c-file c-files))
+          (path-expand to-file (current-directory))
+          standalone: standalone
+          verbose: verbose))
+       
+       (if save-links
+           (for-each (lambda (file)
+                       (with-output-to-file
+                           (string-append (path-strip-extension file)
+                                          ".ol")
+                         (lambda ()
+                           (println (path-normalize to-file)))))
+                     files))
+       
+       to-file))))
 
 (define (module-compile-to-standalone name mod
                                       #!key

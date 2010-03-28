@@ -102,47 +102,43 @@
 (define *import-resolvers* '())
 
 (define (resolve-import val #!optional cm)
-  (with-module-cache
-   (lambda ()
-     (cond
-      ((and (pair? val)
-            (keyword? (car val)))
-       (let* ((resolver-id (car val))
-              (resolver (let ((pair (assq resolver-id
-                                          *import-resolvers*)))
-                          (and pair (cdr pair)))))
-         (if (not resolver)
-             (error "Import resolver not found:" resolver-id)
-             (apply resolver
-                    (cons (or cm (current-module-reference))
-                          (cdr val))))))
-      
-      (else
-       (let ((mods (resolve-module val cm)))
-         (values (apply
-                  append
-                  (map (lambda (module-ref)
-                         (module-info-exports
-                          (loaded-module-info
-                           (module-reference-load module-ref))))
-                       mods))
-                 mods)))))))
+  (cond
+   ((and (pair? val)
+         (keyword? (car val)))
+    (let* ((resolver-id (car val))
+           (resolver (let ((pair (assq resolver-id
+                                       *import-resolvers*)))
+                       (and pair (cdr pair)))))
+      (if (not resolver)
+          (error "Import resolver not found:" resolver-id)
+          (apply resolver
+                 (cons (or cm (current-module-reference))
+                       (cdr val))))))
+   
+   (else
+    (let ((mods (resolve-module val cm)))
+      (values (apply
+               append
+               (map (lambda (module-ref)
+                      (module-info-exports
+                       (loaded-module-info
+                        (module-reference-ref module-ref))))
+                    mods))
+              mods)))))
 
 (define (resolve-imports vals #!optional cm)
-  (with-module-cache
-   (lambda ()
-     (let ((defs '())
-           (mods '()))
-       (for-each (lambda (val)
-                   (call-with-values
-                       (lambda ()
-                         (resolve-import val cm))
-                     (lambda (def mod)
-                       (set! defs (cons def defs))
-                       (set! mods (cons mod mods)))))
-                 vals)
-       (values (flatten1 defs)
-               (flatten1 mods))))))
+  (let ((defs '())
+        (mods '()))
+    (for-each (lambda (val)
+                (call-with-values
+                    (lambda ()
+                      (resolve-import val cm))
+                  (lambda (def mod)
+                    (set! defs (cons def defs))
+                    (set! mods (cons mod mods)))))
+              vals)
+    (values (flatten1 defs)
+            (flatten1 mods))))
 
 (define (only-resolver cm mod . names)
   (call-with-values
@@ -260,44 +256,40 @@
 
 ;; TODO This code is very similar to resolve-import, which is bad.
 (define (resolve-export val env)
-  (with-module-cache
-   (lambda ()
-     (cond
-      ((and (pair? val)
-            (keyword? (car val)))
-       (let* ((resolver-id (car val))
-              (resolver (let ((pair (assq resolver-id
-                                          *export-resolvers*)))
-                          (and pair (cdr pair)))))
-         (if (not resolver)
-             (error "Export resolver not found:" resolver-id)
-             (apply resolver
-                    (cons env (cdr val))))))
-      
-      ((symbol? val)
-       (values (list (export-helper env val val))
-               '()))
-
-      (else
-       (error "Invalid exports declaration" val))))))
+  (cond
+   ((and (pair? val)
+         (keyword? (car val)))
+    (let* ((resolver-id (car val))
+           (resolver (let ((pair (assq resolver-id
+                                       *export-resolvers*)))
+                       (and pair (cdr pair)))))
+      (if (not resolver)
+          (error "Export resolver not found:" resolver-id)
+          (apply resolver
+                 (cons env (cdr val))))))
+   
+   ((symbol? val)
+    (values (list (export-helper env val val))
+            '()))
+   
+   (else
+    (error "Invalid exports declaration" val))))
 
 ;; TODO This code is pretty much a copy/paste of resolve-imports, which
 ;; is bad.
 (define (resolve-exports vals env)
-  (with-module-cache
-   (lambda ()
-     (let ((defs '())
-           (mods '()))
-       (for-each (lambda (val)
-                   (call-with-values
-                       (lambda ()
-                         (resolve-export val env))
-                     (lambda (def mod)
-                       (set! defs (cons def defs))
-                       (set! mods (cons mod mods)))))
-                 vals)
-       (values (flatten1 defs)
-               (flatten1 mods))))))
+  (let ((defs '())
+        (mods '()))
+    (for-each (lambda (val)
+                (call-with-values
+                    (lambda ()
+                      (resolve-export val env))
+                  (lambda (def mod)
+                    (set! defs (cons def defs))
+                    (set! mods (cons mod mods)))))
+              vals)
+    (values (flatten1 defs)
+            (flatten1 mods))))
 
 (define (rename-export-resolver env . renames)
   (values (map (lambda (rename)

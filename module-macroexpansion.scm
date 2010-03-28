@@ -8,7 +8,7 @@
 
 ;; TODO Right now, this isn't used. (I think)
 (define (macroexpansion-symbol-defs symbols env)
-  (let ((ns (module-namespace
+  (let ((ns (module-reference-namespace
              (environment-module env))))
     (map (lambda (pair)
            (let ((name (car pair))

@@ -210,7 +210,7 @@
                          #!key
                          sc-environment
                          ignore-globals
-                         (phase (expansion-phase)))
+                         (phase (*expansion-phase*)))
   (if (not sc-environment)
       (set! sc-environment orig-env))
   (let* ((gone-through-sc-env #f)
@@ -298,10 +298,8 @@
 (define (environment-namespace env)
   (or (env-ns-string env)
       (let ((ns-string
-             (let ((phase (expansion-phase))
-                   (ns (module-namespace ;; FIXME I'm not sure that
-                                         ;; this procedure
-                                         ;; exists. Doublecheck it.
+             (let ((phase (*expansion-phase*))
+                   (ns (module-reference-namespace
                         (environment-module-reference env))))
                (if (zero? phase)
                    ns
@@ -319,7 +317,7 @@
 
 (define (eval-in-next-phase code env)
   (parameterize
-   ((expansion-phase (+ 1 (expansion-phase)))
+   ((*expansion-phase* (+ 1 (*expansion-phase*)))
     ;; Inside-letrec must be set to #f, otherwise strange errors
     ;; will occur when the continuation that is within that closure
     ;; gets invoked at the wrong time.
@@ -353,14 +351,14 @@
 
 
 (define (environment-add-def! env exported-name actual-name
-                              #!key (phase (expansion-phase)))
+                              #!key (phase (*expansion-phase*)))
   (ns-add! (env-ns env)
            phase
            exported-name
            (list 'def actual-name)))
 
 (define (environment-add-mac! env exported-name fun m-env
-                              #!key (phase (expansion-phase)))
+                              #!key (phase (*expansion-phase*)))
   (ns-add! (env-ns env)
            phase
            exported-name
@@ -405,7 +403,7 @@
          (let ((created-env (make-environment env (box '()) #f)))
            (for-each (lambda (symbol)
                        (ns-add! (env-ns created-env)
-                                (expansion-phase)
+                                (*expansion-phase*)
                                 symbol
                                 (environment-get inner-env symbol)))
                      ids)
@@ -505,7 +503,7 @@
 ;; Names is a list of identifiers or pairs, where the car is the
 ;; identifier and the cdr is its namespace.
 (define (environment-add-defines env names #!key mutate)
-  (let ((phase (expansion-phase)))
+  (let ((phase (*expansion-phase*)))
     (environment-add-to-ns
      env
      names
@@ -537,7 +535,7 @@
                                 #!key
                                 mutate
                                 (mac-env env))
-  (let ((phase (expansion-phase)))
+  (let ((phase (*expansion-phase*)))
     (environment-add-to-ns
      env
      macs
@@ -552,7 +550,7 @@
 ;; (inside-letrec) implies (not (top-level))
 (define top-level (make-parameter #t))
 (define inside-letrec (make-parameter #f))
-(define expansion-phase (make-parameter 0))
+(define *expansion-phase* (make-parameter 0))
 
 
 (define transform-forms-to-triple-define-constant
@@ -1322,7 +1320,7 @@
 
       (let ((pkgs (extract-synclosure-crawler
                    (cdr (expr*:strip-locationinfo source)))))
-        (module-import pkgs)
+        (module-import pkgs env (*expansion-phase*))
         ((*module-macroexpansion-import*) pkgs))))
 
    (import-for-syntax
@@ -1333,7 +1331,7 @@
 
       (let ((pkgs (extract-synclosure-crawler
                    (cdr (expr*:strip-locationinfo source)))))
-        (module-import-for-syntax pkgs)
+        (module-import pkgs env (+ 1 (*expansion-phase*)))
         ((*module-macroexpansion-import-for-syntax*) pkgs))))
 
    (export
@@ -1426,7 +1424,7 @@
             ((top-level)
              (let ((expanded-trans
                     (parameterize
-                     ((expansion-phase (+ 1 (expansion-phase)))
+                     ((*expansion-phase* (+ 1 (*expansion-phase*)))
                       (inside-letrec #f))
                      (expand-macro trans env)))
                    (transformer-name (gensym before-name)))

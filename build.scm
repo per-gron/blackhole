@@ -18,8 +18,8 @@
 (##include "syntactic-tower.scm")       ;; Syntactic tower data structure
 (##include "module-reference.scm")      ;; Module reference data structure
 (##include "module-info.scm")           ;; Module info data structure
-(##include "loaded-module.scm")         ;; Loaded module data structure
 (##include "loader.scm")                ;; Loader data structure
+(##include "loaded-module.scm")         ;; Loaded module data structure
 (##include "module-macroexpansion.scm") ;; The module system core
 (##include "lib.scm")                   ;; The lib (fetching remote
                                         ;; modules) implementation
@@ -48,15 +48,17 @@
 
 ;; ---------- Add the hooks =) ----------
 
-;;(let ((hook (lambda (compiling?)
-;;              (lambda (src)
-;;                (let ((ret (expr:deep-fixup
-;;                            (expand-macro src))))
-;;                  ;; Useful when debugging
-;;                  ;; (pp (expr*:strip-locationinfo ret))
-;;                  ret)))))
-;;  (set! ##expand-source (hook #f))
-;;  (set! c#expand-source (hook #t)))
+(let ((hook (lambda (compiling?)
+              (lambda (src)
+                (let ((ret (expr:deep-fixup
+                            (suspend-ns-table-changes
+                             (lambda ()
+                               (expand-macro src))))))
+                  ;; Useful when debugging
+                  ;; (pp (expr*:strip-locationinfo ret))
+                  ret)))))
+  (set! ##expand-source (hook #f))
+  (set! c#expand-source (hook #t)))
 
 (##vector-set!
  (##thread-repl-channel-get! (current-thread))

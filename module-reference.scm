@@ -27,8 +27,8 @@
         local-loader)))
 
 (define (module-reference-absolute? module-reference)
-  ((loader-path-absolute? module-reference)
-   (module-reference-path module-reference)))
+  (loader-path-absolute? (module-reference-loader module-reference)
+                         (module-reference-path module-reference)))
 
 (define (module-reference-absolutize module-reference ref)
   (cond
@@ -42,9 +42,26 @@
             loader"))
 
    (else
-    ((loader-path-absolutize (module-reference-loader ref))
-     (module-reference-path module-reference)
-     (module-reference-path ref)))))
+    (loader-path-absolutize (module-reference-loader ref)
+                            (module-reference-path module-reference)
+                            (module-reference-path ref)))))
+
+(define module-reference-namespace
+  (let ((fn
+         (lambda (mod)
+           (let ((mod (resolve-one-module mod)))
+             (string-append
+              (let ((loader (module-reference-loader mod))
+                    (path (module-reference-path mod)))
+                (if (eq? loader module-module-loader)
+                    "module"
+                    (namespace-choose-unique
+                     (loader-module-name loader path)
+                     path)))
+              "#")))))
+    (lambda (mod)
+      ;; This function might be called with #f as argument
+      (if mod (fn mod) "~#"))))
 
 (define (module-reference->u8vector ref)
   (object->u8vector ref
@@ -59,14 +76,3 @@
                       (if (loader? obj)
                           (skeleton->loader obj)
                           obj))))
-
-(define loaded-module-registry (make-table))
-
-(define (module-reference-load ref)
-  (if (not (module-reference-absolute? ref))
-      (error "Module reference must be absolute"))
-  (or (table-ref loaded-module-registry ref #f)
-      (let ((loaded-module (load-module (module-reference-path ref)
-                                        (module-reference-loader ref))))
-        (table-set! loaded-module-registry ref loaded-module)
-        loaded-module)))
