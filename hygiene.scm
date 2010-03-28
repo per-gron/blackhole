@@ -210,7 +210,9 @@
                          #!key
                          sc-environment
                          ignore-globals
-                         (phase (*expansion-phase*)))
+                         (phase-number
+                          (expansion-phase-number
+                           (*expansion-phase*))))
   (if (not sc-environment)
       (set! sc-environment orig-env))
   (let* ((gone-through-sc-env #f)
@@ -227,7 +229,7 @@
                        (set! best-distance distance)))))))
     
     (let env-get ((env orig-env))
-      (let ns-get ((ns (env-ns env)) (phase phase))
+      (let ns-get ((ns (env-ns env)) (phase-number phase-number))
         (cond
          ((and (not gone-through-sc-env)
                (eq? env sc-environment))
@@ -243,7 +245,7 @@
                (let* ((phase/name-pair (car def))
                       (p (car phase/name-pair))
                       (n (cdr phase/name-pair)))
-                 (and (= p phase)
+                 (and (= p phase-number)
                       (maybe-update-best-def
                        (cond
                         ((syntactic-closure? n)
@@ -263,8 +265,8 @@
           (env-get (env-parent env)))
          
          ((pair? ns)
-          (or (ns-get (car ns) phase)
-              (ns-get (cdr ns) phase)))
+          (or (ns-get (car ns) phase-number)
+              (ns-get (cdr ns) phase-number)))
          
          ((table? ns)
           (if (not gone-through-sc-env)
@@ -273,15 +275,15 @@
                    (maybe-update-best-def
                     (environment-ancestor-of? env sc-environment)
                     (table-ref ns
-                               (cons phase name)
+                               (cons phase-number name)
                                #f)))))
          
          ((procedure? ns)
           (if (not gone-through-sc-env)
               (env-get sc-environment)
               (call-with-values ns
-                (lambda (new-ns new-phase)
-                  (ns-get new-ns new-phase)))))
+                (lambda (new-ns new-phase-number)
+                  (ns-get new-ns new-phase-number)))))
          
          (else
           (error "Invalid ns" ns)))))
@@ -298,18 +300,19 @@
 (define (environment-namespace env)
   (or (env-ns-string env)
       (let ((ns-string
-             (let ((phase (*expansion-phase*))
+             (let ((phase-number (expansion-phase-number
+                                  (*expansion-phase*)))
                    (ns (module-reference-namespace
                         (environment-module-reference env))))
-               (if (zero? phase)
+               (if (zero? phase-number)
                    ns
                    (string-append
                     (substring ns
                                0
                                (max 0 (- (string-length ns) 1)))
                     "~"
-                    (if (> phase 1)
-                        (number->string phase)
+                    (if (> phase-number 1)
+                        (number->string phase-number)
                         "")
                     "#")))))
         (env-ns-string-set! env ns-string)
@@ -317,7 +320,8 @@
 
 (define (eval-in-next-phase code env)
   (parameterize
-   ((*expansion-phase* (+ 1 (*expansion-phase*)))
+   ((*expansion-phase* (expansion-phase-next-phase
+                        (*expansion-phase*))))
     ;; Inside-letrec must be set to #f, otherwise strange errors
     ;; will occur when the continuation that is within that closure
     ;; gets invoked at the wrong time.
@@ -325,22 +329,22 @@
    (eval-no-hook
     (expand-macro code env))))
 
-(define (ns-add! ns phase name val)
+(define (ns-add! ns phase-number name val)
   (cond
    ((table? ns)
     (table-set! ns
-                (cons phase name)
+                (cons phase-number name)
                 val))
 
    ((box? ns)
     (set-box! ns
-              (cons (cons (cons phase
+              (cons (cons (cons phase-number
                                 name)
                           val)
                     (unbox ns))))
 
    ((pair? ns)
-    (ns-add! (car ns) phase name val))
+    (ns-add! (car ns) phase-number name val))
 
    ((procedure? ns)
     (error "Cannot modify procedure ns" ns))
@@ -351,16 +355,20 @@
 
 
 (define (environment-add-def! env exported-name actual-name
-                              #!key (phase (*expansion-phase*)))
+                              #!key (phase-number
+                                     (expansion-phase-number
+                                      (*expansion-phase*))))
   (ns-add! (env-ns env)
-           phase
+           phase-number
            exported-name
            (list 'def actual-name)))
 
 (define (environment-add-mac! env exported-name fun m-env
-                              #!key (phase (*expansion-phase*)))
+                              #!key (phase-number
+                                     (expansion-phase-number
+                                      (*expansion-phase*))))
   (ns-add! (env-ns env)
-           phase
+           phase-number
            exported-name
            (list 'mac fun m-env)))
 
@@ -403,7 +411,8 @@
          (let ((created-env (make-environment env (box '()) #f)))
            (for-each (lambda (symbol)
                        (ns-add! (env-ns created-env)
-                                (*expansion-phase*)
+                                (expansion-phase-number
+                                 (*expansion-phase*))
                                 symbol
                                 (environment-get inner-env symbol)))
                      ids)
@@ -503,13 +512,14 @@
 ;; Names is a list of identifiers or pairs, where the car is the
 ;; identifier and the cdr is its namespace.
 (define (environment-add-defines env names #!key mutate)
-  (let ((phase (*expansion-phase*)))
+  (let ((phase-number
+         (expansion-phase-number (*expansion-phase*))))
     (environment-add-to-ns
      env
      names
      (lambda (n new-env)
        (if (pair? n)
-           (list (cons phase (car n))
+           (list (cons phase-number (car n))
                  'def
                  (gen-symbol (cdr n)
                              (let ((sc (car n)))
@@ -519,7 +529,7 @@
                  new-env)
            (begin
              (scope-level (+ 1 (scope-level)))
-             (list (cons phase n)
+             (list (cons phase-number n)
                    'def
                    (gen-symbol (generate-namespace)
                                (if (syntactic-closure? n)
@@ -535,12 +545,13 @@
                                 #!key
                                 mutate
                                 (mac-env env))
-  (let ((phase (*expansion-phase*)))
+  (let ((phase-number
+         (expansion-phase-number (*expansion-phase*))))
     (environment-add-to-ns
      env
      macs
      (lambda (m new-env)
-       (list (cons phase (car m))
+       (list (cons phase-number (car m))
              'mac
              (eval-in-next-phase (cadr m) env)
              mac-env))
@@ -550,7 +561,9 @@
 ;; (inside-letrec) implies (not (top-level))
 (define top-level (make-parameter #t))
 (define inside-letrec (make-parameter #f))
-(define *expansion-phase* (make-parameter 0))
+(define *expansion-phase* (make-parameter
+                           (syntactic-tower-first-phase
+                            repl-syntactic-tower)))
 
 
 (define transform-forms-to-triple-define-constant
@@ -1331,7 +1344,8 @@
 
       (let ((pkgs (extract-synclosure-crawler
                    (cdr (expr*:strip-locationinfo source)))))
-        (module-import pkgs env (+ 1 (*expansion-phase*)))
+        (module-import pkgs env (expansion-phase-next-phase
+                                 (*expansion-phase*)))
         ((*module-macroexpansion-import-for-syntax*) pkgs))))
 
    (export
@@ -1424,7 +1438,8 @@
             ((top-level)
              (let ((expanded-trans
                     (parameterize
-                     ((*expansion-phase* (+ 1 (*expansion-phase*)))
+                     ((*expansion-phase* (expansion-phase-next-phase
+                                          (*expansion-phase*)))
                       (inside-letrec #f))
                      (expand-macro trans env)))
                    (transformer-name (gensym before-name)))

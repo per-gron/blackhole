@@ -98,7 +98,9 @@
   (let ((module (and module (resolve-one-module module))))
     (parameterize
      ((top-environment (make-top-environment module))
-      (*expansion-phase* 0))
+      (*expansion-phase*
+       (syntactic-tower-first-phase
+        (make-syntactic-tower))))
      (let* ((file (path-strip-trailing-directory-separator
                    (path-strip-extension
                     (path-normalize file-with-extension))))

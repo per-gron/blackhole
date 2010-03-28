@@ -161,7 +161,9 @@
 ;; This code is here because it depends on the module-info machinery.
 
 (define (module-add-defs-to-env defs env
-                                #!key (phase (*expansion-phase*)))
+                                #!key (phase-number
+                                       (expansion-phase-number
+                                        (*expansion-phase*))))
   (for-each
    (lambda (def)
      (if (eq? 'def (cadr def))
@@ -170,7 +172,7 @@
           env
           (car def) ;; The name it's imported as
           (caddr def) ;; The name it's imported from
-          phase: phase)
+          phase-number: phase-number)
          ;; Macro
          (environment-add-mac!
           env
@@ -180,7 +182,7 @@
           (caddr def)
           ;; The macro's environment
           (cadddr def)
-          phase: phase)))
+          phase-number: phase-number)))
    defs))
 
 (define module-env-table
@@ -188,7 +190,7 @@
          (env (make-environment #f ns)))
     (module-add-defs-to-env module-exports-list
                             env
-                            phase: #f)
+                            phase-number: #f)
     ns))
 
 
@@ -206,7 +208,8 @@
              (if (inside-letrec)
                  inside-letrec-pair
                  builtin-pair)))
-        (values (if (or (not (zero? (*expansion-phase*)))
+        (values (if (or (not (zero? (expansion-phase-number
+                                     (*expansion-phase*))))
                         (not (environment-module-reference
                               (*top-environment*))))
                     (cons module-env-table ns)
@@ -281,7 +284,7 @@
         #!void)
       
       instantiate-compiletime:
-      (lambda (phase loaded-module syntactic-tower)
+      (lambda (loaded-module phase)
         (values (lambda (name value)
                   (error "You can't side-effect the internals of Black Hole"))
                 (lambda (name)
