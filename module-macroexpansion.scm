@@ -158,9 +158,13 @@
      (call-with-values
          (lambda ()
            (parameterize
-            ((*top-environment* (make-top-environment module-reference)))
-            (values (expand-macro sexpr)
-                    (*top-environment*))))
+               ((*top-environment*
+                 (make-top-environment module-reference))
+                (*expansion-phase*
+                 (syntactic-tower-first-phase
+                  (make-syntactic-tower))))
+             (values (expand-macro sexpr)
+                     (*top-environment*))))
        (lambda (expanded-code env)
          ;; TODO Add something to check for duplicate imports and
          ;; exports.

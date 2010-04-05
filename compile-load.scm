@@ -76,32 +76,46 @@
 
 ;;;; ---------- Loading ----------
 
-(define *load-once-registry* (make-table))
+(define (load-module-scm-file module-ref file)
+  (call-with-values
+      (lambda ()
+        (module-macroexpand module-ref
+                            (file-read-as-expr file)))
+    (lambda (runtime-code
+             compiletime-code
+             info-code)
+      (values (eval-no-hook runtime-code)
+              (eval-no-hook compiletime-code)
+              (eval-no-hook info-code)))))
 
-(define *load-and-init-registry* (make-table))
+(define *load-module-form-file-registry* (make-table))
 
-(define (load-and-init file module-ref)
-  (let* ((fn
+(define (load-module-from-file module-ref file-with-extension)
+  ;; TODO This procedure doesn't work atm.
+  ;; TODO Honor force-compile
+  (let* ((file
+          (path-strip-trailing-directory-separator
+           (path-strip-extension
+            (path-normalize file-with-extension))))
+         (object-fn
           (let* ((ol (string-append file ".ol"))
-                 (fn (if (file-exists? ol)
+                 (object-fn (if (file-exists? ol)
                          (with-input-from-file ol
                            read-line)
                          (last-object-file file))))
-            (and fn
-                 (path-normalize fn
-                                 #f
-                                 file))))
+            (and object-fn
+                 (path-normalize object-fn #f file))))
          
          (result
-          (and fn
-               (or (table-ref *load-and-init-registry*
-                              fn
+          (and object-fn
+               (or (table-ref *load-module-from-file-registry*
+                              object-fn
                               #f)
-                   (##load-object-file fn #t)))))
+                   (##load-object-file object-fn #t)))))
     
     (cond
-     ((not fn)
-      (load file))
+     ((not object-fn)
+      (load-module-scm-file (string-append file ".scm")))
      
      (else
       (if (not
@@ -109,8 +123,8 @@
                 (= 3 (vector-length result))))
           (error "Failed to load file:" file result))
       
-      (table-set! *load-and-init-registry*
-                  fn
+      (table-set! *load-module-from-file-registry*
+                  object-fn
                   result)
       
       (let ((missing-constants
@@ -161,42 +175,6 @@
         ((if (vector? procedure-or-vector)
              (vector-ref procedure-or-vector 1)
              procedure-or-vector)))))))
-
-(define (load-once file-with-extension module)
-  (let ((module (and module (resolve-one-module module))))
-    (parameterize
-     ((*top-environment* (make-top-environment module))
-      (*expansion-phase*
-       (syntactic-tower-first-phase
-        (make-syntactic-tower))))
-     (let* ((file (path-strip-trailing-directory-separator
-                   (path-strip-extension
-                    (path-normalize file-with-extension))))
-            (scm (string-append file ".scm"))
-            (scm-exists? (file-exists? scm))
-            (time (table-ref *load-once-registry* file #f)))
-       (if (not (equal? time
-                        (or (not scm-exists?)
-                            (file-last-changed-seconds scm))))
-           (let ((info (and module
-                            (TODO-module-info module))))
-             ;; If the file needs to be compiled, compile it (if it
-             ;; isn't compiled and is set to force-compile or if the
-             ;; scm file is newer than the object file.)
-             (if (and module
-                      (let ((res (module-needs-compile? module)))
-                        (if (module-info-force-compile info)
-                            res
-                            (eq? res #t))))
-                 (begin
-                   (print file " is being compiled...\n")
-                   (module-compile! module)))
-             ;; Load it.
-             (let ((ret (load-and-init file module)))
-               (table-set! *load-once-registry*
-                           file (or (not scm-exists?)
-                                    (file-last-changed-seconds scm)))
-               ret)))))))
 
 
 
