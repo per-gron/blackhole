@@ -192,6 +192,9 @@
 
 (define environment-module-reference env-module-reference)
 
+(define (repl-environment? env)
+  (not (environment-module-reference env)))
+
 (define (environment-ancestor-of? env descendant #!optional (distance 0))
   ;; FIXME Make this test constant-time (is that possible)
   (if (eq? env descendant)

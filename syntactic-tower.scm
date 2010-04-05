@@ -12,7 +12,7 @@
   (syntactic-tower read-only:)
   ;; An integer
   (number read-only:)
-  ;; A hashtable
+  ;; A hashtable of an absolute module reference to a module instance object
   (module-instances read-only:))
 
 (define (make-expansion-phase tower phase)
@@ -60,12 +60,18 @@
 (define (syntactic-tower-first-phase tower)
   (syntactic-tower-phase tower 0))
 
+(define (expansion-phase-runtime? phase)
+  (zero? (expansion-phase-number phase)))
+
+(define (expansion-phase-compiletime? phase)
+  (positive? (expansion-phase-number phase)))
+
 (define (expansion-phase-next-phase phase)
   (syntactic-tower-phase (expansion-phase-syntactic-tower phase)
                          (+ 1 (expansion-phase-number phase))))
 
-(define (expansion-phase-module-instance phase absolute-path)
+(define (expansion-phase-module-instance phase module-reference)
   (table-ref (expansion-phase-module-instances phase)
-             absolute-path))
+             module-reference))
 
 (define repl-syntactic-tower (make-syntactic-tower))

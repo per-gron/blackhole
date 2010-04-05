@@ -13,6 +13,7 @@
   (instantiate-compiletime read-only:)
   (info read-only:)
   (stamp read-only:)
+  ;; An absolute module reference object
   (reference read-only:))
 
 (define (make-loaded-module #!key
@@ -73,38 +74,74 @@
 
 ;;;; ---------- Module utility functions ----------
 
-;; TODO This doesn't work atm
-(define (loaded-module-instantiate/deps modules)
-  (let ((load-table (make-table)))
-    (for-each
-     (lambda (module)
-       (let rec ((module module))
-         (cond
-          ((not (table-ref load-table
-                           (module-reference-path module)
-                           #f))
-           (table-set! load-table
-                       (module-reference-path module)
-                       #t)
-           
-           (for-each rec
-                     (module-info-uses
-                      (module-info module)))
-           
-           (let ((fn (module-file module)))
-             (if fn
-                 (load-once fn module)))))))
-     modules)))
+(define (loaded-module-instantiate! lm phase)
+  (if (zero? (expansion-phase-number phase))
+      ((loaded-module-instantiate-runtime lm))
+      ((loaded-module-instantiate-compiletime lm) lm phase)))
+
+(define (loaded-module-instantiated? lm phase)
+  (if (zero? (expansion-phase-number phase))
+      (loaded-module-runtime-instantiated lm)
+      (not (eq? #f
+                (table-ref (expansion-phase-module-instances phase)
+                           (loaded-module-reference lm)
+                           #f)))))
+
+(define (loaded-modules-instantiate/deps lms phase
+                                                #!key force)
+  (letrec ((next-phase (expansion-phase-next-phase phase))
+           ;; Table of module-reference
+           ;; objects to #t
+           (load-table (make-table))
+           (rec (lambda (lm phase)
+                  (cond
+                   ((and (not (table-ref load-table
+                                         (loaded-module-reference lm)
+                                         #f))
+                         (or force
+                             (not (loaded-module-instantiated? lm
+                                                               phase))))
+                    (table-set! load-table
+                                (loaded-module-reference lm)
+                                #t)
+                    
+                    (for-each (lambda (lm)
+                                (rec lm phase))
+                              (module-info-runtime-dependencies
+                               (loaded-module-info lm)))
+
+                    (loaded-module-instantiate! lm phase))))))
+    (for-each (lambda (lm)
+                (for-each (lambda (lm)
+                            (rec lm next-phase)))
+                (module-info-compiletime-dependencies
+                 (loaded-module-info lm))
+                (rec lm phase))
+              lms)))
+
+(define (loaded-module-instantiate/deps lm phase
+                                               #!key force)
+  (loaded-modules-instantiate/deps! (list lm)
+                                          phase
+                                          force: force))
+
 
 (define (module-import modules env phase)
+  ;; TODO This procedure doesn't work properly.
   (call-with-values
       (lambda () (resolve-imports modules))
-    (lambda (defs mods)
-      (if (or (not (environment-module env))
-              (> phase 0))
-          (loaded-module-instantiate/deps mods))
+    (lambda (defs module-references)
+      ;; TODO We need to load the modules from the references
+      ;; first. Compare stamps?
+      (let ((loaded-modules
+             ...))
+        (if (or (repl-environment? env)
+                (expansion-phase-compiletime? phase))
+            (loaded-modules-instantiate/deps loaded-modules
+                                             phase)))
       
-      (module-add-defs-to-env defs env phase: phase))))
+      (module-add-defs-to-env defs env
+                              phase-number: (expansion-phase-number phase)))))
 
 
 (define module-module

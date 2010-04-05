@@ -83,7 +83,6 @@
      (else
       (default-action)))))
 
-(define phase-sym (gensym 'phase))
 (define loaded-module-sym (gensym 'loaded-module))
 (define syntactic-tower-sym (gensym 'syntactic-tower))
 (define name-sym (gensym 'name))
@@ -101,7 +100,7 @@
                                             (car x)))
                           (cons (car x) (caddr x))))
                     definitions)))
-    `(lambda (,phase-sym ,loaded-module-sym ,syntactic-tower-sym)
+    `(lambda (,loaded-module-sym ,expansion-phase-sym)
        (let ((module-instances #f))
          ,(transform-to-define expanded-code)
          
