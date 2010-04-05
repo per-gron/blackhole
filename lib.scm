@@ -183,6 +183,10 @@
    (lambda (path)
      (error "TODO To be implemented"))
 
+   compare-stamp:
+   (lambda (path stamp)
+     (error "TODO To be implemented"))
+
    module-name:
    (lambda (path)
      (path-strip-directory

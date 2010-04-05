@@ -16,7 +16,7 @@
   (map (lambda (id)
          (make-module-reference
           loader
-          ((loader-path-absolutize loader) id path)))
+          (loader-path-absolutize loader id path)))
        ids))
 
 (define (package-module-resolver path)
@@ -27,7 +27,7 @@
       (map (lambda (id)
              (make-module-reference
               local-loader
-              ((loader-path-absolutize local-loader) id path)))
+              (loader-path-absolutize local-loader id path)))
            ids))))
 
 ;; This is a helper function for singleton loaders, for instance 'module

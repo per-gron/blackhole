@@ -76,11 +76,6 @@
 
 ;;;; ---------- Loading ----------
 
-;; These parameters are side-effected by the module-info code so that the
-;; loading mechanism can retrieve it.
-(define *module-info-alist* (make-parameter #f))
-(define *module-compiletime-code* (make-parameter #f))
-
 (define *load-once-registry* (make-table))
 
 (define *load-and-init-registry* (make-table))
@@ -277,21 +272,6 @@
               ld-options
               verbose))
 
-(define (compile-module-to-c module-reference
-                             sexp
-                             runtime-fn
-                             compiletime-fn
-                             info-fn)
-  (call-with-values
-      (lambda ()
-        (module-macroexpand module-reference sexp))
-    (lambda (runtime-code
-             compiletime-code
-             info-code)
-      (compile-sexp-to-c runtime-code runtime-fn)
-      (compile-sexp-to-c compiletime-code runtime-fn)
-      (compile-sexp-to-c info-code info-fn))))
-
 (define (module-compile-bunch mode
                               to-file
                               files
@@ -301,7 +281,7 @@
   (generate-tmp-dir
    (lambda (dir)
      (let* ((mods (map module-reference-from-file files))
-            (c-files
+            (c-files-no-ext
              (let loop ((mods mods) (i 0))
                (cond
                 ((null? mods) '())
@@ -313,11 +293,23 @@
                            (let ((ns (module-reference-namespace mod)))
                              (substring ns
                                         0
-                                        (- (string-length ns) 1)))
-                           ".c")
+                                        (- (string-length ns) 1))))
                           dir)
                          (loop (cdr mods)
                                (+ 1 i))))))))
+            (c-files
+             (let loop ((fs c-files-no-ext)
+                        (accum '()))
+               (cond
+                ((pair? fs)
+                 (let ((f (car fs)))
+                   (loop (cdr fs)
+                         `(,(string-append f "-rt.c")
+                           ,(string-append f "-ct.c")
+                           ,(string-append f "-mi.c")
+                           ,@accum))))
+                (else
+                 accum))))
 
             (standalone #f)
             (save-links #f))
@@ -340,14 +332,26 @@
         (lambda (mod c-file file)
           (display file port)
           (display " ." port)
-          (compile-with-options mod
-                                file
-                                to-c: c-file)
-          (display "." port)
-          (compile-c-to-o c-file verbose: verbose)
-          (display "." port)
+          (let ((compile-sexp-to-o
+                 (lambda (sexp fn)
+                   (compile-sexp-to-c (expr:deep-fixup sexp) fn)
+                   (display "." port)
+                   (compile-c-to-o fn verbose: verbose)
+                   (display "." port))))
+            (call-with-values
+                (lambda ()
+                  (module-macroexpand mod (file-read-as-expr file)))
+              (lambda (runtime-code
+                       compiletime-code
+                       info-code)
+                (compile-sexp-to-o runtime-code
+                                   (string-append c-file "-rt.c"))
+                (compile-sexp-to-o compiletime-code
+                                   (string-append c-file "-ct.c"))
+                (compile-sexp-to-o info-code
+                                   (string-append c-file "-mi.c")))))
           (newline))
-        mods c-files files)
+        mods c-files-no-ext files)
        
        (let ((link-c-file
               (let ((file-name (path-strip-directory
@@ -366,15 +370,14 @@
          
          (display "Creating link file..\n" port)
          (parameterize
-          ;; Suppress warning messages from link-flat
-          ((current-output-port
-            (open-output-u8vector)))
-          ((if standalone
-               link-incremental
-               link-flat)
-           (map path-strip-extension
-                c-files)
-           output: link-c-file))
+             ;; Suppress warning messages from link-flat
+             ((current-output-port
+               (open-output-u8vector)))
+           ((if standalone
+                link-incremental
+                link-flat)
+            (map path-strip-extension c-files)
+            output: link-c-file))
          
          (display "Compiling link file..\n" port)
          (compile-c-to-o link-c-file verbose: verbose)
@@ -399,53 +402,3 @@
                      files))
        
        to-file))))
-
-(define (module-compile-to-standalone name mod
-                                      #!key
-                                      verbose
-                                      (port (current-output-port)))
-  (let ((mod (resolve-one-module mod)))
-    (module-compile-bunch
-     'exe
-     name
-     (map module-reference-path
-          (append (module-deps mod #t)
-                  (list mod)))
-     verbose: verbose
-     port: port)))
-
-;;(module-compile-bunch 'link
-;;                      "std/build.ob"
-;;                      (module-files-in-dir
-;;                       "~~/lib/modules/std"))
-
-;; TODO This doesn't work atm
-;; This should be implemented in terms of module-compile-bunch
-(define (module-compile! mod
-                         #!key
-                         continue-on-error
-                         to-c)
-  (let ((mod (resolve-one-module mod)))
-    (with-exception-catcher
-     (lambda (e)
-       (if continue-on-error
-           (begin
-             (display "Warning: Compilation failed: ")
-             (display-exception e)
-             #f)
-           (raise e)))
-     (lambda ()
-       (let ((info (module-info mod)))
-         (TODO-with-module-macroexpansion ;; For *module-macroexpansion-uses* (??)
-          (lambda ()
-            (let ((result (compile-with-options
-                           mod
-                           (module-reference-path mod)
-                           to-c: to-c
-                           options: (module-info-options info)
-                           cc-options: (module-info-cc-options info)
-                           ld-options-prelude: (module-info-ld-options-prelude
-                                                info)
-                           ld-options: (module-info-ld-options info))))
-              (if (not result)
-                  (error "Compilation failed"))))))))))

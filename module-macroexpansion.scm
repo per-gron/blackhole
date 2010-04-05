@@ -68,7 +68,6 @@
                                    expanded-code
                                    definitions
                                    syntax-dependencies)
-  (pp syntax-dependencies)
   (let ((names (map (lambda (x)
                       (if (eq? 'def (cadr x))
                           (cons (car x)
@@ -76,26 +75,25 @@
                                             (car x)))
                           (cons (car x) (caddr x))))
                     definitions)))
-    `(module#*module-compiletime-code*
-      (lambda (,loaded-module-sym ,expansion-phase-sym)
-        (let ((module-instances #f))
-          ,(transform-to-define expanded-code)
-          
-          (values
-           (lambda (,name-sym)
-             (case ,name-sym
-               ,@(map (lambda (name)
-                        `((,(car name))
-                          ,name))
-                   names)
-               (else (error "Unbound variable" ,name-sym))))
-           (lambda (,name-sym ,val-sym)
-             (case ,name-sym
-               ,@(map (lambda (name)
-                        `((,(car name))
-                          (set! ,(cdr name) ,val-sym)))
-                   names)
-               (else (error "Unbound variable" ,name-sym))))))))))
+    `(lambda (,loaded-module-sym ,expansion-phase-sym)
+       (let ((module-instances #f))
+         ,(transform-to-define expanded-code)
+         
+         (values
+          (lambda (,name-sym)
+            (case ,name-sym
+              ,@(map (lambda (name)
+                       `((,(car name))
+                         ,(cdr name)))
+                  names)
+              (else (error "Unbound variable" ,name-sym))))
+          (lambda (,name-sym ,val-sym)
+            (case ,name-sym
+              ,@(map (lambda (name)
+                       `((,(car name))
+                         (set! ,(cdr name) ,val-sym)))
+                  names)
+              (else (error "Unbound variable" ,name-sym)))))))))
 
 (define (module-macroexpand module-reference
                             sexpr
@@ -179,14 +177,14 @@
                                               expanded-code
                                               definitions
                                               syntax-dependencies)
-                   `(module#*module-info-alist*
-                     '((definitions . ,definitions)
-                       (imports . ,imports)
-                       (imports-for-syntax . ,imports-for-syntax)
-                       (exports . ,exports)
-                       (namespace-string . ,(environment-namespace env))
-                       (options . ,options-)
-                       (cc-options . ,cc-options-)
-                       (ld-options-prelude . ,ld-options-prelude-)
-                       (ld-options . ,ld-options-)
-                       (force-compile . ,force-compile-))))))))))
+                   `',(object->u8vector
+                       `((definitions . ,definitions)
+                         (imports . ,imports)
+                         (imports-for-syntax . ,imports-for-syntax)
+                         (exports . ,exports)
+                         (namespace-string . ,(environment-namespace env))
+                         (options . ,options-)
+                         (cc-options . ,cc-options-)
+                         (ld-options-prelude . ,ld-options-prelude-)
+                         (ld-options . ,ld-options-)
+                         (force-compile . ,force-compile-))))))))))

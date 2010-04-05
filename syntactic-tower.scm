@@ -30,6 +30,7 @@
 (define (make-syntactic-tower)
   (let ((tower (make-syntactic-tower/internal)))
     (syntactic-tower-phases-set!
+     tower
      (vector (make-expansion-phase tower 0)
              (make-expansion-phase tower 1)))
     tower))
