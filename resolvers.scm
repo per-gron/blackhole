@@ -304,7 +304,7 @@
           '()))
 
 (define (re-export-export-resolver env . import-decls)
-  (resolve-imports import-decls (environment-module env)))
+  (resolve-imports import-decls (environment-module-reference env)))
 
 (set! *export-resolvers*
       `((rename: . ,rename-export-resolver)

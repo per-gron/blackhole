@@ -23,7 +23,7 @@
 (define (current-loader)
   (let ((cm (current-module-reference)))
     (if cm
-        (module-loader (current-module-reference))
+        (module-reference-loader (current-module-reference))
         local-loader)))
 
 (define (module-reference-absolute? module-reference)

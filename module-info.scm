@@ -26,7 +26,9 @@
   id: 726DB40B-AB18-4396-A570-BB715B602DB9
   constructor: make-module-info/internal
 
+  (symbols read-only:)
   (exports read-only:)
+  (imports read-only:)
   
   ;; A list of module references, possibly relative
   (runtime-dependencies read-only:)
@@ -49,7 +51,9 @@
   (environment read-only:))
 
 (define (make-module-info #!key
+                          (symbols '())
                           (exports '())
+                          (imports '())
                           (runtime-dependencies '())
                           (compiletime-dependencies '())
                           (options '())
@@ -59,8 +63,10 @@
                           (force-compile #f)
                           namespace-string
                           environment)
-  (make-module-info/internal exports
-                             runtime-dependencied
+  (make-module-info/internal symbols
+                             exports
+                             imports
+                             runtime-dependencies
                              compiletime-dependencies
                              options
                              cc-options
@@ -69,6 +75,10 @@
                              force-compile
                              namespace-string
                              environment))
+
+(define (module-info-dependencies info)
+  (append (module-info-runtime-dependencies info)
+          (module-info-compiletime-dependencies info)))
 
 ;; To be implemented:
 ;; (define (make-module-info module-info-alist) ...)

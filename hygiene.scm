@@ -324,7 +324,7 @@
 (define (eval-in-next-phase code env)
   (parameterize
    ((*expansion-phase* (expansion-phase-next-phase
-                        (*expansion-phase*))))
+                        (*expansion-phase*)))
     ;; Inside-letrec must be set to #f, otherwise strange errors
     ;; will occur when the continuation that is within that closure
     ;; gets invoked at the wrong time.
@@ -1332,7 +1332,7 @@
     (lambda (source env mac-env)
       (if (not (environment-top? env))
           (error "Incorrectly placed import form"
-                 (expr*:strip-locationinfo code)))
+                 (expr*:strip-locationinfo source)))
 
       (let ((pkgs (extract-synclosure-crawler
                    (cdr (expr*:strip-locationinfo source)))))
@@ -1343,7 +1343,7 @@
     (lambda (source env mac-env)
       (if (not (environment-top? env))
           (error "Incorrectly placed import-for-syntax form"
-                 (expr*:strip-locationinfo code)))
+                 (expr*:strip-locationinfo source)))
 
       (let ((pkgs (extract-synclosure-crawler
                    (cdr (expr*:strip-locationinfo source)))))
@@ -1366,8 +1366,7 @@
      (lambda (#!optional name)
        (if (or (not (environment-top? env))
                (environment-module-reference env))
-           (error "Incorrectly placed module form"
-                  (expr*:strip-locationinfo code)))
+           (error "Incorrectly placed module form"))
        (module-module name))))
 
    (quote

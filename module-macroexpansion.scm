@@ -4,28 +4,6 @@
 ;;;                                                                  ;;;
 ;;;  --------------------------------------------------------------  ;;;
 
-;;;; ---------- Module info utilities ----------
-
-;; TODO Right now, this isn't used. (I think)
-(define (macroexpansion-symbol-defs symbols env)
-  (let ((ns (module-reference-namespace
-             (environment-module env))))
-    (map (lambda (pair)
-           (let ((name (car pair))
-                 (type (cdr pair)))
-             (if (eq? 'def type)
-                 (list name 'def (gen-symbol ns name))
-                 (let ((mac (environment-get env name)))
-                   (if (or (not mac)
-                           (not (eq? 'mac (car mac))))
-                       (error "Internal error in macroexpansion-symbol-defs:"
-                              mac))
-                   (list name ;; exported name
-                         'mac
-                         (cadr mac) ;; macro procedure
-                         (caddr mac)))))) ;; macro environment
-         symbols)))
-
 ;;;; ---------- Module macroexpansion utilities ----------
 
 (define (transform-to-define source)
@@ -84,7 +62,7 @@
       (default-action)))))
 
 (define loaded-module-sym (gensym 'loaded-module))
-(define syntactic-tower-sym (gensym 'syntactic-tower))
+(define expansion-phase-sym (gensym 'syntactic-tower))
 (define name-sym (gensym 'name))
 (define val-sym (gensym 'val))
 

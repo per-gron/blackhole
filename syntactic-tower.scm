@@ -25,7 +25,7 @@
   id: 06C5040E-666F-4744-91AF-FAA356820340
   constructor: make-syntactic-tower/internal
 
-  (phases init: (vector)))
+  (phases init: '#()))
 
 (define (make-syntactic-tower)
   (let ((tower (make-syntactic-tower/internal)))

@@ -32,7 +32,7 @@
   ((loader-path-absolutize-fn loader) path ref))
 
 (define (loader-load-module loader path)
-  ((loader-path-load-module-fn loader) path))
+  ((loader-load-module-fn loader) path))
 
 (define (loader-compare-stamp loader path stamp)
   ((loader-compare-stamp-fn loader) path stamp))
@@ -108,12 +108,12 @@
           make-module-info
           module-info-symbols
           module-info-exports
-          module-info-uses
+          module-info-dependencies
           module-info-options
           module-info-cc-options
           module-info-ld-options-prelude
           module-info-ld-options
-          module-info-force-compile?
+          module-info-force-compile
           module-info-environment
           module-info-calculate
           
@@ -129,7 +129,7 @@
           current-module-reference
           current-loader
           
-          make-module
+          make-module-reference
           module-reference-loader
           module-reference-path
           module-reference-namespace
@@ -254,11 +254,11 @@
    
    load-module:
    (lambda (path)
-     TODO)
+     (error "TODO To be implemented"))
 
    compare-stamp:
    (lambda (path stamp)
-     TODO)
+     (error "TODO To be implemented"))
 
    module-name:
    (lambda (path)

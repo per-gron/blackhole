@@ -150,7 +150,7 @@
 (define (lib-module-resolver _ __ . urls)
   (map (lambda (url)
          (lib-url-path url) ;; Will throw error if invalid URL
-         (make-module lib-loader url))
+         (make-module-reference lib-loader url))
        urls))
 
 (define lib-loader
@@ -160,7 +160,7 @@
 
    path-absolute?:
    (lambda (path)
-     TODO)
+     (error "TODO To be implemented"))
    
    path-absolutize:
    (lambda (path #!optional ref)
@@ -173,14 +173,15 @@
 
    ;; absolute-file
    ;;(lambda (mod)
-   ;;  (let* ((url (module-path mod))
+   ;;  (let* ((url (module-reference-path mod))
    ;;         (fn (lib-url-full-path url)))
    ;;    (if (not (file-exists? fn))
    ;;        (fetch-file url))
    ;;    (path-normalize fn)))
 
    load-module:
-   (lambda (path) TODO)
+   (lambda (path)
+     (error "TODO To be implemented"))
 
    module-name:
    (lambda (path)

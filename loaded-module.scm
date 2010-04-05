@@ -56,7 +56,7 @@
   (call-with-values
       (lambda ()
         (loader-load-module (module-reference-loader ref)
-                            (module-reference-path path)))
+                            (module-reference-path ref)))
     (lambda (instantiate-runtime
              instantiate-compiletime
              module-info
@@ -77,7 +77,7 @@
                  loaded-module)
             loaded-module))
       (let ((loaded-module
-             (module-reference-load ref)))
+             (module-reference-load! ref)))
         (table-set! *loaded-module-registry* ref loaded-module)
         loaded-module)))
 
@@ -214,6 +214,25 @@
       (module-add-defs-to-env defs env
                               phase-number: (expansion-phase-number phase)))))
 
+
+(define (macroexpansion-symbol-defs symbols env)
+  (let ((ns (module-reference-namespace
+             (environment-module-reference env))))
+    (map (lambda (pair)
+           (let ((name (car pair))
+                 (type (cdr pair)))
+             (if (eq? 'def type)
+                 (list name 'def (gen-symbol ns name))
+                 (let ((mac (environment-get env name)))
+                   (if (or (not mac)
+                           (not (eq? 'mac (car mac))))
+                       (error "Internal error in macroexpansion-symbol-defs:"
+                              mac))
+                   (list name ;; exported name
+                         'mac
+                         (cadr mac) ;; macro procedure
+                         (caddr mac)))))) ;; macro environment
+         symbols)))
 
 (define module-module
   (let* ((repl-environment #f)

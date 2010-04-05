@@ -7,7 +7,7 @@
 ;; TODO This doesn't work atm
 (define (module-needs-compile? mod)
   (let ((mod (resolve-one-module mod)))
-    (let* ((path (module-file mod))
+    (let* ((path (module-reference-path mod))
            (of (last-object-file path)))
       (if of
           (not (file-newer? of path))
@@ -33,7 +33,7 @@
           (lambda ()
             (let ((result (compile-with-options
                            mod
-                           (module-file mod)
+                           (module-reference-path mod)
                            to-c: to-c
                            options: (module-info-options info)
                            cc-options: (module-info-cc-options info)
@@ -54,10 +54,11 @@
                     (apply
                      append
                      (map (lambda (x)
-                            (cons x
-                                  (module-info-uses
+                            (let ((info
                                    (loaded-module-info
-                                    (module-reference-ref x)))))
+                                    (module-reference-ref x))))
+                            (cons x
+                                  (module-info-dependencies info))))
                           mods))))))
          (nmods (length mods-sorted))
          (port (or port (current-output-port)))
@@ -69,7 +70,7 @@
     
     (for-each
      (lambda (mod)
-       (write (module-path mod) port)
+       (write (module-reference-path mod) port)
        (display " (" port)
        (write file-number port)
        (display "/" port)
@@ -104,20 +105,23 @@
        files))
     mod-list))
 
-(define (module-from-file file)
-  (make-module local-loader
-               (path-normalize file)))
+(define (module-reference-from-file file)
+  (make-module-reference local-loader
+                         (path-normalize file)))
 
 (define (modules-in-dir top-dir)
-  (map module-from-file
+  (map module-reference-from-file
        (module-files-in-dir top-dir)))
 
+;; TODO This function should probably do something about runtime vs
+;; compiletime dependencies? Right now it doesn't treat them different
+;; at all.
 (define (module-deps mod #!optional recursive)
   (if recursive
       (let ((mods
              (flatten
               (let loop ((mod mod))
-                (let ((uses (module-info-uses
+                (let ((uses (module-info-dependencies
                              (loaded-module-info
                               (module-reference-ref x)))))
                   (cons uses
@@ -130,12 +134,12 @@
            append
            (map (lambda (x)
                   (cons x
-                        (module-info-uses
+                        (module-info-dependencies
                          (loaded-module-info
                           (module-reference-ref x)))))
                 mods)))
          equal?))
-      (module-info-uses
+      (module-info-dependencies
        (loaded-module-info
         (module-reference-ref mod)))))
 
@@ -236,7 +240,7 @@
                               verbose)
   (generate-tmp-dir
    (lambda (dir)
-     (let* ((mods (map module-from-file files))
+     (let* ((mods (map module-reference-from-file files))
             (c-files
              (let loop ((mods mods) (i 0))
                (cond
@@ -344,7 +348,7 @@
     (module-compile-bunch
      'exe
      name
-     (map module-path
+     (map module-reference-path
           (append (module-deps mod #t)
                   (list mod)))
      verbose: verbose
