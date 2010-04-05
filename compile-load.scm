@@ -4,13 +4,88 @@
 ;;;                                                                  ;;;
 ;;;  --------------------------------------------------------------  ;;;
 
-;;;; ---------- Loader utility functions ----------
+;;;; ---------- File utilities ----------
+
+(define (object-files path)
+  (let* ((dir (path-directory path))
+         (begin-str (string-append (path-strip-directory
+                                    (path-strip-extension path))
+                                   ".o")))
+    (map (lambda (fn)
+           (path-expand fn dir))
+         (filter (lambda (fn) (string-begins-with fn begin-str))
+                 (directory-files dir)))))
+
+(define (object-file-extract-number fn)
+  (or (string->number
+       (substring fn
+                  (let loop ((i (string-length fn)))
+                    (if (zero? i)
+                        0
+                        (let ((chr
+                               (char->integer
+                                (string-ref fn (- i 1)))))
+                          (if (and (>= chr (char->integer #\0))
+                                   (<= chr (char->integer #\9)))
+                              (loop (- i 1))
+                              i))))
+                  (string-length fn)))
+      0))
+
+(define (last-object-file path)
+  (let ((lst (object-files path))
+        (max-num -1)
+        (res #f))
+    (let loop ((lst lst))
+      (if (not (null? lst))
+          (let ((num (object-file-extract-number (car lst))))
+            (if (> num max-num)
+                (begin
+                  (set! max-num num)
+                  (set! res (car lst))))
+            (loop (cdr lst)))))
+    res))
+
+(define (clean-file path)
+  (for-each delete-file
+            (object-files path)))
+
+(define (generate-tmp-dir thunk)
+  (let ((compile-tmp-dir "~~/lib/modules/work/compile-tmp/"))
+    (create-dir-unless-exists compile-tmp-dir)
+    (let ((fn (let loop ((i 0))
+                (let ((fn (path-expand (number->string i)
+                                       compile-tmp-dir)))
+                  (if (file-exists? fn)
+                      (loop (+ i 1))
+                      fn)))))
+      (dynamic-wind
+          (lambda ()
+            (if (not fn)
+                (error "generate-tmp-dir: Can't re-enter"))
+            (create-directory fn))
+          (lambda ()
+            (thunk fn))
+          (lambda ()
+            (map (lambda (f)
+                   (delete-file (path-expand f fn)))
+                 (directory-files (list path: fn
+                                        ignore-hidden: 'dot-and-dot-dot)))
+            (delete-directory fn)
+            (set! fn #f))))))
+
+;;;; ---------- Loading ----------
+
+;; These parameters are side-effected by the module-info code so that the
+;; loading mechanism can retrieve it.
+(define *module-info-alist* (make-parameter #f))
+(define *module-compiletime-code* (make-parameter #f))
 
 (define *load-once-registry* (make-table))
 
 (define *load-and-init-registry* (make-table))
 
-(define (load-and-init file mod)
+(define (load-and-init file module-ref)
   (let* ((fn
           (let* ((ol (string-append file ".ol"))
                  (fn (if (file-exists? ol)
@@ -61,7 +136,7 @@
              (exec-len
               (vector-length exec-vect))
              (ns
-              (let ((str (module-reference-namespace mod)))
+              (let ((str (module-reference-namespace module-ref)))
                 (substring str 0 (- (string-length str) 1))))
              (procedure-or-vector
               (if (= exec-len 1)
@@ -128,77 +203,249 @@
                                     (file-last-changed-seconds scm)))
                ret)))))))
 
-(define (compile-with-options module
-                              fn
-                              #!key
-                              to-c
-                              (options '())
-                              (cc-options "")
-                              (ld-options-prelude "")
-                              (ld-options ""))
+
+
+;;;; ---------- Compilation ----------
+
+(define (compile-sexp-to-c sexp
+                           fn
+                           #!key
+                           (options '()))
   (##gc) ;; Avoid out-of-memory related crashes
-  (parameterize
-   ((*top-environment* (make-top-environment
-                      (resolve-one-module module))))
-   (if to-c
-       (compile-file-to-c fn
-                          output: (or (and (string? to-c) to-c)
-                                      (string-append (path-strip-extension fn)
-                                                     ".c"))
-                          options: (append options *compiler-options*))
-       (compile-file fn
-                     options: (append options *compiler-options*)
-                     cc-options: (string-append
-                                  cc-options " " *compiler-cc-options*)
-                     ld-options-prelude: (string-append
-                                          ld-options-prelude
-                                          " "
-                                          *compiler-ld-options-prelude*)
-                     ld-options: (string-append
-                                  ld-options " " *compiler-ld-options*)))))
+  (let ((hook (lambda (_) sexp))
+        (prev-hook #f))
+    (dynamic-wind
+        (lambda ()
+          (set! prev-hook c#expand-source)
+          (set! c#expand-source hook))
+        (lambda ()
+          (compile-file-to-c "/dev/null"
+                             output: fn
+                             options: options))
+        (lambda ()
+          (set! c#expand-source prev-hook)))))
 
+(define (compile-c-to-o c-filename
+                        #!key
+                        output
+                        (cc-options "")
+                        verbose)
+  (if (not (and (or (not output)
+                    (string? output))
+                (string? cc-options)))
+      (error "Invalid parameters"))
 
+  (if (not output)
+      (set! output (path-normalize
+                    (string-append (path-strip-extension
+                                    c-filename)
+                                   ".o")
+                    #f)))
+  
+  (##gambc-cc 'obj
+              (path-directory output)
+              (list c-filename)
+              output
+              cc-options
+              "" ;; ld-options-prelude
+              "" ;; ld-options
+              verbose))
 
-(define (object-files path)
-  (let* ((dir (path-directory path))
-         (begin-str (string-append (path-strip-directory
-                                    (path-strip-extension path))
-                                   ".o")))
-    (map (lambda (fn)
-           (path-expand fn dir))
-         (filter (lambda (fn) (string-begins-with fn begin-str))
-                 (directory-files dir)))))
+(define (link-files o-files
+                    o1-file
+                    #!key
+                    standalone
+                    (ld-options-prelude "")
+                    (ld-options "")
+                    verbose)
+  (if (not (and (string? o1-file)
+                (string? ld-options-prelude)
+                (string? ld-options)))
+      (error "Invalid parameters"))
 
-(define (object-file-extract-number fn)
-  (or (string->number
-       (substring fn
-                  (let loop ((i (string-length fn)))
-                    (if (zero? i)
-                        0
-                        (let ((chr
-                               (char->integer
-                                (string-ref fn (- i 1)))))
-                          (if (and (>= chr (char->integer #\0))
-                                   (<= chr (char->integer #\9)))
-                              (loop (- i 1))
-                              i))))
-                  (string-length fn)))
-      0))
+  (for-each (lambda (x)
+              (if (not (string? x))
+                  (error "Invalid parameters")))
+            o-files)
+  
+  (##gambc-cc (if standalone 'exe 'dyn)
+              (current-directory)
+              o-files
+              o1-file
+              "" ;; cc-options
+              ld-options-prelude
+              ld-options
+              verbose))
 
-(define (last-object-file path)
-  (let ((lst (object-files path))
-        (max-num -1)
-        (res #f))
-    (let loop ((lst lst))
-      (if (not (null? lst))
-          (let ((num (object-file-extract-number (car lst))))
-            (if (> num max-num)
-                (begin
-                  (set! max-num num)
-                  (set! res (car lst))))
-            (loop (cdr lst)))))
-    res))
+(define (compile-module-to-c module-reference
+                             sexp
+                             runtime-fn
+                             compiletime-fn
+                             info-fn)
+  (call-with-values
+      (lambda ()
+        (module-macroexpand module-reference sexp))
+    (lambda (runtime-code
+             compiletime-code
+             info-code)
+      (compile-sexp-to-c runtime-code runtime-fn)
+      (compile-sexp-to-c compiletime-code runtime-fn)
+      (compile-sexp-to-c info-code info-fn))))
 
-(define (clean-file path)
-  (for-each delete-file
-            (object-files path)))
+(define (module-compile-bunch mode
+                              to-file
+                              files
+                              #!key
+                              (port (current-output-port))
+                              verbose)
+  (generate-tmp-dir
+   (lambda (dir)
+     (let* ((mods (map module-reference-from-file files))
+            (c-files
+             (let loop ((mods mods) (i 0))
+               (cond
+                ((null? mods) '())
+                
+                (else
+                 (let ((mod (car mods)))
+                   (cons (path-expand
+                          (string-append
+                           (let ((ns (module-reference-namespace mod)))
+                             (substring ns
+                                        0
+                                        (- (string-length ns) 1)))
+                           ".c")
+                          dir)
+                         (loop (cdr mods)
+                               (+ 1 i))))))))
+
+            (standalone #f)
+            (save-links #f))
+
+       (case mode
+         ((exe)
+          (set! standalone #t))
+         ((dyn)
+          #!void) ;; Nothing to be done
+         ((link)
+          (set! save-links #t))
+         (else
+          (error "Unknown module-compile-bunch mode" mode)))
+       
+       (display "Compiling " port)
+       (display (length files) port)
+       (display " files...\n" port)
+       
+       (for-each
+        (lambda (mod c-file file)
+          (display file port)
+          (display " ." port)
+          (compile-with-options mod
+                                file
+                                to-c: c-file)
+          (display "." port)
+          (compile-c-to-o c-file verbose: verbose)
+          (display "." port)
+          (newline))
+        mods c-files files)
+       
+       (let ((link-c-file
+              (let ((file-name (path-strip-directory
+                                to-file)))
+                (let loop ((attempt 0))
+                  (let ((try
+                         (path-expand (string-append file-name
+                                                     (if (zero? attempt)
+                                                         ""
+                                                         (number->string attempt))
+                                                     ".c")
+                                      dir)))
+                    (if (file-exists? try)
+                        (loop (+ 1 attempt))
+                        try))))))
+         
+         (display "Creating link file..\n" port)
+         (parameterize
+          ;; Suppress warning messages from link-flat
+          ((current-output-port
+            (open-output-u8vector)))
+          ((if standalone
+               link-incremental
+               link-flat)
+           (map path-strip-extension
+                c-files)
+           output: link-c-file))
+         
+         (display "Compiling link file..\n" port)
+         (compile-c-to-o link-c-file verbose: verbose)
+         
+         (display "Linking files..\n" port)
+         (link-files
+          (map (lambda (fn)
+                 (string-append (path-strip-extension fn)
+                                ".o"))
+               (cons link-c-file c-files))
+          (path-expand to-file (current-directory))
+          standalone: standalone
+          verbose: verbose))
+       
+       (if save-links
+           (for-each (lambda (file)
+                       (with-output-to-file
+                           (string-append (path-strip-extension file)
+                                          ".ol")
+                         (lambda ()
+                           (println (path-normalize to-file)))))
+                     files))
+       
+       to-file))))
+
+(define (module-compile-to-standalone name mod
+                                      #!key
+                                      verbose
+                                      (port (current-output-port)))
+  (let ((mod (resolve-one-module mod)))
+    (module-compile-bunch
+     'exe
+     name
+     (map module-reference-path
+          (append (module-deps mod #t)
+                  (list mod)))
+     verbose: verbose
+     port: port)))
+
+;;(module-compile-bunch 'link
+;;                      "std/build.ob"
+;;                      (module-files-in-dir
+;;                       "~~/lib/modules/std"))
+
+;; TODO This doesn't work atm
+;; This should be implemented in terms of module-compile-bunch
+(define (module-compile! mod
+                         #!key
+                         continue-on-error
+                         to-c)
+  (let ((mod (resolve-one-module mod)))
+    (with-exception-catcher
+     (lambda (e)
+       (if continue-on-error
+           (begin
+             (display "Warning: Compilation failed: ")
+             (display-exception e)
+             #f)
+           (raise e)))
+     (lambda ()
+       (let ((info (module-info mod)))
+         (TODO-with-module-macroexpansion ;; For *module-macroexpansion-uses* (??)
+          (lambda ()
+            (let ((result (compile-with-options
+                           mod
+                           (module-reference-path mod)
+                           to-c: to-c
+                           options: (module-info-options info)
+                           cc-options: (module-info-cc-options info)
+                           ld-options-prelude: (module-info-ld-options-prelude
+                                                info)
+                           ld-options: (module-info-ld-options info))))
+              (if (not result)
+                  (error "Compilation failed"))))))))))

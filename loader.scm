@@ -258,7 +258,8 @@
 
    compare-stamp:
    (lambda (path stamp)
-     (error "TODO To be implemented"))
+     (= (file-last-changed-seconds path)
+        stamp))
 
    module-name:
    (lambda (path)

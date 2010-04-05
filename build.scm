@@ -48,17 +48,15 @@
 
 ;; ---------- Add the hooks =) ----------
 
-;;(let ((hook (lambda (compiling?)
-;;              (lambda (src)
-;;                (let ((ret (expr:deep-fixup
-;;                            (suspend-ns-table-changes
-;;                             (lambda ()
-;;                               (expand-macro src))))))
-;;                  ;; Useful when debugging
-;;                  ;; (pp (expr*:strip-locationinfo ret))
-;;                  ret)))))
-;;  (set! ##expand-source (hook #f))
-;;  (set! c#expand-source (hook #t)))
+(set! ##expand-source
+      (lambda (src)
+        (let ((ret (expr:deep-fixup
+                    (suspend-ns-table-changes
+                     (lambda ()
+                       (expand-macro src))))))
+          ;; Useful when debugging
+          ;; (pp (expr*:strip-locationinfo ret))
+          ret)))
 
 (##vector-set!
  (##thread-repl-channel-get! (current-thread))
