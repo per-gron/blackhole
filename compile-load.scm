@@ -84,97 +84,105 @@
     (lambda (runtime-code
              compiletime-code
              info-code)
-      (values (eval-no-hook runtime-code)
+      (values (lambda () (eval-no-hook runtime-code))
               (eval-no-hook compiletime-code)
-              (eval-no-hook info-code)))))
+              (u8vector->object (eval-no-hook info-code))))))
 
-(define *load-module-form-file-registry* (make-table))
+;; Takes the return value of ##load-object-file and returns a table
+;; mapping "[module namespace]-[rt, ct or mi]" to the instantiation
+;; procedure.
+(define (load-object-file-result->table result)
+  (list->table
+   (map (lambda (x)
+          (cons (vector-ref x 0)
+                (vector-ref x 1)))
+     (vector->list
+      (vector-ref result 0)))))
+
+;; file should be an absolute path to an object file
+(define load-module-object-table
+  (let ((registry (make-table)))
+    (lambda (file)
+      (or (table-ref registry file #f)
+          (let ((result (##load-object-file file #t)))
+            (if (not (and (vector? result)
+                          (= 3 (vector-length result))))
+                (error "Failed to load file:" file result))
+            
+            (let ((missing-constants
+                   (vector-ref result 1)))
+              (for-each
+                  (lambda (pair)
+                    (let ((var (car pair))
+                          (mod (cdr pair)))
+                      (print "*** WARNING -- Variable \""
+                             var
+                             "\" used in module \""
+                             mod
+                             "\" is undefined\n")))
+                missing-constants))
+
+            (let ((table (load-object-file-result->table result)))
+              (table-set! registry file table)
+              table))))))
 
 (define (load-module-from-file module-ref file-with-extension)
-  ;; TODO This procedure doesn't work atm.
-  ;; TODO Honor force-compile
   (let* ((file
           (path-strip-trailing-directory-separator
            (path-strip-extension
             (path-normalize file-with-extension))))
+         
          (object-fn
           (let* ((ol (string-append file ".ol"))
                  (object-fn (if (file-exists? ol)
-                         (with-input-from-file ol
-                           read-line)
-                         (last-object-file file))))
+                                (with-input-from-file ol
+                                  read-line)
+                                (last-object-file file))))
             (and object-fn
                  (path-normalize object-fn #f file))))
          
-         (result
+         (module-object-table
           (and object-fn
-               (or (table-ref *load-module-from-file-registry*
-                              object-fn
-                              #f)
-                   (##load-object-file object-fn #t)))))
+               (load-module-object-table object-fn)))
+
+         (force-compile
+          (lambda ()
+            (print file-with-extension " is being compiled...\n")
+            (module-compile! module-ref)
+            (load-module-from-file module-ref file-with-extension))))
     
     (cond
-     ((not object-fn)
-      (load-module-scm-file (string-append file ".scm")))
+     ((eq? #t (module-needs-compile? module-ref))
+      (force-compile))
      
-     (else
-      (if (not
-           (and (vector? result)
-                (= 3 (vector-length result))))
-          (error "Failed to load file:" file result))
-      
-      (table-set! *load-module-from-file-registry*
-                  object-fn
-                  result)
-      
-      (let ((missing-constants
-             (vector-ref result 1)))
-        (for-each
-            (lambda (pair)
-              (let ((var (car pair))
-                    (mod (cdr pair)))
-                (print "*** WARNING -- Variable \""
-                       var
-                       "\" used in module \""
-                       mod
-                       "\" is undefined\n")))
-          missing-constants))
-      
-      (let* ((exec-vect
-              (vector-ref result 0))
-             (exec-len
-              (vector-length exec-vect))
-             (ns
+     ((not object-fn)
+      (call-with-values
+          (lambda ()
+            (load-module-scm-file (string-append file ".scm")))
+        (lambda (rt ct mi)
+          (let ((ret (assq 'force-compile mi)))
+            (if (and ret (cdr ret))
+                (force-compile)
+                (values rt ct mi))))))
+     
+     (else      
+      (let* ((ns
               (let ((str (module-reference-namespace module-ref)))
                 (substring str 0 (- (string-length str) 1))))
-             (procedure-or-vector
-              (if (= exec-len 1)
-                  (vector-ref exec-vect 0)
-                  (let loop ((i 0))
-                    (cond
-                     ((>= i exec-len)
-                      (error "Module initializer not found for:" ns))
-                     
-                     ((let ((name-sym (##procedure-name
-                                       (vector-ref exec-vect i))))
-                        (and
-                         name-sym
-                         (let* ((name-str
-                                 (symbol->string name-sym))
-                                (name
-                                 (substring name-str
-                                            1
-                                            (string-length name-str))))
-                           (equal? name ns))))
-                      (vector-ref exec-vect i))
-                        
-                     (else
-                      (loop (+ 1 i))))))))
-        ;; The API for this changed in Gambit 4.5.3. This is to be
-        ;; compatible with Gambits both newer and older than this.
-        ((if (vector? procedure-or-vector)
-             (vector-ref procedure-or-vector 1)
-             procedure-or-vector)))))))
+             (rt (table-ref module-object-table
+                            (string-append ns "-rt")
+                            #f))
+             (ct (table-ref module-object-table
+                            (string-append ns "-ct")
+                            #f))
+             (mi (table-ref module-object-table
+                            (string-append ns "-mi")
+                            #f)))
+        (if (not (and rt ct mi))
+            (error "Module initializer not found for:" ns))
+        (values rt
+                (ct)
+                (u8vector->object (mi))))))))
 
 
 
