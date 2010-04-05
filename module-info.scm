@@ -80,6 +80,5 @@
   (append (module-info-runtime-dependencies info)
           (module-info-compiletime-dependencies info)))
 
-;; To be implemented:
-;; (define (make-module-info module-info-alist) ...)
-
+(define (module-info-alist->module-info module-info-alist)
+  (error "TODO To be implemented"))

@@ -254,7 +254,19 @@
    
    load-module:
    (lambda (path)
-     (error "TODO To be implemented"))
+     (let ((ref (make-module-reference local-loader path)))
+       (call-with-values
+           (lambda ()
+             (load-module-from-file ref path))
+         (lambda (instantiate-runtime
+                  instantiate-compiletime
+                  info-alist)
+           (make-loaded-module
+            instantiate-runtime: instantiate-runtime
+            instantiate-compiletime: instantiate-compiletime
+            info: (module-info-alist->module-info info-alist)
+            stamp: (file-last-changed-seconds path)
+            reference: ref)))))
 
    compare-stamp:
    (lambda (path stamp)

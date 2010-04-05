@@ -344,12 +344,13 @@
                                 to-file)))
                 (let loop ((attempt 0))
                   (let ((try
-                         (path-expand (string-append file-name
-                                                     (if (zero? attempt)
-                                                         ""
-                                                         (number->string attempt))
-                                                     ".c")
-                                      dir)))
+                         (path-expand
+                          (string-append file-name
+                                         (if (zero? attempt)
+                                             ""
+                                             (number->string attempt))
+                                         ".c")
+                          dir)))
                     (if (file-exists? try)
                         (loop (+ 1 attempt))
                         try))))))
