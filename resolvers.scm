@@ -9,7 +9,7 @@
 
 ;; A module resolver is a function that takes a list (like (/srfi/1)
 ;; or (spork /core)), the current loader and the current module path
-;; (or #f) and returns a module identifier.
+;; (or #f) and returns a module reference.
 
 ;; This is the 'here module resolver function
 (define (current-module-resolver loader path . ids)

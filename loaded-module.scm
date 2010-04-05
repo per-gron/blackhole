@@ -9,12 +9,16 @@
   constructor: make-loaded-module/internal
 
   (instantiate-runtime read-only:)
-  (runtime-instantiated init: #f)
   (instantiate-compiletime read-only:)
   (info read-only:)
   (stamp read-only:)
   ;; An absolute module reference object
-  (reference read-only:))
+  (reference read-only:)
+  
+  (runtime-instantiated init: #f)
+  ;; A list of the currently loaded loaded-module objects that
+  ;; directly depend on this loaded-module
+  (dependent-modules init: '()))
 
 (define (make-loaded-module #!key
                             instantiate-runtime
@@ -39,8 +43,15 @@
 (define (loaded-module-path mod)
   (module-reference-path (loaded-module-reference mod)))
 
+(define (loaded-module-stamp-is-fresh? lm)
+  (loader-compare-stamp (loaded-module-loader lm)
+                        (module-reference-path
+                         (loaded-module-reference lm))
+                        (loaded-module-stamp lm)))
+
 (define *loaded-module-registry* (make-table))
 
+;; Loads a module, regardless of whether it's already loaded or not.
 (define (module-reference-load! ref)
   (call-with-values
       (lambda ()
@@ -62,22 +73,13 @@
   (or (let ((loaded-module (table-ref *loaded-module-registry* ref #f)))
         (if compare-stamps
             (and loaded-module
-                 (loader-compare-stamp (loaded-module-loader loaded-module)
-                                       (module-reference-path ref)
-                                       (loaded-module-stamp loaded-module))
+                 (loaded-module-stamp-is-fresh? loaded-module)
                  loaded-module)
             loaded-module))
       (let ((loaded-module
              (module-reference-load ref)))
         (table-set! *loaded-module-registry* ref loaded-module)
         loaded-module)))
-
-;;;; ---------- Module utility functions ----------
-
-(define (loaded-module-instantiate! lm phase)
-  (if (zero? (expansion-phase-number phase))
-      ((loaded-module-instantiate-runtime lm))
-      ((loaded-module-instantiate-compiletime lm) lm phase)))
 
 (define (loaded-module-instantiated? lm phase)
   (if (zero? (expansion-phase-number phase))
@@ -87,58 +89,127 @@
                            (loaded-module-reference lm)
                            #f)))))
 
-(define (loaded-modules-instantiate/deps lms phase
-                                                #!key force)
-  (letrec ((next-phase (expansion-phase-next-phase phase))
-           ;; Table of module-reference
-           ;; objects to #t
-           (load-table (make-table))
-           (rec (lambda (lm phase)
-                  (cond
-                   ((and (not (table-ref load-table
-                                         (loaded-module-reference lm)
-                                         #f))
-                         (or force
-                             (not (loaded-module-instantiated? lm
-                                                               phase))))
-                    (table-set! load-table
-                                (loaded-module-reference lm)
-                                #t)
-                    
-                    (for-each (lambda (lm)
-                                (rec lm phase))
-                              (module-info-runtime-dependencies
-                               (loaded-module-info lm)))
+;; This procedure doesn't make sure that the module's dependencies are
+;; instantiated first, nor that the modules that depend on this module
+;; are reinstantiated or that the dependent-modules field of the
+;; relevant loaded-module objects are kept up-to-date.
+;;
+;; It is not intended to be used directly, it is just a utility
+;; function for loaded-modules-instantiate/deps and
+;; loaded-modules-reinstantiate.
+(define (loaded-module-instantiate! lm phase)
+  (if (zero? (expansion-phase-number phase))
+      ((loaded-module-instantiate-runtime lm))
+      (let ((instance ((loaded-module-instantiate-compiletime lm)
+                       lm phase)))
+        (table-set! (expansion-phase-module-instances phase)
+                    (loaded-module-reference lm)
+                    instance)
+        instance)))
 
-                    (loaded-module-instantiate! lm phase))))))
+(define (loaded-modules-instantiate/deps lms phase)
+  (letrec
+      ((next-phase (expansion-phase-next-phase phase))
+       ;; Table of module-reference objects to #t
+       (instantiate-table (make-table))
+       (rec (lambda (lm phase)
+              (cond
+               ((and (not (table-ref instantiate-table
+                                     (loaded-module-reference lm)
+                                     #f))
+                     (not (loaded-module-instantiated? lm phase)))
+                ;; Flag that this module is to be instantiated, to
+                ;; avoid double-instantiations.
+                (table-set! instantiate-table
+                            (loaded-module-reference lm)
+                            #t)
+                
+                ;; Make sure to instantiate the module's dependencies first
+                (for-each
+                 (lambda (dependency)
+                   ;; Update the dependent-modules field
+                   (loaded-module-dependent-modules-set!
+                    dependency
+                    (cons lm
+                          (loaded-module-dependent-modules
+                           dependency)))
+                   ;; Recurse
+                   (rec dependency phase))
+                 
+                 (module-info-runtime-dependencies
+                  (loaded-module-info lm)))
+                
+                ;; Instantiate the module
+                (loaded-module-instantiate! lm phase))))))
     (for-each (lambda (lm)
                 (for-each (lambda (lm)
-                            (rec lm next-phase)))
-                (module-info-compiletime-dependencies
-                 (loaded-module-info lm))
+                            (rec lm next-phase))
+                  (module-info-compiletime-dependencies
+                           (loaded-module-info lm)))
                 (rec lm phase))
               lms)))
 
-(define (loaded-module-instantiate/deps lm phase
-                                               #!key force)
-  (loaded-modules-instantiate/deps! (list lm)
-                                          phase
-                                          force: force))
-
+(define (loaded-modules-reinstantiate lms phase)
+  (letrec
+      (;; Table of module-reference objects to #t
+       (instantiate-table (make-table))
+       (rec (lambda (lm)
+              (cond
+               ((and (not (table-ref instantiate-table
+                                     (loaded-module-reference lm)
+                                     #f))
+                     (not (loaded-module-instantiated? lm phase)))
+                ;; Flag that this module is to be instantiated, to
+                ;; avoid double-instantiations.
+                (table-set! instantiate-table
+                            (loaded-module-reference lm)
+                            #t)
+                
+                ;; Re-instantiate the module
+                (loaded-module-instantiate! lm phase)
+                
+                ;; Re-instantiate the dependent modules
+                (for-each rec
+                 (loaded-module-dependent-modules lm)))))))
+    (for-each rec lms)))
 
 (define (module-import modules env phase)
-  ;; TODO This procedure doesn't work properly.
+  (define (module-loaded-but-not-fresh? ref)
+    ;; This function is pure (not a closure). It is here because it's
+    ;; only used here.
+    (let ((lm (table-ref *loaded-module-registry* ref #f)))
+      (and lm
+           (loaded-module-stamp-is-fresh? lm))))
+  
   (call-with-values
       (lambda () (resolve-imports modules))
     (lambda (defs module-references)
-      ;; TODO We need to load the modules from the references
-      ;; first. Compare stamps?
-      (let ((loaded-modules
-             ...))
-        (if (or (repl-environment? env)
-                (expansion-phase-compiletime? phase))
-            (loaded-modules-instantiate/deps loaded-modules
-                                             phase)))
+      ;; Modules with a non-fresh stamp (that is, modules that have
+      ;; changed since they were last loaded) will be reloaded if they
+      ;; are imported from the REPL. And when a module is reloaded all
+      ;; modules that depend on it must be reinstantiated.
+      (let ((loaded-modules '())
+            (reloaded-modules '()))
+
+        (cond
+         ((expansion-phase-compiletime? phase)
+          (set! loaded-modules
+                (map module-reference-ref
+                     module-references)))
+
+         ((repl-environment? env)
+          (for-each (lambda (ref)
+                      (if (module-loaded-but-not-fresh? ref)
+                          (set! reloaded-modules
+                                (cons (module-reference-load! ref)
+                                      reloaded-modules))
+                          (set! loaded-modules
+                                (cons (module-reference-ref ref)
+                                      loaded-modules))))
+                    module-references)))
+
+        (loaded-modules-instantiate/deps loaded-modules phase)
+        (loaded-modules-reinstantiate reloaded-modules phase))
       
       (module-add-defs-to-env defs env
                               phase-number: (expansion-phase-number phase)))))
@@ -147,25 +218,24 @@
 (define module-module
   (let* ((repl-environment #f)
          (fn (lambda (mod)
-               (let ((mod (resolve-one-module mod)))
-                 (if (not (environment-module (*top-environment*)))
+               (let* ((module-reference (resolve-one-module mod))
+                      (loaded-module (module-reference-ref
+                                      module-reference))
+                      (info (loaded-module-info loaded-module)))
+                 (if (repl-environment? (*top-environment*))
                      (set! repl-environment (*top-environment*)))
                  
-                 (*top-environment* (make-top-environment mod))
-                 (module-load/deps (list mod))
+                 (*top-environment* (make-top-environment module-reference))
+                 (loaded-modules-instantiate/deps (list loaded-module))
                  
-                 (let ((info (module-info mod)))
-                   (module-add-defs-to-env (module-info-imports info)
-                                           (*top-environment*))
-                   (module-add-defs-to-env
-                    (macroexpansion-symbol-defs (module-info-symbols info)
-                                                (module-info-environment info))
-                    (*top-environment*)))
-                 (void)))))
+                 (module-add-defs-to-env (module-info-imports info)
+                                         (*top-environment*))
+                 (module-add-defs-to-env
+                  (macroexpansion-symbol-defs (module-info-symbols info)
+                                              (module-info-environment info))
+                  (*top-environment*))))))
     (lambda (mod)
-      ;; This function might be called with #f as argument
       (if mod
           (fn mod)
-          (begin
-            (*top-environment* repl-environment)
-            (void))))))
+          (*top-environment* repl-environment))
+      (void))))

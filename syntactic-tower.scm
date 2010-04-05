@@ -12,7 +12,7 @@
   (syntactic-tower read-only:)
   ;; An integer
   (number read-only:)
-  ;; A hashtable of an absolute module reference to a module instance object
+  ;; A table of an absolute module reference to a module instance object
   (module-instances read-only:))
 
 (define (make-expansion-phase tower phase)
