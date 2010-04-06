@@ -95,6 +95,15 @@
                   names)
               (else (error "Unbound variable" ,name-sym)))))))))
 
+(define (memoize-function-with-one-parameter fn)
+  (let ((memo-table (make-table test: eq?
+                                hash: eq?-hash)))
+    (lambda (param)
+      (or (table-ref memo-table param #f)
+          (let ((res (fn param)))
+            (table-set! memo-table param res)
+            res)))))
+
 (define (module-macroexpand module-reference
                             sexpr
                             #!optional (tower (make-syntactic-tower)))
@@ -111,12 +120,12 @@
      ((*module-macroexpansion-import*
        (lambda (pkgs)
          (set! imports
-               (cons imports pkgs))))
+               (cons pkgs imports))))
 
       (*module-macroexpansion-import-for-syntax*
        (lambda (pkgs)
          (set! imports-for-syntax
-               (append pkgs imports))))
+               (cons pkgs imports-for-syntax))))
       
       (*module-macroexpansion-export*
        (lambda (e)
@@ -130,9 +139,45 @@
       
       (*module-macroexpansion-define-syntax*
        (lambda (name proc-sexp env)
-         (set! definitions
-               (cons (list name 'mac proc-sexp env)
-                     definitions))))
+         (let ((let-syntax-macros
+                (letrec
+                    ((calculate-letsyntax-environment
+                      (lambda (env)
+                        (cond
+                         ((box? (env-ns env))
+                          (let ((rest
+                                 (calculate-letsyntax-environment
+                                  (env-parent env))))
+                            (for-each
+                                (lambda (ns-entry)
+                                  (if (eq? 'mac (cadr ns-entry))
+                                      (push!
+                                       rest
+                                       (list
+                                        ;; The macro name
+                                        (cdar ns-entry)
+                                        ;; The name of the procedure
+                                        (list-ref ns-entry 4)
+                                        ;; The let-syntax env of this macro
+                                        (calculate-letsyntax-environment
+                                         (list-ref ns-entry 3))))))
+                              (unbox (env-ns env)))
+                            rest))
+                         (else
+                          '())))))
+                  ;; Memoize calculate-letsyntax-environment
+                  (set! calculate-letsyntax-environment
+                        (memoize-function-with-one-parameter
+                         calculate-letsyntax-environment))
+                  ;; Do the actual computation
+                  (calculate-letsyntax-environment env))))
+           (set! definitions
+                 (cons (list name
+                             'mac
+                             proc-sexp
+                             let-syntax-macros
+                             env)
+                       definitions)))))
       
       (*module-macroexpansion-force-compile*
        (lambda ()
@@ -166,29 +211,33 @@
              (values (expand-macro sexpr)
                      (*top-environment*))))
        (lambda (expanded-code env)
-         ;; TODO Add something to check for duplicate imports and
-         ;; exports.
-
-         (let ((syntax-dependencies
-                (remove-duplicates
-                 (call-with-values
-                     (lambda ()
-                       (resolve-imports imports-for-syntax module-reference))
-                   (lambda (defines modules)
-                     modules)))))
-           (values expanded-code
-                   (generate-compiletime-code (environment-namespace env)
-                                              expanded-code
-                                              definitions
-                                              syntax-dependencies)
-                   `',(object->u8vector
-                       `((definitions . ,definitions)
-                         (imports . ,imports)
-                         (imports-for-syntax . ,imports-for-syntax)
-                         (exports . ,exports)
-                         (namespace-string . ,(environment-namespace env))
-                         (options . ,options-)
-                         (cc-options . ,cc-options-)
-                         (ld-options-prelude . ,ld-options-prelude-)
-                         (ld-options . ,ld-options-)
-                         (force-compile . ,force-compile-))))))))))
+         (let ((imports
+                (apply append imports))
+               (imports-for-syntax
+                (apply append imports-for-syntax)))
+           ;; TODO Add something to check for duplicate imports and
+           ;; exports.
+           
+           (let ((syntax-dependencies
+                  (remove-duplicates
+                   (call-with-values
+                       (lambda ()
+                         (resolve-imports imports-for-syntax module-reference))
+                     (lambda (defines modules)
+                       modules)))))
+             (values expanded-code
+                     (generate-compiletime-code (environment-namespace env)
+                                                expanded-code
+                                                definitions
+                                                syntax-dependencies)
+                     `',(object->u8vector
+                         `((definitions . ,definitions)
+                           (imports . ,imports)
+                           (imports-for-syntax . ,imports-for-syntax)
+                           (exports . ,exports)
+                           (namespace-string . ,(environment-namespace env))
+                           (options . ,options-)
+                           (cc-options . ,cc-options-)
+                           (ld-options-prelude . ,ld-options-prelude-)
+                           (ld-options . ,ld-options-)
+                           (force-compile . ,force-compile-)))))))))))

@@ -116,8 +116,8 @@
 ;; environment-get relies on this to be able to do the right thing.
 ;;
 ;; The values that the ns data structur contains are lists that can
-;; either be ('mac [macro function] [macro environment]) or ('def
-;; [symbol to be expanded to])
+;; either be ('mac [macro function] [macro environment] [unique macro
+;; name]) or ('def [symbol to be expanded to])
 (define-type env
   id: A8981FB8-BC38-47BA-8707-5A3F5962D610
   ;; The parent environment. This is how lexical scope is implemented;
@@ -320,17 +320,6 @@
                     "#")))))
         (env-ns-string-set! env ns-string)
         ns-string)))
-
-(define (eval-in-next-phase code env)
-  (parameterize
-   ((*expansion-phase* (expansion-phase-next-phase
-                        (*expansion-phase*)))
-    ;; Inside-letrec must be set to #f, otherwise strange errors
-    ;; will occur when the continuation that is within that closure
-    ;; gets invoked at the wrong time.
-    (inside-letrec #f))
-   (eval-no-hook
-    (expand-macro code env))))
 
 (define (ns-add! ns phase-number name val)
   (cond
@@ -549,17 +538,45 @@
                                 mutate
                                 (mac-env env))
   (let ((phase-number
-         (expansion-phase-number (*expansion-phase*))))
-    (environment-add-to-ns
-     env
-     macs
-     (lambda (m new-env)
-       (list (cons phase-number (car m))
-             'mac
-             (eval-in-next-phase (cadr m) env)
-             mac-env))
-     mutate: mutate
-     introduces-scope?: #f)))
+         (expansion-phase-number (*expansion-phase*)))
+        (code/name-pairs '()))
+    (call-with-values
+        (lambda ()
+          (environment-add-to-ns
+           env
+           macs
+           (lambda (m new-env)
+             (let* ((macro-name
+                     (car m))
+                    (macro-code
+                     (parameterize
+                         ((*expansion-phase* (expansion-phase-next-phase
+                                              (*expansion-phase*)))
+                          ;; Inside-letrec must be set to #f, otherwise
+                          ;; strange errors will occur when the
+                          ;; continuation that is within that closure
+                          ;; gets invoked at the wrong time.
+                          (inside-letrec #f))
+                       (expand-macro (cadr m) env)))
+                    (unique-macro-name
+                     (gensym
+                      (gen-symbol (environment-namespace env)
+                                  macro-name))))
+               (set! code/name-pairs
+                     (cons (cons unique-macro-name
+                                 macro-code)
+                           code/name-pairs))
+               (list (cons phase-number
+                           macro-name)
+                     'mac
+                     (eval-no-hook macro-code)
+                     mac-env
+                     unique-macro-name)))
+           mutate: mutate
+           introduces-scope?: #f))
+      (lambda (env _)
+        (values env
+                code/name-pairs)))))
 
 ;; (inside-letrec) implies (not (top-level))
 (define top-level (make-parameter #t))
@@ -822,15 +839,25 @@
                        (error "Invalid syntax binding" form)))
                  bindings)
 
-       (thunk body
-              (call-with-values
+       (call-with-values
                   (lambda ()
                     (environment-add-macros env
                                             bindings
                                             mutate: rec))
-                (lambda (env _)
-                  env))))
+                (lambda (env name/code-pairs)
+                  (thunk body env name/code-pairs))))
      (cdr form))))
+
+(define (top-level-let/letrec-syntax-helper env)
+  (lambda (body inner-env name/code-pairs)
+    `(begin
+       ,@(map (lambda (name/code-pair)
+                `(define ,(car name/code-pair)
+                   ,(cdr name/code-pair)))
+           name/code-pairs)
+       ,@(map (lambda (x)
+                (expand-macro x inner-env))
+           body))))
 
 ;; Expansion functions
 
@@ -1269,7 +1296,7 @@
           #f
           code
           env
-          (lambda (body inner-env)
+          (lambda (body inner-env name/code-pairs)
             ((inside-letrec)
              body
              inner-env)))))
@@ -1280,7 +1307,7 @@
           #t
           code
           env
-          (lambda (body inner-env)
+          (lambda (body inner-env name/code-pairs)
             ((inside-letrec)
              body
              inner-env)))))
@@ -1444,7 +1471,10 @@
                                           (*expansion-phase*)))
                       (inside-letrec #f))
                      (expand-macro trans env)))
-                   (transformer-name (gensym before-name)))
+                   (transformer-name
+                    (gensym
+                     (gen-symbol (environment-namespace env)
+                                 before-name))))
                (environment-add-macro-fun before-name
                                           expanded-trans
                                           env)
@@ -1485,27 +1515,19 @@
    
    (let-syntax
        (lambda (code env mac-env)
-         (let/letrec-syntax-helper
-          #f
-          code
-          env
-          (lambda (body inner-env)
-            `(begin
-               ,@(map (lambda (x)
-                        (expand-macro x inner-env))
-                      body))))))
+         (let/letrec-syntax-helper #f
+                                   code
+                                   env
+                                   (top-level-let/letrec-syntax-helper
+                                    env))))
 
    (letrec-syntax
        (lambda (code env mac-env)
-         (let/letrec-syntax-helper
-          #t
-          code
-          env
-          (lambda (body inner-env)
-            `(begin
-               ,@(map (lambda (x)
-                        (expand-macro x inner-env))
-                      body))))))
+         (let/letrec-syntax-helper #t
+                                   code
+                                   env
+                                   (top-level-let/letrec-syntax-helper
+                                    env))))
    
    (lambda
        (lambda (code env mac-env)

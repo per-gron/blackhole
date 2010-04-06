@@ -82,7 +82,6 @@
 
 ;; TODO The implementation of this procedure is not complete
 (define (make-module-info-from-alist module-ref module-info-alist)
-  (##repl)
   (if (not (module-reference-absolute? module-ref))
       (error "Module reference must be absolute"))
   
