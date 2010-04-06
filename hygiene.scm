@@ -530,6 +530,18 @@
                    new-env))))
      mutate: mutate)))
 
+
+(define generate-unique-macro-name
+  (let ((counter 0))
+    (lambda (env macro-name)
+      (set! counter (+ 1 counter))
+      (gen-symbol (string-append (environment-namespace env)
+                                 "module#macro#"
+                                 (number->string
+                                  counter)
+                                 "-")
+                  macro-name))))
+
 ;; Macs is a list of lists where car is name, cadr is the sexp
 ;; of the macro transformer
 (define (environment-add-macros env
@@ -559,9 +571,8 @@
                           (inside-letrec #f))
                        (expand-macro (cadr m) env)))
                     (unique-macro-name
-                     (gensym
-                      (gen-symbol (environment-namespace env)
-                                  macro-name))))
+                     (generate-unique-macro-name env
+                                                 macro-name)))
                (set! code/name-pairs
                      (cons (cons unique-macro-name
                                  macro-code)
@@ -1040,7 +1051,11 @@
                            (dotted-map (lambda (x)
                                          (expand-macro x env))
                                        (cdr code))))
-                    ((cadr val)
+                    ((let ((fn (cadr val)))
+                       (if (symbol? fn)
+                           ;; See recreate-module-environment
+                           (error "Internal error")
+                           fn))
                      source
                      env
                      (caddr val)))))
@@ -1385,7 +1400,8 @@
           (error "Incorrectly placed export form"
                  (expr*:strip-locationinfo code)))
       ((*module-macroexpansion-export*)
-       (cdr (extract-synclosure-crawler code)))
+       (extract-synclosure-crawler
+        (cdr (expr*:strip-locationinfo code))))
       (void)))
    
    (module
@@ -1472,9 +1488,8 @@
                       (inside-letrec #f))
                      (expand-macro trans env)))
                    (transformer-name
-                    (gensym
-                     (gen-symbol (environment-namespace env)
-                                 before-name))))
+                    (generate-unique-macro-name env
+                                                before-name)))
                (environment-add-macro-fun before-name
                                           expanded-trans
                                           env)

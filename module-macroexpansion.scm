@@ -95,16 +95,14 @@
                   names)
               (else (error "Unbound variable" ,name-sym)))))))))
 
-(define (memoize-function-with-one-parameter fn)
-  (let ((memo-table (make-table test: eq?
-                                hash: eq?-hash)))
+(define (calculate-letsyntax-environment memo-table env)
+  (define (memoize-function-with-one-parameter fn)
     (lambda (param)
       (or (table-ref memo-table param #f)
           (let ((res (fn param)))
             (table-set! memo-table param res)
-            res)))))
-
-(define (calculate-letsyntax-environment env)
+            res))))
+  
   (letrec
       ((rec
         (lambda (env)
@@ -146,7 +144,10 @@
         (cc-options- "")
         (ld-options-prelude- "")
         (ld-options- "")
-        (force-compile- #f))
+        (force-compile- #f)
+
+        (calculate-letsyntax-environment-memo
+         (make-table test: eq? hash: eq?-hash)))
     (parameterize
      ((*module-macroexpansion-import*
        (lambda (pkgs)
@@ -174,7 +175,9 @@
                (cons (list name
                            'mac
                            proc-sexp
-                           (calculate-letsyntax-environment env))
+                           (calculate-letsyntax-environment
+                            calculate-letsyntax-environment-memo
+                            env))
                      definitions))))
       
       (*module-macroexpansion-force-compile*
@@ -212,7 +215,9 @@
          (let ((imports
                 (apply append imports))
                (imports-for-syntax
-                (apply append imports-for-syntax)))
+                (apply append imports-for-syntax))
+               (exports
+                (and exports (apply append exports))))
            ;; TODO Add something to check for duplicate imports and
            ;; exports.
            

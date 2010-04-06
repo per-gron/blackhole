@@ -114,7 +114,6 @@
           module-info-ld-options-prelude
           module-info-ld-options
           module-info-force-compile
-          module-info-environment
           module-info-calculate
           
           resolve-module
@@ -158,8 +157,6 @@
 
 ;;;; ---------- Some environment creation stuff ----------
 
-;; This code is here because it depends on the module-info machinery.
-
 (define (module-add-defs-to-env defs env
                                 #!key (phase-number
                                        (expansion-phase-number
@@ -179,7 +176,12 @@
           ;; The name it's imported as
           (car def)
           ;; The macro procedure
-          (caddr def)
+          (let ((fn (caddr def)))
+            (if (symbol? fn)
+                (eval fn) ;; TODO Make sure this is done in the
+                          ;; correct phase (I think this always takes
+                          ;; the runtime phase)
+                fn))
           ;; The macro's environment
           (cadddr def)
           phase-number: phase-number)))

@@ -53,8 +53,11 @@
 
 ;; Loads a module, regardless of whether it's already loaded or not.
 (define (module-reference-load! ref)
-  (loader-load-module (module-reference-loader ref)
-                      (module-reference-path ref)))
+  (let ((loaded-module
+         (loader-load-module (module-reference-loader ref)
+                             (module-reference-path ref))))
+    (table-set! *loaded-module-registry* ref loaded-module)
+    loaded-module))
 
 (define (module-reference-ref ref #!key compare-stamps)
   (if (not (module-reference-absolute? ref))
@@ -65,10 +68,7 @@
                  (loaded-module-stamp-is-fresh? loaded-module)
                  loaded-module)
             loaded-module))
-      (let ((loaded-module
-             (module-reference-load! ref)))
-        (table-set! *loaded-module-registry* ref loaded-module)
-        loaded-module)))
+      (module-reference-load! ref)))
 
 (define (loaded-module-instantiated? lm phase)
   (if (zero? (expansion-phase-number phase))
@@ -115,15 +115,17 @@
                 
                 ;; Make sure to instantiate the module's dependencies first
                 (for-each
-                 (lambda (dependency)
-                   ;; Update the dependent-modules field
-                   (loaded-module-dependent-modules-set!
-                    dependency
-                    (cons lm
-                          (loaded-module-dependent-modules
-                           dependency)))
-                   ;; Recurse
-                   (rec dependency phase))
+                 (lambda (dep-ref)
+                   (let ((dependency
+                          (module-reference-ref dep-ref)))
+                     ;; Update the dependent-modules field
+                     (loaded-module-dependent-modules-set!
+                      dependency
+                      (cons lm
+                            (loaded-module-dependent-modules
+                             dependency)))
+                     ;; Recurse
+                     (rec dependency phase)))
                  
                  (module-info-runtime-dependencies
                   (loaded-module-info lm)))
@@ -168,40 +170,46 @@
     ;; only used here.
     (let ((lm (table-ref *loaded-module-registry* ref #f)))
       (and lm
-           (loaded-module-stamp-is-fresh? lm))))
-  
-  (call-with-values
-      (lambda () (resolve-imports modules))
-    (lambda (defs module-references)
-      ;; Modules with a non-fresh stamp (that is, modules that have
-      ;; changed since they were last loaded) will be reloaded if they
-      ;; are imported from the REPL. And when a module is reloaded all
-      ;; modules that depend on it must be reinstantiated.
-      (let ((loaded-modules '())
-            (reloaded-modules '()))
+           (not (loaded-module-stamp-is-fresh? lm)))))
 
-        (cond
-         ((expansion-phase-compiletime? phase)
-          (set! loaded-modules
-                (map module-reference-ref
-                     module-references)))
-
-         ((repl-environment? env)
-          (for-each (lambda (ref)
-                      (if (module-loaded-but-not-fresh? ref)
-                          (set! reloaded-modules
-                                (cons (module-reference-load! ref)
-                                      reloaded-modules))
-                          (set! loaded-modules
-                                (cons (module-reference-ref ref)
-                                      loaded-modules))))
+  (let loop ()
+    (call-with-values
+        (lambda () (resolve-imports modules))
+      (lambda (defs module-references)
+        ;; Modules with a non-fresh stamp (that is, modules that have
+        ;; changed since they were last loaded) will be reloaded if
+        ;; they are imported from the REPL. And when a module is
+        ;; reloaded all modules that depend on it must be
+        ;; reinstantiated.
+        (let ((loaded-modules '())
+              (reloaded-modules '()))
+          
+          (cond
+           ((expansion-phase-compiletime? phase)
+            (set! loaded-modules
+                  (map module-reference-ref
                     module-references)))
-
-        (loaded-modules-instantiate/deps loaded-modules phase)
-        (loaded-modules-reinstantiate reloaded-modules phase))
-      
-      (module-add-defs-to-env defs env
-                              phase-number: (expansion-phase-number phase)))))
+           
+           ((repl-environment? env)
+            (for-each (lambda (ref)
+                        (if (module-loaded-but-not-fresh? ref)
+                            (set! reloaded-modules
+                                  (cons (module-reference-load! ref)
+                                        reloaded-modules))
+                            (set! loaded-modules
+                                  (cons (module-reference-ref ref)
+                                        loaded-modules))))
+              module-references)))
+          
+          (loaded-modules-instantiate/deps loaded-modules phase)
+          (if (null? reloaded-modules)
+              (module-add-defs-to-env defs env
+                                      phase-number: (expansion-phase-number phase))
+              (begin
+                (loaded-modules-reinstantiate reloaded-modules phase)
+                ;; We need to re-resolve the imports, because the
+                ;; reloads might have caused definitions to change.
+                (loop))))))))
 
 
 (define (macroexpansion-symbol-defs symbols env)
@@ -217,11 +225,8 @@
                            (not (eq? 'mac (car mac))))
                        (error "Internal error in macroexpansion-symbol-defs:"
                               mac))
-                   (list name ;; exported name
-                         'mac
-                         (cadr mac) ;; macro procedure
-                         (caddr mac)))))) ;; macro environment
-         symbols)))
+                   `(,name 'mac ,@(cdr mac))))))
+      symbols)))
 
 (define module-module
   (let* ((repl-environment #f)
@@ -237,11 +242,7 @@
                  (loaded-modules-instantiate/deps (list loaded-module))
                  
                  (module-add-defs-to-env (module-info-imports info)
-                                         (*top-environment*))
-                 (module-add-defs-to-env
-                  (macroexpansion-symbol-defs (module-info-symbols info)
-                                              (module-info-environment info))
-                  (*top-environment*))))))
+                                         (*top-environment*))))))
     (lambda (mod)
       (if mod
           (fn mod)

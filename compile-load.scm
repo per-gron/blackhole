@@ -84,7 +84,8 @@
     (lambda (runtime-code
              compiletime-code
              info-code)
-      (values (lambda () (eval-no-hook runtime-code))
+      (values (lambda ()
+                (eval-no-hook runtime-code))
               (eval-no-hook compiletime-code)
               (u8vector->object (eval-no-hook info-code))))))
 
