@@ -23,7 +23,7 @@
   (load-module-fn unprintable: equality-skip: read-only:)
   (compare-stamp-fn unprintable: equality-skip: read-only:)
   ;; Takes a path and returns a string for the name of the module
-   (module-name-fn unprintable: equality-skip: read-only:))
+  (module-name-fn unprintable: equality-skip: read-only:))
 
 (define (loader-path-absolute? loader path)
   ((loader-path-absolute?-fn loader) path))
@@ -68,6 +68,7 @@
 
 (define (loader->skeleton loader)
   (make-loader/internal (loader-name loader)
+                        #f
                         #f
                         #f
                         #f

@@ -60,23 +60,44 @@
       (default-action)))))
 
 (define loaded-module-sym (gensym 'loaded-module))
-(define expansion-phase-sym (gensym 'syntactic-tower))
+(define expansion-phase-sym (gensym 'expansion-phase))
 (define name-sym (gensym 'name))
 (define val-sym (gensym 'val))
 
 (define (generate-compiletime-code namespace-string
                                    expanded-code
                                    definitions
+                                   dependencies
                                    syntax-dependencies)
-  (let ((names (map (lambda (x)
-                      (if (eq? 'def (cadr x))
-                          (cons (car x)
-                                (gen-symbol namespace-string
-                                            (car x)))
-                          (cons (car x) (caddr x))))
-                    definitions)))
+  (let ((names
+         (map (lambda (x)
+                (if (eq? 'def (cadr x))
+                    (cons (car x)
+                          (gen-symbol namespace-string
+                                      (car x)))
+                    (cons (car x) (caddr x))))
+           definitions))
+        (module-instance-let-fn
+         (lambda (dep extra)
+           `(,(string->symbol
+               (string-append "module#dep#"
+                              (module-reference-namespace
+                               dep)
+                              extra))
+             (module#expansion-phase-module-instance
+              ,expansion-phase-sym
+              (module#module-reference-absolutize
+               (u8vector->module-reference
+                ',(module-reference->u8vector dep))
+               (module#loaded-module-reference
+                ,loaded-module-sym)))))))
     `(lambda (,loaded-module-sym ,expansion-phase-sym)
-       (let ((module-instances #f))
+       (let (,@(map (lambda (dep)
+                      (module-instance-let-fn dep "rt"))
+                 dependencies)
+             ,@(map (lambda (dep)
+                      (module-instance-let-fn dep "ct"))
+                 syntax-dependencies))
          ,(transform-to-define expanded-code)
          
          (values
@@ -221,7 +242,15 @@
            ;; TODO Add something to check for duplicate imports and
            ;; exports.
            
-           (let ((syntax-dependencies
+           (let ((dependencies
+                  (remove-duplicates
+                   (call-with-values
+                       (lambda ()
+                         (resolve-imports imports
+                                          module-reference))
+                     (lambda (defines modules)
+                       modules))))
+                 (syntax-dependencies
                   (remove-duplicates
                    (call-with-values
                        (lambda ()
@@ -233,6 +262,7 @@
                      (generate-compiletime-code (environment-namespace env)
                                                 expanded-code
                                                 definitions
+                                                dependencies
                                                 syntax-dependencies)
                      `',(object->u8vector
                          `((definitions . ,definitions)
