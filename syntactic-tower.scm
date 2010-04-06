@@ -75,4 +75,4 @@
   (table-ref (expansion-phase-module-instances phase)
              module-reference))
 
-(define repl-syntactic-tower (make-syntactic-tower))
+(define *repl-syntactic-tower* (make-syntactic-tower))

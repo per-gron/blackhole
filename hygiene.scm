@@ -453,7 +453,8 @@
            (environment-add-mac!
             (env-scope-env env)
             name ;; The exported name
-            (eval-no-hook fun)
+            (eval-no-hook ((*external-reference-cleanup-hook*)
+                           fun))
             env))))
     (cond
      ((symbol? name)
@@ -592,7 +593,8 @@
                (list (cons phase-number
                            macro-name)
                      'mac
-                     (eval-no-hook macro-code)
+                     (eval-no-hook ((*external-reference-cleanup-hook*)
+                                    macro-code))
                      mac-env
                      unique-macro-name)))
            mutate: mutate
@@ -606,7 +608,7 @@
 (define inside-letrec (make-parameter #f))
 (define *expansion-phase* (make-parameter
                            (syntactic-tower-first-phase
-                            repl-syntactic-tower)))
+                            *repl-syntactic-tower*)))
 
 
 (define transform-forms-to-triple-define-constant
@@ -997,7 +999,12 @@
        source))))
 
 (define *external-reference-access-hook*
-  (make-parameter cadr))
+  (make-parameter
+   (lambda (def phase) (cadr def))))
+
+(define *external-reference-cleanup-hook*
+  (make-parameter
+   (lambda (code) code)))
 
 ;; TODO Remove this. It's used in one place though.
 (define (expand-synclosure sc env)
@@ -1011,7 +1018,9 @@
      sc-environment: (syntactic-closure-env sc)) =>
      (lambda (val)
        (if (eq? 'def (car val))
-           ((*external-reference-access-hook*) val)
+           ((*external-reference-access-hook*)
+            val
+            (*expansion-phase*))
            (error "Macro name can't be used as a variable:"
                   (syntactic-closure-symbol sc)))))
    
@@ -1111,7 +1120,9 @@
           sc-environment: (syntactic-closure-env code)) =>
           (lambda (val)
             (if (eq? 'def (car val))
-                ((*external-reference-access-hook*) val)
+                ((*external-reference-access-hook*)
+                 val
+                 (*expansion-phase*))
                 (error "Macro name can't be used as a variable:" code))))
 
         (else
@@ -1131,7 +1142,9 @@
         ((environment-get env code) =>
          (lambda (val)
            (if (eq? 'def (car val))
-               ((*external-reference-access-hook*) val)
+               ((*external-reference-access-hook*)
+                val
+                (*expansion-phase*))
                (error "Macro name can't be used as a variable:" code))))
         
         (else

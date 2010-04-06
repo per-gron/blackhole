@@ -12,6 +12,9 @@
            `(define ,(gensym)
               ,source))))
     (cond
+     ((eq? code #!void)
+      #!void)
+     
      ((pair? code)
       (let ((code-car (expr*:value (car code))))
         (case code-car
@@ -61,7 +64,8 @@
 
 (define-type external-reference
   id: 40985F98-6814-41B6-90FE-0FBFB1A8F42D
-  ref)
+  ref
+  (phase unprintable:))
 
 (define (clone-sexp source transform-access transform-set!)
   (let beginning-of-list ((source source))
@@ -75,8 +79,10 @@
                 (eq? 'set! (car code)))
            (let ((ref (expr*:value (cadr code))))
              (if (external-reference? ref)
-                 (transform-set! (external-reference-ref ref)
-                                 (caddr code))
+                 (beginning-of-list
+                  (transform-set! (external-reference-ref ref)
+                                  (external-reference-phase ref)
+                                  (caddr code)))
                  (cons 'set!
                        (found-pair (cdr code) #f)))))
           
@@ -85,7 +91,9 @@
                  (found-pair (cdr code) #f)))
           
           ((external-reference? code)
-           (transform-access (external-reference-ref code)))
+           (beginning-of-list
+            (transform-access (external-reference-ref code)
+                              (external-reference-phase code))))
           
           (else
            code)))))))
@@ -94,6 +102,40 @@
 (define expansion-phase-sym (gensym 'expansion-phase))
 (define name-sym (gensym 'name))
 (define val-sym (gensym 'val))
+
+(define (generate-module-instance-symbol dep extra)
+  (string->symbol
+   (string-append (module-reference-namespace
+                   dep)
+                  "module#dep#"
+                  extra)))
+
+(define (generate-runtime-code namespace-string
+                               module-reference
+                               expanded-code
+                               syntax-dependencies)
+  (let ((ref->ct-sym-table
+         (list->table
+          (map (lambda (dep)
+                 (cons dep
+                       (generate-module-instance-symbol
+                        dep
+                        "ct-instance")))
+            syntax-dependencies))))
+    `(begin
+       (define ,(generate-module-instance-symbol module-reference
+                                                 "ct-instance")
+         (delay
+           (module#syntactic-tower-module-phase
+            module#*repl-syntactic-tower*
+            1)))
+       ,(clone-sexp
+         expanded-code
+         ;; TODO Do something with phase
+         (lambda (def phase) (cadr def))
+         ;; TODO Do something with phase
+         (lambda (def phase val)
+           `(set! ,(cadr def) ,val))))))
 
 (define (generate-compiletime-code namespace-string
                                    expanded-code
@@ -108,15 +150,13 @@
                                        (car x)))
                      (cons (car x) (caddr x))))
             definitions))
-         (ref->sym-table (make-table))
+         (ref->rt-sym-table (make-table))
+         (ref->ct-sym-table (make-table))
+         
          (module-instance-let-fn
-          (lambda (dep extra)
-            (let ((sym (string->symbol
-                        (string-append "module#dep#"
-                                       (module-reference-namespace
-                                        dep)
-                                       extra))))
-              (table-set! ref->sym-table dep sym)
+          (lambda (dep extra table)
+            (let ((sym (generate-module-instance-symbol dep extra)))
+              (table-set! table dep sym)
               `(,sym
                 (module#expansion-phase-module-instance
                  ,expansion-phase-sym
@@ -127,23 +167,35 @@
                    ,loaded-module-sym))))))))
     `(lambda (,loaded-module-sym ,expansion-phase-sym)
        (let (,@(map (lambda (dep)
-                      (module-instance-let-fn dep "rt"))
+                      (module-instance-let-fn dep
+                                              "rt"
+                                              ref->rt-sym-table))
                  dependencies)
              ,@(map (lambda (dep)
-                      (module-instance-let-fn dep "ct"))
+                      (module-instance-let-fn dep
+                                              "ct"
+                                              ref->ct-sym-table))
                  syntax-dependencies))
          ,(transform-to-define
            (clone-sexp expanded-code
-                       (lambda (def)
+                       ;; References to external modules
+                       (lambda (def phase)
                          (let ((ref (caddr def)))
                            (if ref
-                               `(,(table-ref ref->sym-table ref)
+                               `(,(table-ref (if (expansion-phase-runtime? phase)
+                                                 ref->rt-sym-table
+                                                 ref->ct-sym-table)
+                                             ref)
                                  ',(cadr def))
                                (cadr def))))
-                       (lambda (def val)
+                       ;; set!s to external modules
+                       (lambda (def phase val)
                          (let ((ref (caddr def)))
                            (if ref
-                               `(,(table-ref ref->sym-table ref)
+                               `(,(table-ref (if (expansion-phase-runtime? phase)
+                                                 ref->rt-sym-table
+                                                 ref->ct-sym-table)
+                                             ref)
                                  ;; TODO There is a difference between
                                  ;; the getter and the setter.
                                  ',(cadr def)
@@ -281,8 +333,17 @@
                  (syntactic-tower-first-phase
                   (make-syntactic-tower)))
                 (*external-reference-access-hook*
-                 (lambda (ref)
-                   (make-external-reference ref))))
+                 (lambda (ref phase)
+                   (make-external-reference ref phase)))
+                (*external-reference-cleanup-hook*
+                 (lambda (code)
+                   (clone-sexp
+                    code
+                    ;; TODO Do something with phase
+                    (lambda (def phase) (cadr def))
+                    ;; TODO Do something with phase
+                    (lambda (def phase val)
+                      `(set! ,(cadr def) ,val))))))
              (values (expand-macro sexpr)
                      (*top-environment*))))
        (lambda (expanded-code env)
@@ -311,10 +372,10 @@
                                           module-reference))
                      (lambda (defines modules)
                        modules)))))
-             (values (clone-sexp expanded-code
-                                 cadr
-                                 (lambda (ref val)
-                                   `(set! ,(cadr ref) ,val)))
+             (values (generate-runtime-code (environment-namespace env)
+                                            module-reference
+                                            expanded-code
+                                            syntax-dependencies)
                      (generate-compiletime-code (environment-namespace env)
                                                 expanded-code
                                                 definitions
