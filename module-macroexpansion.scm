@@ -61,27 +61,34 @@
 
 (define-type external-reference
   id: 40985F98-6814-41B6-90FE-0FBFB1A8F42D
-  access?
-  ref
-  val)
+  ref)
 
 (define (clone-sexp source transform-access transform-set!)
-  (let ((code (expr*:value source)))
-    (expr*:value-set
-     source
-     (cond
-      ((pair? code)
-       (cons (clone-sexp (car code) transform-access transform-set!)
-             (clone-sexp (cdr code) transform-access transform-set!)))
-
-      ((external-reference? code)
-       (if (external-reference-access? code)
-           (transform-access (external-reference-ref code))
-           (transform-set! (external-reference-ref code)
-                           (external-reference-val code))))
-
-      (else
-       code)))))
+  (let beginning-of-list ((source source))
+    (let ((code (expr*:value source)))
+      (expr*:value-set
+       source
+       (let found-pair ((code code) (beginning #t))
+         (cond
+          ((and (pair? code)
+                beginning
+                (eq? 'set! (car code)))
+           (let ((ref (expr*:value (cadr code))))
+             (if (external-reference? ref)
+                 (transform-set! (external-reference-ref ref)
+                                 (caddr code))
+                 (cons 'set!
+                       (found-pair (cdr code) #f)))))
+          
+          ((pair? code)
+           (cons (beginning-of-list (car code))
+                 (found-pair (cdr code) #f)))
+          
+          ((external-reference? code)
+           (transform-access (external-reference-ref code)))
+          
+          (else
+           code)))))))
 
 (define loaded-module-sym (gensym 'loaded-module))
 (define expansion-phase-sym (gensym 'expansion-phase))
@@ -133,11 +140,15 @@
                                `(,(table-ref ref->sym-table ref)
                                  ',(cadr def))
                                (cadr def))))
-                       (lambda (def)
+                       (lambda (def val)
                          (let ((ref (caddr def)))
                            (if ref
-                               def
-                               (cadr def))))))
+                               `(,(table-ref ref->sym-table ref)
+                                 ;; TODO There is a difference between
+                                 ;; the getter and the setter.
+                                 ',(cadr def)
+                                 ,val)
+                               `(set! ,(cadr def) ,val))))))
          
          (values
           (lambda (,name-sym)
@@ -271,10 +282,7 @@
                   (make-syntactic-tower)))
                 (*external-reference-access-hook*
                  (lambda (ref)
-                   (make-external-reference #t ref #f)))
-                (*external-reference-set!-hook*
-                 (lambda (ref val)
-                   (make-external-reference #f ref val))))
+                   (make-external-reference ref))))
              (values (expand-macro sexpr)
                      (*top-environment*))))
        (lambda (expanded-code env)

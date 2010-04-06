@@ -999,11 +999,6 @@
 (define *external-reference-access-hook*
   (make-parameter cadr))
 
-(define *external-reference-set!-hook*
-  (make-parameter
-   (lambda (ref val)
-     `(set! ,(cadr ref) ,val))))
-
 ;; TODO Remove this. It's used in one place though.
 (define (expand-synclosure sc env)
   (cond
