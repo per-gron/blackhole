@@ -34,19 +34,11 @@
 (define (read-ns-table)
   (if (and ns-file
            (file-exists? ns-file))
-      (let* ((size (file-info-size
-                    (file-info ns-file)))
-             (vec (make-u8vector size)))
-        (with-input-from-file
-            ns-file
-          (lambda ()
-            (read-subu8vector vec 0 size)))
-
-        ;; This is here to fix an odd bug that put table-set! into an
-        ;; infinite loop sometimes.
-        (list->table
-         (table->list
-          (u8vector->object vec))))
+      (with-input-from-file
+          ns-file
+        (lambda ()
+          (list->table
+           (read))))
       (make-table)))
 
 (define (save-ns-table tbl)
@@ -56,10 +48,7 @@
       (with-output-to-file
           ns-file
         (lambda ()
-          (let ((vect (object->u8vector tbl)))
-            (write-subu8vector vect
-                               0
-                               (u8vector-length vect))))))
+          (write (table->list tbl)))))
   (set! ns-table-timestamp
         (ns-file-timestamp)))
 
