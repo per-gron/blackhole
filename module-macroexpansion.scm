@@ -101,7 +101,7 @@
   (let ((definitions '())
         (imports '())
         (imports-for-syntax '())
-        (exports '())
+        (exports #f)
         (options- '())
         (cc-options- "")
         (ld-options-prelude- "")
@@ -120,7 +120,7 @@
       
       (*module-macroexpansion-export*
        (lambda (e)
-         (set! exports (cons e exports))))
+         (set! exports (cons e (or exports '())))))
       
       (*module-macroexpansion-define*
        (lambda (name)

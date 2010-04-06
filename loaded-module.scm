@@ -53,19 +53,8 @@
 
 ;; Loads a module, regardless of whether it's already loaded or not.
 (define (module-reference-load! ref)
-  (call-with-values
-      (lambda ()
-        (loader-load-module (module-reference-loader ref)
-                            (module-reference-path ref)))
-    (lambda (instantiate-runtime
-             instantiate-compiletime
-             module-info
-             stamp)
-      (make-loaded-module instantiate-runtime: instantiate-runtime
-                          instantiate-compiletime: instantiate-compiletime
-                          info: module-info
-                          stamp: stamp
-                          reference: ref))))
+  (loader-load-module (module-reference-loader ref)
+                      (module-reference-path ref)))
 
 (define (module-reference-ref ref #!key compare-stamps)
   (if (not (module-reference-absolute? ref))

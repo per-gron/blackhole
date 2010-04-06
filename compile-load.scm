@@ -158,7 +158,8 @@
      ((not object-fn)
       (call-with-values
           (lambda ()
-            (load-module-scm-file (string-append file ".scm")))
+            (load-module-scm-file module-ref
+                                  (string-append file ".scm")))
         (lambda (rt ct mi)
           (let ((ret (assq 'force-compile mi)))
             (if (and ret (cdr ret))

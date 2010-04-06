@@ -48,25 +48,28 @@
 
 ;; ---------- Add the hooks =) ----------
 
-;;(set! ##expand-source
-;;      (lambda (src)
-;;        (let ((ret (expr:deep-fixup
-;;                    (suspend-ns-table-changes
-;;                     (lambda ()
-;;                       (expand-macro src))))))
-;;          ;; Useful when debugging
-;;          ;; (pp (expr*:strip-locationinfo ret))
-;;          ret)))
+(define (apply-hooks!)
+  (set! ##expand-source
+        (lambda (src)
+          (let ((ret (expr:deep-fixup
+                      (suspend-ns-table-changes
+                       (lambda ()
+                         (expand-macro src))))))
+            ;; Useful when debugging
+            ;; (pp (expr*:strip-locationinfo ret))
+            ret)))
 
-(##vector-set!
- (##thread-repl-channel-get! (current-thread))
- 6
- (lambda (channel level depth)
-   (let ((mod (environment-module-reference (*top-environment*))))
-     (if mod
-         (begin
-           (print ((loader-module-name (module-reference-loader mod))
-                   (module-reference-path mod)))
-           (if (##fixnum.< 0 level)
-               (print "/")))))
-   (##repl-channel-ports-read-command channel level depth)))
+  (##vector-set!
+   (##thread-repl-channel-get! (current-thread))
+   6
+   (lambda (channel level depth)
+     (let ((mod (environment-module-reference (*top-environment*))))
+       (if mod
+           (begin
+             (print ((loader-module-name (module-reference-loader mod))
+                     (module-reference-path mod)))
+             (if (##fixnum.< 0 level)
+                 (print "/")))))
+     (##repl-channel-ports-read-command channel level depth))))
+
+(apply-hooks!)

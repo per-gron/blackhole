@@ -264,7 +264,7 @@
            (make-loaded-module
             instantiate-runtime: instantiate-runtime
             instantiate-compiletime: instantiate-compiletime
-            info: (module-info-alist->module-info info-alist)
+            info: (make-module-info-from-alist ref info-alist)
             stamp: (file-last-changed-seconds path)
             reference: ref)))))
 

@@ -80,5 +80,48 @@
   (append (module-info-runtime-dependencies info)
           (module-info-compiletime-dependencies info)))
 
-(define (module-info-alist->module-info module-info-alist)
-  (error "TODO To be implemented"))
+;; TODO The implementation of this procedure is not complete
+(define (make-module-info-from-alist module-ref module-info-alist)
+  (##repl)
+  (if (not (module-reference-absolute? module-ref))
+      (error "Module reference must be absolute"))
+  
+  (let* ((tbl (list->table module-info-alist))
+         (definitions (table-ref tbl 'definitions '()))
+         (exports (table-ref tbl 'exports #f))
+         (imports (table-ref tbl 'imports '()))
+         (namespace-string (table-ref tbl 'namespace-string))
+
+         (env (make-top-environment module-ref)))
+
+    (if (not (equal? (module-reference-namespace module-ref)
+                     namespace-string))
+        (error "The compiled module's namespace and its current \
+                namespace don't match"
+               namespace-string
+               (module-reference-namespace module-ref)))
+    
+    (call-with-values
+        (lambda ()
+          (resolve-imports imports))
+      (lambda (import-defs import-module-refs)
+        (call-with-values
+            (lambda ()
+              (if exports
+                  (resolve-exports exps env)
+                  (values definitions ;; TODO This is probably in the wrong format
+                          '())))
+          (lambda (export-defs export-uses-module-refs)
+            (make-module-info
+             symbols: definitions
+             exports: (or exports '())
+             imports: imports
+             runtime-dependencies: '()
+             compiletime-dependencies: '()
+             options: (table-ref tbl 'options '())
+             cc-options: (table-ref tbl 'cc-options "")
+             ld-options-prelude: (table-ref tbl 'ld-options-prelude "")
+             ld-options: (table-ref tbl 'ld-options "")
+             force-compile: (table-ref tbl 'force-compile #f)
+             namespace-string: namespace-string
+             environment: env)))))))
