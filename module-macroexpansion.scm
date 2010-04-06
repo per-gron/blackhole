@@ -104,6 +104,37 @@
             (table-set! memo-table param res)
             res)))))
 
+(define (calculate-letsyntax-environment env)
+  (letrec
+      ((rec
+        (lambda (env)
+          (cond
+           ((box? (env-ns env))
+            (let ((rest
+                   (rec (env-parent env))))
+              (for-each
+                  (lambda (ns-entry)
+                    (if (eq? 'mac (cadr ns-entry))
+                        (push!
+                         rest
+                         (list
+                          ;; The macro name
+                          (cdar ns-entry)
+                          ;; The name of the procedure
+                          (list-ref ns-entry 4)
+                          ;; The let-syntax env of this macro
+                          (rec (list-ref ns-entry 3))))))
+                (unbox (env-ns env)))
+              rest))
+           (else
+            '())))))
+    ;; Memoize calculate-letsyntax-environment
+    (set! rec
+          (memoize-function-with-one-parameter
+           rec))
+    ;; Perform the computation
+    (rec env)))
+
 (define (module-macroexpand module-reference
                             sexpr
                             #!optional (tower (make-syntactic-tower)))
@@ -139,45 +170,12 @@
       
       (*module-macroexpansion-define-syntax*
        (lambda (name proc-sexp env)
-         (let ((let-syntax-macros
-                (letrec
-                    ((calculate-letsyntax-environment
-                      (lambda (env)
-                        (cond
-                         ((box? (env-ns env))
-                          (let ((rest
-                                 (calculate-letsyntax-environment
-                                  (env-parent env))))
-                            (for-each
-                                (lambda (ns-entry)
-                                  (if (eq? 'mac (cadr ns-entry))
-                                      (push!
-                                       rest
-                                       (list
-                                        ;; The macro name
-                                        (cdar ns-entry)
-                                        ;; The name of the procedure
-                                        (list-ref ns-entry 4)
-                                        ;; The let-syntax env of this macro
-                                        (calculate-letsyntax-environment
-                                         (list-ref ns-entry 3))))))
-                              (unbox (env-ns env)))
-                            rest))
-                         (else
-                          '())))))
-                  ;; Memoize calculate-letsyntax-environment
-                  (set! calculate-letsyntax-environment
-                        (memoize-function-with-one-parameter
-                         calculate-letsyntax-environment))
-                  ;; Do the actual computation
-                  (calculate-letsyntax-environment env))))
-           (set! definitions
-                 (cons (list name
-                             'mac
-                             proc-sexp
-                             let-syntax-macros
-                             env)
-                       definitions)))))
+         (set! definitions
+               (cons (list name
+                           'mac
+                           proc-sexp
+                           (calculate-letsyntax-environment env))
+                     definitions))))
       
       (*module-macroexpansion-force-compile*
        (lambda ()
@@ -222,7 +220,8 @@
                   (remove-duplicates
                    (call-with-values
                        (lambda ()
-                         (resolve-imports imports-for-syntax module-reference))
+                         (resolve-imports imports-for-syntax
+                                          module-reference))
                      (lambda (defines modules)
                        modules)))))
              (values expanded-code
