@@ -86,7 +86,12 @@
                    ',(expr*:cdr code)))
          builtin-environment)
    (map (lambda (x)
-          (list x 'def (gen-symbol "module#" x)))
+          (list x
+                'def
+                (gen-symbol "module#" x)
+                ;; #f because this doesn't belong to a real module
+                ;; (this is usually a module reference)
+                #f))
         ;; TODO Make sure this list is updated
         '(expand-macro
           make-syntactic-closure
@@ -158,10 +163,12 @@
 
 ;;;; ---------- Some environment creation stuff ----------
 
-(define (module-add-defs-to-env defs env
-                                #!key (phase-number
-                                       (expansion-phase-number
-                                        (*expansion-phase*))))
+(define (module-add-defs-to-env defs
+                                env
+                                #!key
+                                (phase-number
+                                 (expansion-phase-number
+                                  (*expansion-phase*))))
   (for-each
    (lambda (def)
      (if (eq? 'def (cadr def))
@@ -170,6 +177,7 @@
           env
           (car def) ;; The name it's imported as
           (caddr def) ;; The name it's imported from
+          module-reference: (cadddr def)
           phase-number: phase-number)
          ;; Macro
          (environment-add-mac!

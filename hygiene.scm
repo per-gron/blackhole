@@ -64,7 +64,12 @@
        (for-each (lambda (name)
                    (table-set! table
                                (cons #f name)
-                               (list 'def name)))
+                               (list 'def
+                                     name
+                                     ;; #f because this doesn't belong
+                                     ;; to any module (this is usually
+                                     ;; a module reference)
+                                     #f)))
                  (cdadr ns-form)))
      (parse-gambit-header-file "~~lib/gambit#.scm"))
     table))
@@ -346,14 +351,21 @@
 
 
 
-(define (environment-add-def! env exported-name actual-name
-                              #!key (phase-number
-                                     (expansion-phase-number
-                                      (*expansion-phase*))))
+(define (environment-add-def! env
+                              exported-name
+                              actual-name
+                              #!key
+                              (module-reference
+                               (environment-module-reference env))
+                              (phase-number
+                               (expansion-phase-number
+                                (*expansion-phase*))))
   (ns-add! (env-ns env)
            phase-number
            exported-name
-           (list 'def actual-name)))
+           (list 'def
+                 actual-name
+                 module-reference)))
 
 (define (environment-add-mac! env exported-name fun m-env
                               #!key (phase-number
@@ -518,7 +530,7 @@
                                (if (syntactic-closure? sc)
                                    (syntactic-closure-symbol sc)
                                    sc)))
-                 new-env)
+                 (environment-module-reference new-env))
            (begin
              (scope-level (+ 1 (scope-level)))
              (list (cons phase-number n)
@@ -527,7 +539,7 @@
                                (if (syntactic-closure? n)
                                    (syntactic-closure-symbol n)
                                    n))
-                   new-env))))
+                   (environment-module-reference new-env)))))
      mutate: mutate)))
 
 
@@ -984,12 +996,17 @@
       (else
        source))))
 
-;; TODO Remove this. It's used in one place though. And also in module.scm
-(define (expand-synclosure sc env #!optional ns)
+(define *external-reference-access-hook*
+  (make-parameter cadr))
+
+(define *external-reference-set!-hook*
+  (make-parameter
+   (lambda (ref val)
+     `(set! ,(cadr ref) ,val))))
+
+;; TODO Remove this. It's used in one place though.
+(define (expand-synclosure sc env)
   (cond
-   ((and ns (symbol? sc))
-    (gen-symbol ns sc))
-   
    ((not (syntactic-closure? sc))
     sc)
    
@@ -999,7 +1016,7 @@
      sc-environment: (syntactic-closure-env sc)) =>
      (lambda (val)
        (if (eq? 'def (car val))
-           (cadr val)
+           ((*external-reference-access-hook*) val)
            (error "Macro name can't be used as a variable:"
                   (syntactic-closure-symbol sc)))))
    
@@ -1099,7 +1116,7 @@
           sc-environment: (syntactic-closure-env code)) =>
           (lambda (val)
             (if (eq? 'def (car val))
-                (cadr val)
+                ((*external-reference-access-hook*) val)
                 (error "Macro name can't be used as a variable:" code))))
 
         (else
@@ -1119,7 +1136,7 @@
         ((environment-get env code) =>
          (lambda (val)
            (if (eq? 'def (car val))
-               (cadr val)
+               ((*external-reference-access-hook*) val)
                (error "Macro name can't be used as a variable:" code))))
         
         (else

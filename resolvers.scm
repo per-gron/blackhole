@@ -248,7 +248,8 @@
                 (caddr val)) ;; Macro environment
           (list as
                 'def
-                (cadr val)))))
+                (cadr val)
+                (environment-module-reference env)))))
    
    (else
     (error "Name can't be exported because it isn't defined"

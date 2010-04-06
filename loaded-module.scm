@@ -213,13 +213,17 @@
 
 
 (define (macroexpansion-symbol-defs symbols env)
-  (let ((ns (module-reference-namespace
-             (environment-module-reference env))))
+  (let* ((ref (environment-module-reference env))
+         (ns (module-reference-namespace
+              (environment-module-reference env))))
     (map (lambda (pair)
            (let ((name (car pair))
                  (type (cdr pair)))
              (if (eq? 'def type)
-                 (list name 'def (gen-symbol ns name))
+                 (list name
+                       'def
+                       (gen-symbol ns name)
+                       ref)
                  (let ((mac (environment-get env name)))
                    (if (or (not mac)
                            (not (eq? 'mac (car mac))))

@@ -59,6 +59,30 @@
      (else
       (default-action)))))
 
+(define-type external-reference
+  id: 40985F98-6814-41B6-90FE-0FBFB1A8F42D
+  access?
+  ref
+  val)
+
+(define (clone-sexp source transform-access transform-set!)
+  (let ((code (expr*:value source)))
+    (expr*:value-set
+     source
+     (cond
+      ((pair? code)
+       (cons (clone-sexp (car code) transform-access transform-set!)
+             (clone-sexp (cdr code) transform-access transform-set!)))
+
+      ((external-reference? code)
+       (if (external-reference-access? code)
+           (transform-access (external-reference-ref code))
+           (transform-set! (external-reference-ref code)
+                           (external-reference-val code))))
+
+      (else
+       code)))))
+
 (define loaded-module-sym (gensym 'loaded-module))
 (define expansion-phase-sym (gensym 'expansion-phase))
 (define name-sym (gensym 'name))
@@ -69,28 +93,31 @@
                                    definitions
                                    dependencies
                                    syntax-dependencies)
-  (let ((names
-         (map (lambda (x)
-                (if (eq? 'def (cadr x))
-                    (cons (car x)
-                          (gen-symbol namespace-string
-                                      (car x)))
-                    (cons (car x) (caddr x))))
-           definitions))
-        (module-instance-let-fn
-         (lambda (dep extra)
-           `(,(string->symbol
-               (string-append "module#dep#"
-                              (module-reference-namespace
-                               dep)
-                              extra))
-             (module#expansion-phase-module-instance
-              ,expansion-phase-sym
-              (module#module-reference-absolutize
-               (u8vector->module-reference
-                ',(module-reference->u8vector dep))
-               (module#loaded-module-reference
-                ,loaded-module-sym)))))))
+  (let* ((names
+          (map (lambda (x)
+                 (if (eq? 'def (cadr x))
+                     (cons (car x)
+                           (gen-symbol namespace-string
+                                       (car x)))
+                     (cons (car x) (caddr x))))
+            definitions))
+         (ref->sym-table (make-table))
+         (module-instance-let-fn
+          (lambda (dep extra)
+            (let ((sym (string->symbol
+                        (string-append "module#dep#"
+                                       (module-reference-namespace
+                                        dep)
+                                       extra))))
+              (table-set! ref->sym-table dep sym)
+              `(,sym
+                (module#expansion-phase-module-instance
+                 ,expansion-phase-sym
+                 (module#module-reference-absolutize
+                  (u8vector->module-reference
+                   ',(module-reference->u8vector dep))
+                  (module#loaded-module-reference
+                   ,loaded-module-sym))))))))
     `(lambda (,loaded-module-sym ,expansion-phase-sym)
        (let (,@(map (lambda (dep)
                       (module-instance-let-fn dep "rt"))
@@ -98,20 +125,32 @@
              ,@(map (lambda (dep)
                       (module-instance-let-fn dep "ct"))
                  syntax-dependencies))
-         ,(transform-to-define expanded-code)
+         ,(transform-to-define
+           (clone-sexp expanded-code
+                       (lambda (def)
+                         (let ((ref (caddr def)))
+                           (if ref
+                               `(,(table-ref ref->sym-table ref)
+                                 ',(cadr def))
+                               (cadr def))))
+                       (lambda (def)
+                         (let ((ref (caddr def)))
+                           (if ref
+                               def
+                               (cadr def))))))
          
          (values
           (lambda (,name-sym)
             (case ,name-sym
               ,@(map (lambda (name)
-                       `((,(car name))
+                       `((,(cdr name))
                          ,(cdr name)))
                   names)
               (else (error "Unbound variable" ,name-sym))))
           (lambda (,name-sym ,val-sym)
             (case ,name-sym
               ,@(map (lambda (name)
-                       `((,(car name))
+                       `((,(cdr name))
                          (set! ,(cdr name) ,val-sym)))
                   names)
               (else (error "Unbound variable" ,name-sym)))))))))
@@ -229,7 +268,13 @@
                  (make-top-environment module-reference))
                 (*expansion-phase*
                  (syntactic-tower-first-phase
-                  (make-syntactic-tower))))
+                  (make-syntactic-tower)))
+                (*external-reference-access-hook*
+                 (lambda (ref)
+                   (make-external-reference #t ref #f)))
+                (*external-reference-set!-hook*
+                 (lambda (ref val)
+                   (make-external-reference #f ref val))))
              (values (expand-macro sexpr)
                      (*top-environment*))))
        (lambda (expanded-code env)
@@ -258,7 +303,10 @@
                                           module-reference))
                      (lambda (defines modules)
                        modules)))))
-             (values expanded-code
+             (values (clone-sexp expanded-code
+                                 cadr
+                                 (lambda (ref val)
+                                   `(set! ,(cadr ref) ,val)))
                      (generate-compiletime-code (environment-namespace env)
                                                 expanded-code
                                                 definitions
