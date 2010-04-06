@@ -42,7 +42,7 @@
      ((negative? phase)
       (error "Invalid parameter"))
 
-     ((> phase number-of-phases)
+     ((>= phase number-of-phases)
       (let ((new-phases (make-vector (+ 1 phase))))
         (let loop ((i 0))
           (cond
