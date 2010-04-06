@@ -74,7 +74,7 @@
   (if (zero? (expansion-phase-number phase))
       (loaded-module-runtime-instantiated lm)
       (not (eq? #f
-                (table-ref (expansion-phase-module-instances phase)
+                (table-ref (expansion-phase-getter-instances phase)
                            (loaded-module-reference lm)
                            #f)))))
 
@@ -89,12 +89,19 @@
 (define (loaded-module-instantiate! lm phase)
   (if (zero? (expansion-phase-number phase))
       ((loaded-module-instantiate-runtime lm))
-      (let ((instance ((loaded-module-instantiate-compiletime lm)
-                       lm phase)))
-        (table-set! (expansion-phase-module-instances phase)
-                    (loaded-module-reference lm)
-                    instance)
-        instance)))
+      (call-with-values
+          (lambda ()
+            ((loaded-module-instantiate-compiletime lm)
+             lm phase))
+        (lambda (getter setter)
+          (let ((ref (loaded-module-reference lm)))
+            (table-set! (expansion-phase-getter-instances phase)
+                        ref
+                        getter)
+            (table-set! (expansion-phase-setter-instances phase)
+                        ref
+                        setter))
+          (void)))))
 
 (define (loaded-modules-instantiate/deps lms phase)
   (letrec

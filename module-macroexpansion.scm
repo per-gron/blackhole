@@ -155,49 +155,64 @@
          
          (module-instance-let-fn
           (lambda (dep extra table)
-            (let ((sym (generate-module-instance-symbol dep extra)))
-              (table-set! table dep sym)
-              `(,sym
-                (module#expansion-phase-module-instance
-                 ,expansion-phase-sym
+            (let ((sym (generate-module-instance-symbol dep extra))
+                  (get-sym (generate-module-instance-symbol
+                            dep
+                            (string-append extra "-get")))
+                  (set-sym (generate-module-instance-symbol
+                            dep
+                            (string-append extra "-set"))))
+              (table-set! table dep (cons get-sym
+                                          set-sym))
+              `((,sym
                  (module#module-reference-absolutize
                   (u8vector->module-reference
                    ',(module-reference->u8vector dep))
                   (module#loaded-module-reference
-                   ,loaded-module-sym))))))))
+                   ,loaded-module-sym)))
+                (,get-sym
+                 (module#expansion-phase-module-getter-instance
+                  ,expansion-phase-sym
+                  ,sym))
+                (,set-sym
+                 (module#expansion-phase-module-setter-instance
+                  ,expansion-phase-sym
+                  ,sym)))))))
     `(lambda (,loaded-module-sym ,expansion-phase-sym)
-       (let (,@(map (lambda (dep)
-                      (module-instance-let-fn dep
-                                              "rt"
-                                              ref->rt-sym-table))
-                 dependencies)
-             ,@(map (lambda (dep)
-                      (module-instance-let-fn dep
-                                              "ct"
-                                              ref->ct-sym-table))
-                 syntax-dependencies))
+       (let* (,@(map (lambda (dep)
+                       (module-instance-let-fn dep
+                                               "rt"
+                                               ref->rt-sym-table))
+                  dependencies)
+              ,@(map (lambda (dep)
+                       (module-instance-let-fn dep
+                                               "ct"
+                                               ref->ct-sym-table))
+                  syntax-dependencies))
          ,(transform-to-define
            (clone-sexp expanded-code
                        ;; References to external modules
                        (lambda (def phase)
                          (let ((ref (caddr def)))
                            (if ref
-                               `(,(table-ref (if (expansion-phase-runtime? phase)
-                                                 ref->rt-sym-table
-                                                 ref->ct-sym-table)
-                                             ref)
+                               `(,(car
+                                   (table-ref
+                                    (if (expansion-phase-runtime? phase)
+                                        ref->rt-sym-table
+                                        ref->ct-sym-table)
+                                    ref))
                                  ',(cadr def))
                                (cadr def))))
                        ;; set!s to external modules
                        (lambda (def phase val)
                          (let ((ref (caddr def)))
                            (if ref
-                               `(,(table-ref (if (expansion-phase-runtime? phase)
-                                                 ref->rt-sym-table
-                                                 ref->ct-sym-table)
-                                             ref)
-                                 ;; TODO There is a difference between
-                                 ;; the getter and the setter.
+                               `(,(cdr
+                                   (table-ref
+                                    (if (expansion-phase-runtime? phase)
+                                        ref->rt-sym-table
+                                        ref->ct-sym-table)
+                                    ref))
                                  ',(cadr def)
                                  ,val)
                                `(set! ,(cadr def) ,val))))))
