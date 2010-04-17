@@ -271,10 +271,12 @@
              (load-module-from-file ref path))
          (lambda (instantiate-runtime
                   instantiate-compiletime
+                  visit
                   info-alist)
            (make-loaded-module
             instantiate-runtime: instantiate-runtime
             instantiate-compiletime: instantiate-compiletime
+            visit: visit
             info: (make-module-info-from-alist ref info-alist)
             stamp: (file-last-changed-seconds path)
             reference: ref)))))
@@ -313,7 +315,14 @@
                   (error "You can't side-effect the internals of Black Hole"))
                 (lambda (name)
                   (eval (gen-symbol "module#" name)))))
-
+      
+      visit:
+      (lambda (loaded-module phase)
+        `((syntax-rules .
+            ,(lambda (code env mac-env)
+               `(apply module#syntax-rules-proc
+                       ',(expr*:cdr code))))))
+      
       info:
       (make-module-info
        namespace-string:

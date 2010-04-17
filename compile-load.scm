@@ -83,10 +83,12 @@
                             (file-read-as-expr file)))
     (lambda (runtime-code
              compiletime-code
+             visit-code
              info-code)
       (values (lambda ()
                 (eval-no-hook runtime-code))
               (eval-no-hook compiletime-code)
+              (eval-no-hook visit-code)
               (u8vector->object (eval-no-hook info-code))))))
 
 ;; Takes the return value of ##load-object-file and returns a table
@@ -161,11 +163,11 @@
           (lambda ()
             (load-module-scm-file module-ref
                                   (string-append file ".scm")))
-        (lambda (rt ct mi)
+        (lambda (rt ct vt mi)
           (let ((ret (assq 'force-compile mi)))
             (if (and ret (cdr ret))
                 (force-compile)
-                (values rt ct mi))))))
+                (values rt ct vt mi))))))
      
      (else      
       (let* ((ns
@@ -177,13 +179,17 @@
              (ct (table-ref module-object-table
                             (string-append ns "-ct")
                             #f))
+             (vt (table-ref module-object-table
+                            (string-append ns "-vt")
+                            #f))
              (mi (table-ref module-object-table
                             (string-append ns "-mi")
                             #f)))
-        (if (not (and rt ct mi))
-            (error "Module initializer not found for:" ns))
+        (if (not (and rt ct vt mi))
+            (error "Module initializers not found for:" ns))
         (values rt
                 (ct)
+                (vt)
                 (u8vector->object (mi))))))))
 
 
@@ -294,6 +300,7 @@
                    (loop (cdr fs)
                          `(,(string-append f "-rt.c")
                            ,(string-append f "-ct.c")
+                           ,(string-append f "-vt.c")
                            ,(string-append f "-mi.c")
                            ,@accum))))
                 (else
@@ -331,11 +338,14 @@
                   (module-macroexpand mod (file-read-as-expr file)))
               (lambda (runtime-code
                        compiletime-code
-                       info-code)
+                       info-code
+                       visit)
                 (compile-sexp-to-o runtime-code
                                    (string-append c-file "-rt.c"))
                 (compile-sexp-to-o compiletime-code
                                    (string-append c-file "-ct.c"))
+                (compile-sexp-to-o visit-code
+                                   (string-append c-file "-vt.c"))
                 (compile-sexp-to-o info-code
                                    (string-append c-file "-mi.c")))))
           (newline))

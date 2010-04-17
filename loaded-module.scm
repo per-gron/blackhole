@@ -10,6 +10,7 @@
 
   (instantiate-runtime read-only:)
   (instantiate-compiletime read-only:)
+  (visit read-only:)
   (info read-only:)
   (stamp read-only:)
   ;; An absolute module reference object
@@ -23,16 +24,19 @@
 (define (make-loaded-module #!key
                             instantiate-runtime
                             instantiate-compiletime
+                            visit
                             info
                             stamp
                             reference)
   (if (not (and (procedure? instantiate-runtime)
                 (procedure? instantiate-compiletime)
+                (procedure? visit)
                 (module-info? info)
                 (module-reference? reference)))
       (error "Invalid parameters"))
   (make-loaded-module/internal instantiate-runtime
                                instantiate-compiletime
+                               visit
                                info
                                stamp
                                reference))
@@ -143,7 +147,7 @@
                 (for-each (lambda (lm)
                             (rec lm next-phase))
                   (module-info-compiletime-dependencies
-                           (loaded-module-info lm)))
+                   (loaded-module-info lm)))
                 (rec lm phase))
               lms)))
 

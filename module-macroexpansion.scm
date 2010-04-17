@@ -12,7 +12,7 @@
            `(define ,(gensym)
               ,source))))
     (cond
-     ((eq? code #!void)
+     ((eq? #!void code)
       #!void)
      
      ((pair? code)
@@ -103,7 +103,7 @@
 (define name-sym (gensym 'name))
 (define val-sym (gensym 'val))
 
-(define (generate-module-instance-symbol dep extra)
+(define (generate-module-instance-symbol dep #!optional (extra ""))
   (string->symbol
    (string-append (module-reference-namespace
                    dep)
@@ -112,110 +112,88 @@
 
 (define (generate-runtime-code namespace-string
                                module-reference
-                               expanded-code
-                               syntax-dependencies)
-  (let ((ref->ct-sym-table
-         (list->table
-          (map (lambda (dep)
-                 (cons dep
-                       (generate-module-instance-symbol
-                        dep
-                        "ct-instance")))
-            syntax-dependencies))))
-    `(begin
-       (define ,(generate-module-instance-symbol module-reference
-                                                 "ct-instance")
-         (delay
-           (module#syntactic-tower-module-phase
-            module#*repl-syntactic-tower*
-            1)))
-       ,(clone-sexp
-         expanded-code
-         ;; TODO Do something with phase
-         (lambda (def phase) (cadr def))
-         ;; TODO Do something with phase
-         (lambda (def phase val)
-           `(set! ,(cadr def) ,val))))))
+                               expanded-code)
+  `(begin
+     (define ,(generate-module-instance-symbol module-reference
+                                               "ct-instance")
+       (delay
+         (module#syntactic-tower-module-phase
+          module#*repl-syntactic-tower*
+          1)))
+     ,(clone-sexp
+       expanded-code
+       (lambda (def phase)
+         (if (not (expansion-phase-runtime? phase))
+             (error "Internal error in generate-macro-code"))
+         (cadr def))
+       (lambda (def phase val)
+         (if (not (expansion-phase-runtime? phase))
+             (error "Internal error in generate-macro-code"))
+         `(set! ,(cadr def) ,val)))))
+
+(define (module-instance-let-fn dep table)
+  (let ((sym (generate-module-instance-symbol dep "ref"))
+        (get-sym (generate-module-instance-symbol dep "get"))
+        (set-sym (generate-module-instance-symbol dep "set")))
+    (table-set! table dep (cons get-sym
+                                set-sym))
+    `((,sym
+       (module#module-reference-absolutize
+        (u8vector->module-reference
+         ',(module-reference->u8vector dep))
+        (module#loaded-module-reference
+         ,loaded-module-sym)))
+      (,get-sym
+       (module#expansion-phase-module-getter-instance
+        ,expansion-phase-sym
+        ,sym))
+      (,set-sym
+       (module#expansion-phase-module-setter-instance
+        ,expansion-phase-sym
+        ,sym)))))
+
+(define (clone-sexp/sym-table sexp ref->sym-table)
+  (clone-sexp sexp
+              ;; References to external modules
+              (lambda (def phase)
+                (let ((ref (caddr def)))
+                  (if ref
+                      `(,(car
+                          (table-ref ref->sym-table
+                                     ref))
+                        ',(cadr def))
+                      (cadr def))))
+              ;; set!s to external modules
+              (lambda (def phase val)
+                (let ((ref (caddr def)))
+                  (if ref
+                      `(,(cdr
+                          (table-ref ref->sym-table
+                                     ref))
+                        ',(cadr def)
+                        ,val)
+                      `(set! ,(cadr def) ,val))))))
 
 (define (generate-compiletime-code namespace-string
                                    expanded-code
                                    definitions
-                                   dependencies
-                                   syntax-dependencies)
-  (let* ((names
-          (map (lambda (x)
-                 (if (eq? 'def (cadr x))
-                     (cons (car x)
-                           (gen-symbol namespace-string
-                                       (car x)))
-                     (cons (car x) (caddr x))))
-            definitions))
-         (ref->rt-sym-table (make-table))
-         (ref->ct-sym-table (make-table))
-         
-         (module-instance-let-fn
-          (lambda (dep extra table)
-            (let ((sym (generate-module-instance-symbol dep extra))
-                  (get-sym (generate-module-instance-symbol
-                            dep
-                            (string-append extra "-get")))
-                  (set-sym (generate-module-instance-symbol
-                            dep
-                            (string-append extra "-set"))))
-              (table-set! table dep (cons get-sym
-                                          set-sym))
-              `((,sym
-                 (module#module-reference-absolutize
-                  (u8vector->module-reference
-                   ',(module-reference->u8vector dep))
-                  (module#loaded-module-reference
-                   ,loaded-module-sym)))
-                (,get-sym
-                 (module#expansion-phase-module-getter-instance
-                  ,expansion-phase-sym
-                  ,sym))
-                (,set-sym
-                 (module#expansion-phase-module-setter-instance
-                  ,expansion-phase-sym
-                  ,sym)))))))
+                                   dependencies)
+  (let ((names
+         (map (lambda (x)
+                (cons (car x)
+                      (gen-symbol namespace-string
+                                  (car x))))
+           (filter (lambda (x) (eq? 'def (cadr x)))
+                   definitions)))
+        (ref->rt-sym-table (make-table)))
     `(lambda (,loaded-module-sym ,expansion-phase-sym)
        (let* (,@(map (lambda (dep)
                        (module-instance-let-fn dep
-                                               "rt"
                                                ref->rt-sym-table))
-                  dependencies)
-              ,@(map (lambda (dep)
-                       (module-instance-let-fn dep
-                                               "ct"
-                                               ref->ct-sym-table))
-                  syntax-dependencies))
+                  dependencies))
          ,(transform-to-define
-           (clone-sexp expanded-code
-                       ;; References to external modules
-                       (lambda (def phase)
-                         (let ((ref (caddr def)))
-                           (if ref
-                               `(,(car
-                                   (table-ref
-                                    (if (expansion-phase-runtime? phase)
-                                        ref->rt-sym-table
-                                        ref->ct-sym-table)
-                                    ref))
-                                 ',(cadr def))
-                               (cadr def))))
-                       ;; set!s to external modules
-                       (lambda (def phase val)
-                         (let ((ref (caddr def)))
-                           (if ref
-                               `(,(cdr
-                                   (table-ref
-                                    (if (expansion-phase-runtime? phase)
-                                        ref->rt-sym-table
-                                        ref->ct-sym-table)
-                                    ref))
-                                 ',(cadr def)
-                                 ,val)
-                               `(set! ,(cadr def) ,val))))))
+           (clone-sexp/sym-table expanded-code
+                                 ref->rt-sym-table))
          
          (values
           (lambda (,name-sym)
@@ -232,6 +210,24 @@
                          (set! ,(cdr name) ,val-sym)))
                   names)
               (else (error "Unbound variable" ,name-sym)))))))))
+
+(define (generate-visit-code macros
+                             dependencies)
+  (let ((ref->ct-sym-table (make-table)))
+    `(lambda (,loaded-module-sym ,expansion-phase-sym)
+       (let* (,@(map (lambda (dep)
+                       (module-instance-let-fn dep
+                                               ref->ct-sym-table))
+                  dependencies))
+         (list
+          ,@(map
+                (lambda (name/sexp-pair)
+                  `(cons
+                    ',(car name/sexp-pair)
+                    ,(clone-sexp/sym-table
+                      (cdr name/sexp-pair)
+                      ref->ct-sym-table)))
+              macros))))))
 
 (define (calculate-letsyntax-environment memo-table env)
   (define (memoize-function-with-one-parameter fn)
@@ -275,6 +271,7 @@
                             sexpr
                             #!optional (tower (make-syntactic-tower)))
   (let ((definitions '())
+        (macros '())
         (imports '())
         (imports-for-syntax '())
         (exports #f)
@@ -287,59 +284,59 @@
         (calculate-letsyntax-environment-memo
          (make-table test: eq? hash: eq?-hash)))
     (parameterize
-     ((*module-macroexpansion-import*
-       (lambda (pkgs)
-         (set! imports
-               (cons pkgs imports))))
-
-      (*module-macroexpansion-import-for-syntax*
-       (lambda (pkgs)
-         (set! imports-for-syntax
-               (cons pkgs imports-for-syntax))))
+        ((*module-macroexpansion-import*
+          (lambda (pkgs)
+            (push! imports
+                   pkgs)))
+         
+         (*module-macroexpansion-import-for-syntax*
+          (lambda (pkgs)
+            (push! imports-for-syntax
+                   pkgs)))
+         
+         (*module-macroexpansion-export*
+          (lambda (e)
+            (set! exports (cons e (or exports '())))))
+         
+         (*module-macroexpansion-define*
+          (lambda (name)
+            (push! definitions
+                   (list name 'def))))
+         
+         (*module-macroexpansion-define-syntax*
+          (lambda (name proc-sexp env)
+            (push! definitions
+                   (list name
+                         'mac
+                         (calculate-letsyntax-environment
+                          calculate-letsyntax-environment-memo
+                          env)))
+            (push! macros
+                   (cons name
+                         proc-sexp))))
+         
+         (*module-macroexpansion-force-compile*
+          (lambda ()
+            (set! force-compile #t)))
+         
+         (*module-macroexpansion-compile-options*
+          (lambda (#!key options
+                         cc-options
+                         ld-options-prelude
+                         ld-options
+                         force-compile)
+            (if options
+                (set! options- options))
+            (if cc-options
+                (set! cc-options- cc-options))
+            (if ld-options-prelude
+                (set! ld-options-prelude- ld-options-prelude))
+            (if ld-options
+                (set! ld-options- ld-options))
+            (if force-compile
+                (set! force-compile- force-compile)))))
       
-      (*module-macroexpansion-export*
-       (lambda (e)
-         (set! exports (cons e (or exports '())))))
-      
-      (*module-macroexpansion-define*
-       (lambda (name)
-         (set! definitions
-               (cons (list name 'def)
-                     definitions))))
-      
-      (*module-macroexpansion-define-syntax*
-       (lambda (name proc-sexp env)
-         (set! definitions
-               (cons (list name
-                           'mac
-                           proc-sexp
-                           (calculate-letsyntax-environment
-                            calculate-letsyntax-environment-memo
-                            env))
-                     definitions))))
-      
-      (*module-macroexpansion-force-compile*
-       (lambda ()
-         (set! force-compile #t)))
-      
-      (*module-macroexpansion-compile-options*
-       (lambda (#!key options
-                      cc-options
-                      ld-options-prelude
-                      ld-options
-                      force-compile)
-         (if options
-             (set! options- options))
-         (if cc-options
-             (set! cc-options- cc-options))
-         (if ld-options-prelude
-             (set! ld-options-prelude- ld-options-prelude))
-         (if ld-options
-             (set! ld-options- ld-options))
-         (if force-compile
-             (set! force-compile- force-compile)))))
-
-     (call-with-values
+      (call-with-values
          (lambda ()
            (parameterize
                ((*top-environment*
@@ -389,13 +386,13 @@
                        modules)))))
              (values (generate-runtime-code (environment-namespace env)
                                             module-reference
-                                            expanded-code
-                                            syntax-dependencies)
+                                            expanded-code)
                      (generate-compiletime-code (environment-namespace env)
                                                 expanded-code
                                                 definitions
-                                                dependencies
-                                                syntax-dependencies)
+                                                dependencies)
+                     (generate-visit-code macros
+                                          dependencies)
                      `',(object->u8vector
                          `((definitions . ,definitions)
                            (imports . ,imports)

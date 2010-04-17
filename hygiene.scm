@@ -1520,10 +1520,10 @@
                                           env)
                ((*module-macroexpansion-define-syntax*)
                 before-name
-                transformer-name
+                expanded-trans
                 env)
-
-               `(define ,transformer-name ,expanded-trans)))
+               
+               (void)))
             
             (else
              (error "Incorrectly placed define-syntax:"
