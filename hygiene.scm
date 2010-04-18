@@ -201,7 +201,7 @@
   (not (environment-module-reference env)))
 
 (define (environment-ancestor-of? env descendant #!optional (distance 0))
-  ;; FIXME Make this test constant-time (is that possible)
+  ;; TODO Make this test constant-time (is that possible)
   (if (eq? env descendant)
       distance
       (let ((p (env-parent descendant)))
@@ -1073,9 +1073,12 @@
                                          (expand-macro x env))
                                        (cdr code))))
                     ((let ((fn (cadr val)))
-                       (if (symbol? fn)
+                       (if (pair? fn)
                            ;; See recreate-module-environment
-                           (error "Internal error")
+                           (table-ref (loaded-module-macros
+                                       (module-reference-ref (car fn))
+                                       (*expansion-phase*))
+                                      (cdr fn))
                            fn))
                      source
                      env

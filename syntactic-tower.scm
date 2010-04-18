@@ -17,8 +17,7 @@
 (define (make-expansion-phase tower phase)
   (make-expansion-phase/internal tower
                                  phase
-                                 (and (positive? phase)
-                                      (make-table))))
+                                 (make-table)))
 
 (define-type syntactic-tower
   id: 06C5040E-666F-4744-91AF-FAA356820340

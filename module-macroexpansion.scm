@@ -12,9 +12,6 @@
            `(define ,(gensym)
               ,source))))
     (cond
-     ((eq? #!void code)
-      #!void)
-     
      ((pair? code)
       (let ((code-car (expr*:value (car code))))
         (case code-car
@@ -61,6 +58,9 @@
           
           (else
            (default-action)))))
+     
+     ((eq? #!void code)
+      #!void)
      
      (else
       (default-action)))))
@@ -135,25 +135,24 @@
          `(set! ,(cadr def) ,val)))))
 
 (define (module-instance-let-fn dep table)
-  (let ((sym (generate-module-instance-symbol dep "ref"))
+  (let ((sym (generate-module-instance-symbol dep "instance"))
         (get-sym (generate-module-instance-symbol dep "get"))
         (set-sym (generate-module-instance-symbol dep "set")))
     (table-set! table dep (cons get-sym
                                 set-sym))
     `((,sym
-       (module#module-reference-absolutize
-        (u8vector->module-reference
-         ',(module-reference->u8vector dep))
-        (module#loaded-module-reference
-         ,loaded-module-sym)))
+       (module#module-instance-get!
+        ,expansion-phase-sym
+        (module#module-reference-ref
+         (module#module-reference-absolutize
+          (module#u8vector->module-reference
+           ',(module-reference->u8vector dep))
+          (module#loaded-module-reference
+           ,loaded-module-sym)))))
       (,get-sym
-       (module#expansion-phase-module-getter-instance ;; FIXME
-        ,expansion-phase-sym
-        ,sym))
+       (module#module-instance-getter ,sym))
       (,set-sym
-       (module#expansion-phase-module-setter-instance ;; FIXME
-        ,expansion-phase-sym
-        ,sym)))))
+       (module#module-instance-setter ,sym)))))
 
 (define (clone-sexp/sym-table sexp ref->sym-table)
   (clone-sexp sexp

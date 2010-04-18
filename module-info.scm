@@ -152,9 +152,9 @@
                ;; The name it's imported as
                (car def)
                ;; The macro procedure
-               (caddr def) ;; TODO Is this right?
+               (cons module-ref (car def))
                ;; The macro's environment
-               (make-env-from-letsyntax-environment env (cadddr def))
+               (make-env-from-letsyntax-environment env (caddr def))
                phase-number: 0))
              (else
               (error "Internal error"))))

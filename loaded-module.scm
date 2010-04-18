@@ -106,9 +106,11 @@
   (macros init: #f))
 
 (define (module-instance-ref phase lm)
-  (table-ref (expansion-phase-module-instances phase)
-             (loaded-module-reference lm)
-             #f))
+  (let ((table (expansion-phase-module-instances phase)))
+    (and table
+         (table-ref table
+                    (loaded-module-reference lm)
+                    #f))))
 
 (define (module-instance-get! phase lm)
   (or (module-instance-ref phase lm)
@@ -186,8 +188,9 @@
                 ;; Invoke the module
                 (loaded-module-invoke! lm phase))))))
     (for-each (lambda (lm)
-                (for-each (lambda (lm)
-                            (rec lm next-phase))
+                (for-each (lambda (m-ref)
+                            (rec (module-reference-ref m-ref)
+                                 next-phase))
                   (module-info-compiletime-dependencies
                    (loaded-module-info lm)))
                 (rec lm phase))
@@ -220,10 +223,9 @@
 (define (loaded-module-visit! lm phase)
   (let ((macros (list->table
                  ((loaded-module-visit lm) lm phase))))
-    (table-set! (module-instance-macros
-                 (module-instance-get! phase lm))
-                (ref (loaded-module-reference lm))
-                macros)
+    (module-instance-macros-set!
+     (module-instance-get! phase lm)
+     macros)
     macros))
 
 (define (loaded-module-macros lm phase)
@@ -252,11 +254,6 @@
               (reloaded-modules '()))
           
           (cond
-           ((expansion-phase-compiletime? phase)
-            (set! loaded-modules
-                  (map module-reference-ref
-                    module-references)))
-           
            ((repl-environment? env)
             (for-each (lambda (ref)
                         (if (module-loaded-but-not-fresh? ref)
@@ -266,8 +263,13 @@
                             (set! loaded-modules
                                   (cons (module-reference-ref ref)
                                         loaded-modules))))
-              module-references)))
-          
+              module-references))
+
+           (else
+            (set! loaded-modules
+                  (map module-reference-ref
+                    module-references))))
+
           (loaded-modules-invoke/deps loaded-modules phase)
           (if (null? reloaded-modules)
               (module-add-defs-to-env defs env
