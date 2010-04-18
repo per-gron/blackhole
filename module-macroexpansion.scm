@@ -18,47 +18,50 @@
      ((pair? code)
       (let ((code-car (expr*:value (car code))))
         (case code-car
-         ((begin ##begin)
-          (expr*:value-set
-           source
-           (cons (car code)
-                 (map transform-to-define
-                      (cdr code)))))
-
-         ((c-define)
-          ;; TODO
-          (error "c-define is not implemented"))
-
-         ((c-define-type)
-          ;; TODO
-          (error "c-define-type is not implemented"))
-
-         ((c-initialize)
-          ;; TODO
-          (error "c-define-type is not implemented"))
-
-         ((c-declare)
-          ;; TODO
-          (error "c-declare is not implemented"))
-
-         ((let-syntax letrec-syntax cond-expand)
-          ;; This shouldn't happen
-          (error "Internal error in transform-to-define"))
-
-         ((declare
-           ##define
-           define
-           ;; The macro forms are rarely or never here, but we check
-           ;; for them just in case.
-           ##define-macro
-           ##define-syntax
-           define-macro
-           define-syntax)
-          source)
-
-         (else
-          (default-action)))))
-
+          ((begin ##begin)
+           (expr*:value-set
+            source
+            (cons (car code)
+                  (map transform-to-define
+                    (filter (lambda (x)
+                              (not (eq? #!void
+                                        (expr*:value x))))
+                            (cdr code))))))
+          
+          ((c-define)
+           ;; TODO
+           (error "c-define is not implemented"))
+          
+          ((c-define-type)
+           ;; TODO
+           (error "c-define-type is not implemented"))
+          
+          ((c-initialize)
+           ;; TODO
+           (error "c-define-type is not implemented"))
+          
+          ((c-declare)
+           ;; TODO
+           (error "c-declare is not implemented"))
+          
+          ((let-syntax letrec-syntax cond-expand)
+           ;; This shouldn't happen
+           (error "Internal error in transform-to-define"))
+          
+          ((declare
+            ##define
+            define
+            ;; The macro forms are rarely or never here, but we check
+            ;; for them just in case.
+            ##define-macro
+            ##define-syntax
+            define-macro
+            define-syntax)
+           source)
+          
+          (else
+           (default-action)))))
+     
      (else
       (default-action)))))
 
@@ -98,10 +101,10 @@
           (else
            code)))))))
 
-(define loaded-module-sym (gensym 'loaded-module))
-(define expansion-phase-sym (gensym 'expansion-phase))
-(define name-sym (gensym 'name))
-(define val-sym (gensym 'val))
+(define loaded-module-sym 'module#sym#loaded-module)
+(define expansion-phase-sym 'module#sym#expansion-phase)
+(define name-sym 'module#sym#name)
+(define val-sym 'module#sym#val)
 
 (define (generate-module-instance-symbol dep #!optional (extra ""))
   (string->symbol
@@ -144,11 +147,11 @@
         (module#loaded-module-reference
          ,loaded-module-sym)))
       (,get-sym
-       (module#expansion-phase-module-getter-instance
+       (module#expansion-phase-module-getter-instance ;; FIXME
         ,expansion-phase-sym
         ,sym))
       (,set-sym
-       (module#expansion-phase-module-setter-instance
+       (module#expansion-phase-module-setter-instance ;; FIXME
         ,expansion-phase-sym
         ,sym)))))
 
@@ -187,10 +190,12 @@
                    definitions)))
         (ref->rt-sym-table (make-table)))
     `(lambda (,loaded-module-sym ,expansion-phase-sym)
-       (let* (,@(map (lambda (dep)
-                       (module-instance-let-fn dep
-                                               ref->rt-sym-table))
-                  dependencies))
+       (let* (,@(apply
+                 append
+                 (map (lambda (dep)
+                        (module-instance-let-fn dep
+                                                ref->rt-sym-table))
+                   dependencies)))
          ,(transform-to-define
            (clone-sexp/sym-table expanded-code
                                  ref->rt-sym-table))
@@ -215,10 +220,12 @@
                              dependencies)
   (let ((ref->ct-sym-table (make-table)))
     `(lambda (,loaded-module-sym ,expansion-phase-sym)
-       (let* (,@(map (lambda (dep)
-                       (module-instance-let-fn dep
-                                               ref->ct-sym-table))
-                  dependencies))
+       (let* (,@(apply
+                 append
+                 (map (lambda (dep)
+                        (module-instance-let-fn dep
+                                                ref->ct-sym-table))
+                   dependencies)))
          (list
           ,@(map
                 (lambda (name/sexp-pair)

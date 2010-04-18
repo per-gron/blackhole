@@ -167,6 +167,15 @@
      (else
       #f))))
 
+(define (vector-for-each fn vec)
+  (let ((len (vector-length vec)))
+    (let loop ((i 0))
+      (cond
+       ((< i len)
+        (fn (vector-ref vec i))
+        (loop (+ 1 i)))))
+    (void)))
+
 (define (vector-map fn vec)
   (let* ((len (vector-length vec))
          (v (make-vector len)))

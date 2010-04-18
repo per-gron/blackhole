@@ -4,7 +4,6 @@
 ;;;                                                                  ;;;
 ;;;  --------------------------------------------------------------  ;;;
 
-
 (define-type expansion-phase
   id: 73B5764F-51BF-4959-8A5A-C65667253AA5
   constructor: make-expansion-phase/internal
@@ -12,16 +11,12 @@
   (syntactic-tower read-only:)
   ;; An integer
   (number read-only:)
-  ;; A table of an absolute module reference to a module getter instance object
-  (getter-instances read-only:)
-  ;; A table of an absolute module reference to a module setter instance object
-  (setter-instances read-only:))
+  ;; A table of an absolute module reference to a module-instance object
+  (module-instances read-only:))
 
 (define (make-expansion-phase tower phase)
   (make-expansion-phase/internal tower
                                  phase
-                                 (and (positive? phase)
-                                      (make-table))
                                  (and (positive? phase)
                                       (make-table))))
 
@@ -75,12 +70,8 @@
   (syntactic-tower-phase (expansion-phase-syntactic-tower phase)
                          (+ 1 (expansion-phase-number phase))))
 
-(define (expansion-phase-module-getter-instance phase module-reference)
-  (table-ref (expansion-phase-module-getter-instances phase)
-             module-reference))
-
-(define (expansion-phase-module-setter-instance phase module-reference)
-  (table-ref (expansion-phase-module-setter-instances phase)
+(define (expansion-phase-module-instance phase module-reference)
+  (table-ref (expansion-phase-module-instances phase)
              module-reference))
 
 (define *repl-syntactic-tower* (make-syntactic-tower))

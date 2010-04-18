@@ -8,34 +8,34 @@
   id: 08E43248-AC39-4DA1-863E-49AFA9FFE84E
   constructor: make-loaded-module/internal
 
-  (instantiate-runtime read-only:)
-  (instantiate-compiletime read-only:)
+  (invoke-runtime read-only:)
+  (invoke-compiletime read-only:)
   (visit read-only:)
   (info read-only:)
   (stamp read-only:)
   ;; An absolute module reference object
   (reference read-only:)
   
-  (runtime-instantiated init: #f)
+  (runtime-invoked init: #f)
   ;; A list of the currently loaded loaded-module objects that
   ;; directly depend on this loaded-module
   (dependent-modules init: '()))
 
 (define (make-loaded-module #!key
-                            instantiate-runtime
-                            instantiate-compiletime
+                            invoke-runtime
+                            invoke-compiletime
                             visit
                             info
                             stamp
                             reference)
-  (if (not (and (procedure? instantiate-runtime)
-                (procedure? instantiate-compiletime)
+  (if (not (and (procedure? invoke-runtime)
+                (procedure? invoke-compiletime)
                 (procedure? visit)
                 (module-info? info)
                 (module-reference? reference)))
       (error "Invalid parameters"))
-  (make-loaded-module/internal instantiate-runtime
-                               instantiate-compiletime
+  (make-loaded-module/internal invoke-runtime
+                               invoke-compiletime
                                visit
                                info
                                stamp
@@ -63,6 +63,22 @@
     (table-set! *loaded-module-registry* ref loaded-module)
     loaded-module))
 
+(define (loaded-module-unload! lm) ;; This function isn't used or tested
+  ;; First, de-instantiate the modules that depend on this module.
+  (let rec ((lm lm))
+    (for-each rec
+      (loaded-module-dependent-modules lm))
+
+    (let ((ref (loaded-module-reference lm)))
+      (vector-for-each
+       (lambda (phase)
+         (table-set! (expansion-phase-instances phase)
+                     ref))
+       (syntactic-tower-phases *repl-syntactic-tower*))))
+  
+  (table-set! *loaded-module-registry*
+              (loaded-module-reference lm)))
+
 (define (module-reference-ref ref #!key compare-stamps)
   (if (not (module-reference-absolute? ref))
       (error "Module reference must be absolute"))
@@ -74,57 +90,83 @@
             loaded-module))
       (module-reference-load! ref)))
 
-(define (loaded-module-instantiated? lm phase)
+;;;; Visiting and invoking functionality
+
+;; A module instance object implicitly belongs to an expansion phase
+;; and to a module reference, because it's stored in the expansion
+;; phase object's instance table, with a module reference as the key.
+;;
+;; Because of this, there's no need to store pointers back to these
+;; objects.
+(define-type module-instance
+  id: F366DFDB-6F11-47EB-9558-04BF7B31225D
+
+  (getter init: #f)
+  (setter init: #f)
+  (macros init: #f))
+
+(define (module-instance-ref phase lm)
+  (table-ref (expansion-phase-module-instances phase)
+             (loaded-module-reference lm)
+             #f))
+
+(define (module-instance-get! phase lm)
+  (or (module-instance-ref phase lm)
+      (let ((instance (make-module-instance)))
+        (table-set! (expansion-phase-module-instances phase)
+                    (loaded-module-reference lm)
+                    instance)
+        instance)))
+
+(define (loaded-module-invoked? lm phase)
   (if (zero? (expansion-phase-number phase))
-      (loaded-module-runtime-instantiated lm)
-      (not (eq? #f
-                (table-ref (expansion-phase-getter-instances phase)
-                           (loaded-module-reference lm)
-                           #f)))))
+      (loaded-module-runtime-invoked lm)
+      (let ((instance (module-instance-ref phase lm)))
+        (and instance
+             (module-instance-getter instance)
+             (module-instance-setter instance)
+             #t))))
 
 ;; This procedure doesn't make sure that the module's dependencies are
-;; instantiated first, nor that the modules that depend on this module
-;; are reinstantiated or that the dependent-modules field of the
+;; invoked first, nor that the modules that depend on this module
+;; are reinvoked or that the dependent-modules field of the
 ;; relevant loaded-module objects are kept up-to-date.
 ;;
 ;; It is not intended to be used directly, it is just a utility
-;; function for loaded-modules-instantiate/deps and
-;; loaded-modules-reinstantiate.
-(define (loaded-module-instantiate! lm phase)
+;; function for loaded-modules-invoke/deps and
+;; loaded-modules-reinvoke.
+(define (loaded-module-invoke! lm phase)
   (if (zero? (expansion-phase-number phase))
-      ((loaded-module-instantiate-runtime lm))
+      ((loaded-module-invoke-runtime lm))
       (call-with-values
           (lambda ()
-            ((loaded-module-instantiate-compiletime lm)
+            ((loaded-module-invoke-compiletime lm)
              lm phase))
         (lambda (getter setter)
-          (let ((ref (loaded-module-reference lm)))
-            (table-set! (expansion-phase-getter-instances phase)
-                        ref
-                        getter)
-            (table-set! (expansion-phase-setter-instances phase)
-                        ref
-                        setter))
-          (void)))))
+          (let* ((ref (loaded-module-reference lm))
+                 (instance (module-instance-get! phase lm)))
+            (module-instance-getter-set! instance getter)
+            (module-instance-getter-set! instance setter)))))
+  (void))
 
-(define (loaded-modules-instantiate/deps lms phase)
+(define (loaded-modules-invoke/deps lms phase)
   (letrec
       ((next-phase (expansion-phase-next-phase phase))
        ;; Table of module-reference objects to #t
-       (instantiate-table (make-table))
+       (invoke-table (make-table))
        (rec (lambda (lm phase)
               (cond
-               ((and (not (table-ref instantiate-table
+               ((and (not (table-ref invoke-table
                                      (loaded-module-reference lm)
                                      #f))
-                     (not (loaded-module-instantiated? lm phase)))
-                ;; Flag that this module is to be instantiated, to
+                     (not (loaded-module-invoked? lm phase)))
+                ;; Flag that this module is to be invoked, to
                 ;; avoid double-instantiations.
-                (table-set! instantiate-table
+                (table-set! invoke-table
                             (loaded-module-reference lm)
                             #t)
                 
-                ;; Make sure to instantiate the module's dependencies first
+                ;; Make sure to invoke the module's dependencies first
                 (for-each
                  (lambda (dep-ref)
                    (let ((dependency
@@ -141,8 +183,8 @@
                  (module-info-runtime-dependencies
                   (loaded-module-info lm)))
                 
-                ;; Instantiate the module
-                (loaded-module-instantiate! lm phase))))))
+                ;; Invoke the module
+                (loaded-module-invoke! lm phase))))))
     (for-each (lambda (lm)
                 (for-each (lambda (lm)
                             (rec lm next-phase))
@@ -151,29 +193,43 @@
                 (rec lm phase))
               lms)))
 
-(define (loaded-modules-reinstantiate lms phase)
+(define (loaded-modules-reinvoke lms phase)
   (letrec
       (;; Table of module-reference objects to #t
-       (instantiate-table (make-table))
+       (invoke-table (make-table))
        (rec (lambda (lm)
               (cond
-               ((and (not (table-ref instantiate-table
+               ((and (not (table-ref invoke-table
                                      (loaded-module-reference lm)
                                      #f))
-                     (not (loaded-module-instantiated? lm phase)))
-                ;; Flag that this module is to be instantiated, to
+                     (not (loaded-module-invoked? lm phase)))
+                ;; Flag that this module is to be invoked, to
                 ;; avoid double-instantiations.
-                (table-set! instantiate-table
+                (table-set! invoke-table
                             (loaded-module-reference lm)
                             #t)
                 
-                ;; Re-instantiate the module
-                (loaded-module-instantiate! lm phase)
+                ;; Re-invoke the module
+                (loaded-module-invoke! lm phase)
                 
-                ;; Re-instantiate the dependent modules
+                ;; Re-invoke the dependent modules
                 (for-each rec
                  (loaded-module-dependent-modules lm)))))))
     (for-each rec lms)))
+
+(define (loaded-module-visit! lm phase)
+  (let ((macros (list->table
+                 ((loaded-module-visit lm) lm phase))))
+    (table-set! (module-instance-macros
+                 (module-instance-get! phase lm))
+                (ref (loaded-module-reference lm))
+                macros)
+    macros))
+
+(define (loaded-module-macros lm phase)
+  (let ((instance (module-instance-get! phase lm)))
+    (or (module-instance-macros instance)
+        (loaded-module-visit! lm phase))))
 
 (define (module-import modules env phase)
   (define (module-loaded-but-not-fresh? ref)
@@ -191,7 +247,7 @@
         ;; changed since they were last loaded) will be reloaded if
         ;; they are imported from the REPL. And when a module is
         ;; reloaded all modules that depend on it must be
-        ;; reinstantiated.
+        ;; reinvoked.
         (let ((loaded-modules '())
               (reloaded-modules '()))
           
@@ -212,16 +268,15 @@
                                         loaded-modules))))
               module-references)))
           
-          (loaded-modules-instantiate/deps loaded-modules phase)
+          (loaded-modules-invoke/deps loaded-modules phase)
           (if (null? reloaded-modules)
               (module-add-defs-to-env defs env
                                       phase-number: (expansion-phase-number phase))
               (begin
-                (loaded-modules-reinstantiate reloaded-modules phase)
+                (loaded-modules-reinvoke reloaded-modules phase)
                 ;; We need to re-resolve the imports, because the
                 ;; reloads might have caused definitions to change.
                 (loop))))))))
-
 
 (define (macroexpansion-symbol-defs symbols env)
   (let* ((ref (environment-module-reference env))
@@ -254,7 +309,7 @@
                      (set! repl-environment (*top-environment*)))
                  
                  (*top-environment* (make-top-environment module-reference))
-                 (loaded-modules-instantiate/deps (list loaded-module))
+                 (loaded-modules-invoke/deps (list loaded-module))
                  
                  (module-add-defs-to-env (module-info-imports info)
                                          (*top-environment*))))))

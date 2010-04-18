@@ -17,8 +17,8 @@
   ;; path should be interpreted relative to, and returns an absolute
   ;; path object.
   (path-absolutize-fn unprintable: equality-skip: read-only:)
-  ;; Takes an absolute path and returns the instantiate-runtime
-  ;; procedure, the instantiate-compiletime procedure, the module-info
+  ;; Takes an absolute path and returns the invoke-runtime
+  ;; procedure, the invoke-compiletime procedure, the module-info
   ;; structure and a stamp object.
   (load-module-fn unprintable: equality-skip: read-only:)
   (compare-stamp-fn unprintable: equality-skip: read-only:)
@@ -269,13 +269,13 @@
        (call-with-values
            (lambda ()
              (load-module-from-file ref path))
-         (lambda (instantiate-runtime
-                  instantiate-compiletime
+         (lambda (invoke-runtime
+                  invoke-compiletime
                   visit
                   info-alist)
            (make-loaded-module
-            instantiate-runtime: instantiate-runtime
-            instantiate-compiletime: instantiate-compiletime
+            invoke-runtime: invoke-runtime
+            invoke-compiletime: invoke-compiletime
             visit: visit
             info: (make-module-info-from-alist ref info-alist)
             stamp: (file-last-changed-seconds path)
@@ -305,11 +305,11 @@
    load-module:
    (lambda (path)
      (make-loaded-module
-      instantiate-runtime:
+      invoke-runtime:
       (lambda ()
         #!void)
       
-      instantiate-compiletime:
+      invoke-compiletime:
       (lambda (loaded-module phase)
         (values (lambda (name value)
                   (error "You can't side-effect the internals of Black Hole"))
