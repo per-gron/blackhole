@@ -53,22 +53,21 @@
 (syntax-begin
  
  (define (pattern-match-param-list mac-env env pattern)
-   (let ((pattern (extract-syntactic-closure-list pattern 1)))
-     (cond
-      ((identifier? pattern)
-       (list pattern))
-      
-      ((and (pair? pattern)
-            (identifier=? mac-env 'quote env (car pattern)))
-       '())
-      
-      ((pair? pattern)
-       (append (pattern-match-param-list mac-env env (car pattern))
-               (pattern-match-param-list mac-env env (cdr pattern))))
-      
-      (else
-       '()))))
- 
+   (cond
+    ((identifier? pattern)
+     (list pattern))
+    
+    ((and (pair? pattern)
+          (identifier=? mac-env 'quote env (car pattern)))
+     '())
+    
+    ((pair? pattern)
+     (append (pattern-match-param-list mac-env env (car pattern))
+             (pattern-match-param-list mac-env env (cdr pattern))))
+    
+    (else
+     '())))
+
  (define (pattern-match-make-lambda mac-env env pattern . body)
    `(,(make-syntactic-closure mac-env '() 'lambda)
      ,(pattern-match-param-list mac-env env pattern)
