@@ -10,7 +10,6 @@
 ;;
 ;; Things it cannot do right now:
 ;; * "multipart/form-data"
-;; * I should add (private) annotations.
 ;; * .. and probably move out some of the code to lib/http-common
 ;;
 ;; ===================================================================
@@ -32,7 +31,7 @@
         ../srfi/1
         ../srfi/13
         ../srfi/19
-		../misc/u8v)
+        ../misc/u8v)
 
 (export http-max-pipelined-requests-per-connection
         http-max-connection-idle-time

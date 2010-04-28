@@ -31,7 +31,6 @@
         cookie-to-http
         cookie-parse
         cookie-headers
-        headerify
         date-in-the-past
         date->rfc1123
         display-crlf
@@ -262,13 +261,6 @@
                      (u8vector-length vec)
                      (or port (current-output-port))))
 
-(define (headerify sym)
-  (apply string-append
-         (join "-"
-               (map string-capitalize!
-                    (string-name-split
-                     (symbol->string sym))))))
-
 (define date-in-the-past (make-date 0 0 0 0 1 1 1990 0))
 
 (define (date->rfc1123 d)
@@ -281,27 +273,12 @@
                 msgs))
   (display "\r\n" port))
 
-(define (display-header port pair #!optional (charset "UTF-8"))
-  (let ((name (car pair))
-        (val (cdr pair)))
-    (if (or (eq? name 'date)
-            (eq? name 'expires))
-        (set! val (date->rfc1123 val)))
-    (if (not (eq? name 'charset))
-        (if (eq? name 'content-type)
-            (display-crlf
-             port
-             (headerify name)
-             ": "
-             val
-             "; charset="
-             charset)
-            (display-crlf
-             port (headerify name) ": " val)))))
+(define (display-header port pair)
+  (display-crlf port (car pair) ": " (cdr pair)))
 
-(define (display-headers port hs #!optional (charset "UTF-8"))
+(define (display-headers port hs)
   (for-each (lambda (x)
-              (display-header port x charset))
+              (display-header port x))
             hs))
 
 ;==============================================================================
@@ -319,12 +296,12 @@
 (define (split-attribute-line line)
   (let ((pos (find-char-pos line #\:)))
     (and pos
-         (< (+ pos 1) (string-length line))
-         (char=? #\space (string-ref line (+ pos 1)))
+         (< pos (string-length line))
          (cons (let ((str (substring line 0 pos)))
                  (string-downcase! str)
                  str)
-               (substring line (+ pos 2) (string-length line))))))
+               (string-strip
+                (substring line (+ pos 1) (string-length line)))))))
 
 (define permissive-read-line-reached-eof
   (list 'permissive-read-line-reached-eof))
@@ -355,18 +332,69 @@
           (loop)
           line))))
 
+;; Reads one line from port, using the byte reading functions and not
+;; read-line. Safe to US ASCII only. This function also treats a CRLF
+;; followed by a space or a tab as whitespace, not a newline.
+;;
+;; Used when parsing headers.
+(define (permissive-read-line-skip-lws port peek-char)
+  (let loop ((lst '())
+             (current-char peek-char)
+             (peek-byte (read-u8 port)))
+    (cond
+     ((and (null? lst)
+           (eq? 10 peek-byte) ;; #\newline
+           (eq? #\return current-char))
+      (cons 'done ""))
+     
+     ((eq? #!eof peek-byte)
+      (cons #!eof
+            (reverse-list->string
+             (if (and (eq? #\newline current-char)
+                      (pair? lst)
+                      (eq? #\return (car lst)))
+                 (cdr lst)
+                 (cons current-char lst)))))
+
+     ((and (eq? current-char #\newline)
+           (pair? lst)
+           (eq? (car lst) #\return)
+           (not (or (eq? 9 peek-byte) ;; #\tab
+                    (eq? 32 peek-byte)))) ;; #\space
+      (cons peek-byte
+            (reverse-list->string (cdr lst))))
+      
+      (else
+       (let ((chr (integer->char peek-byte)))
+         (loop (cons current-char lst)
+               chr
+               (read-u8 port)))))))
+
 (define (read-header port)
-  (let loop ((attributes '()))
-    (let ((line (permissive-read-line port)))
-      (cond ((not line)
-             #f)
-            ((= (string-length line) 0)
+  (let loop ((attributes '())
+             (peek-byte (read-u8 port)))
+    (and (not (eq? #!eof peek-byte))
+         (let* ((peek-byte/line-pair
+                 (permissive-read-line-skip-lws
+                  port
+                  (integer->char peek-byte)))
+                (new-peek-byte
+                 (car peek-byte/line-pair))
+                (line
+                 (cdr peek-byte/line-pair)))
+           (cond
+            ((eq? 'done new-peek-byte)
              attributes)
+
+            ((eq? #!eof new-peek-byte)
+             #f)
+
             (else
              (let ((attribute (split-attribute-line line)))
                (if attribute
-                   (loop (cons attribute attributes))
-                   #f)))))))
+                   (loop (cons attribute attributes)
+                         new-peek-byte)
+                   #f))))))))
 
 (define (read-content-chars port attributes)
   (let ((cl

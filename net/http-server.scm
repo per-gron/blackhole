@@ -1,4 +1,4 @@
-;;; Routines common to both a HTTP client and server.
+;;; A HTTP server.
 ;;;
 ;;; Copyright (c) 2008-2009 Per Eckerdal, 2005-2007 Marc Feeley, All
 ;;; Rights Reserved.
