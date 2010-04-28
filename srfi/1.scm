@@ -236,7 +236,7 @@
         append! append-reverse append-reverse! concatenate concatenate! 
         unfold	     fold	pair-fold	reduce
         unfold-right fold-right pair-fold-right reduce-right
-        append-map append-map! map! pair-for-each filter-map map-in-order
+        map append-map append-map! map! pair-for-each filter-map map-in-order
         filter	partition  remove
         filter! partition! remove! 
         find find-tail any every list-index
