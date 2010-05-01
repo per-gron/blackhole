@@ -280,26 +280,6 @@
                 ;; reloads might have caused definitions to change.
                 (loop))))))))
 
-(define (macroexpansion-symbol-defs symbols env)
-  (let* ((ref (environment-module-reference env))
-         (ns (module-reference-namespace
-              (environment-module-reference env))))
-    (map (lambda (pair)
-           (let ((name (car pair))
-                 (type (cdr pair)))
-             (if (eq? 'def type)
-                 (list name
-                       'def
-                       (gen-symbol ns name)
-                       ref)
-                 (let ((mac (environment-get env name)))
-                   (if (or (not mac)
-                           (not (eq? 'mac (car mac))))
-                       (error "Internal error in macroexpansion-symbol-defs:"
-                              mac))
-                   `(,name 'mac ,@(cdr mac))))))
-      symbols)))
-
 (define module-module
   (let* ((repl-environment #f)
          (fn (lambda (mod)

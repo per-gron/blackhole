@@ -116,23 +116,16 @@
 (define (generate-runtime-code namespace-string
                                module-reference
                                expanded-code)
-  `(begin
-     (define ,(generate-module-instance-symbol module-reference
-                                               "ct-instance")
-       (delay
-         (module#syntactic-tower-module-phase
-          module#*repl-syntactic-tower*
-          1)))
-     ,(clone-sexp
-       expanded-code
-       (lambda (def phase)
-         (if (not (expansion-phase-runtime? phase))
-             (error "Internal error in generate-macro-code"))
-         (cadr def))
-       (lambda (def phase val)
-         (if (not (expansion-phase-runtime? phase))
-             (error "Internal error in generate-macro-code"))
-         `(set! ,(cadr def) ,val)))))
+  (clone-sexp
+   expanded-code
+   (lambda (def phase)
+     (if (not (expansion-phase-runtime? phase))
+         (error "Internal error in generate-macro-code"))
+     (cadr def))
+   (lambda (def phase val)
+     (if (not (expansion-phase-runtime? phase))
+         (error "Internal error in generate-macro-code"))
+     `(set! ,(cadr def) ,val))))
 
 (define (module-instance-let-fn dep table)
   (let ((sym (generate-module-instance-symbol dep "instance"))
@@ -342,71 +335,79 @@
             (if force-compile
                 (set! force-compile- force-compile)))))
       
-      (call-with-values
-         (lambda ()
-           (parameterize
-               ((*top-environment*
-                 (make-top-environment module-reference))
-                (*expansion-phase*
-                 (syntactic-tower-first-phase
-                  (make-syntactic-tower)))
-                (*external-reference-access-hook*
-                 (lambda (ref phase)
-                   (make-external-reference ref phase)))
-                (*external-reference-cleanup-hook*
-                 (lambda (code)
-                   (clone-sexp
-                    code
-                    ;; TODO Do something with phase
-                    (lambda (def phase) (cadr def))
-                    ;; TODO Do something with phase
-                    (lambda (def phase val)
-                      `(set! ,(cadr def) ,val))))))
-             (values (expand-macro sexpr)
-                     (*top-environment*))))
-       (lambda (expanded-code env)
-         (let ((imports
-                (apply append imports))
-               (imports-for-syntax
-                (apply append imports-for-syntax))
-               (exports
-                (and exports (apply append exports))))
-           ;; TODO Add something to check for duplicate imports and
-           ;; exports.
-           
-           (let ((dependencies
-                  (remove-duplicates
-                   (call-with-values
-                       (lambda ()
-                         (resolve-imports imports
-                                          module-reference))
-                     (lambda (defines modules)
-                       modules))))
-                 (syntax-dependencies
-                  (remove-duplicates
-                   (call-with-values
-                       (lambda ()
-                         (resolve-imports imports-for-syntax
-                                          module-reference))
-                     (lambda (defines modules)
-                       modules)))))
-             (values (generate-runtime-code (environment-namespace env)
-                                            module-reference
-                                            expanded-code)
-                     (generate-compiletime-code (environment-namespace env)
-                                                expanded-code
-                                                definitions
-                                                dependencies)
-                     (generate-visit-code macros
-                                          dependencies)
-                     `',(object->u8vector
-                         `((definitions . ,definitions)
-                           (imports . ,imports)
-                           (imports-for-syntax . ,imports-for-syntax)
-                           (exports . ,exports)
-                           (namespace-string . ,(environment-namespace env))
-                           (options . ,options-)
-                           (cc-options . ,cc-options-)
-                           (ld-options-prelude . ,ld-options-prelude-)
-                           (ld-options . ,ld-options-)
-                           (force-compile . ,force-compile-)))))))))))
+      (let ((expanded-code
+             env
+             (parameterize
+                 ((*top-environment*
+                   (make-top-environment module-reference))
+                  (*expansion-phase*
+                   (syntactic-tower-first-phase
+                    (make-syntactic-tower)))
+                  (*external-reference-access-hook*
+                   (lambda (ref phase)
+                     (make-external-reference ref phase)))
+                  (*external-reference-cleanup-hook*
+                   (lambda (code)
+                     (clone-sexp
+                      code
+                      ;; TODO Do something with phase
+                      (lambda (def phase) (cadr def))
+                      ;; TODO Do something with phase
+                      (lambda (def phase val)
+                        `(set! ,(cadr def) ,val))))))
+               (values (expand-macro sexpr)
+                       (*top-environment*))))
+            (imports
+             (apply append imports))
+            (imports-for-syntax
+             (apply append imports-for-syntax)))
+        ;; TODO Add something to check for duplicate imports and
+        ;; exports.
+        (let ((export-defs
+               export-uses-module-refs
+               (if exports
+                   (resolve-exports (apply append exports)
+                                    env)
+                   (values
+                    (macroexpansion-symbol-defs
+                     ;; TODO This map feels quite misplaced. Change
+                     ;; macroexpansion-symbol-defs
+                     (map (lambda (def)
+                            (cons (car def)
+                                  (cadr def)))
+                       definitions)
+                     env)
+                    '())))
+              (import-defs
+               import-module-refs
+               (resolve-imports imports
+                                module-reference))
+              (import-for-syntax-defs
+               import-for-syntax-module-refs
+               (resolve-imports imports
+                                module-reference)))
+          (values (generate-runtime-code (environment-namespace env)
+                                         module-reference
+                                         expanded-code)
+                  (generate-compiletime-code (environment-namespace env)
+                                             expanded-code
+                                             definitions
+                                             import-module-refs)
+                  (generate-visit-code macros
+                                       import-module-refs)
+                  `',(object->u8vector
+                      `((definitions ,@definitions)
+                        (imports ,@import-defs)
+                        (imports-for-syntax ,@import-for-syntax-defs)
+                        (exports ,@export-defs)
+                        (runtime-dependencies
+                         ,@(append export-uses-module-refs
+                                   import-module-refs))
+                        (compiletime-dependencies
+                         ,@import-for-syntax-module-refs)
+                        (namespace-string ,@(environment-namespace env))
+                        (options ,@options-)
+                        (cc-options ,@cc-options-)
+                        (ld-options-prelude ,@ld-options-prelude-)
+                        (ld-options ,@ld-options-)
+                        (force-compile ,@force-compile-)))))))))

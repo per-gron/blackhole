@@ -344,3 +344,70 @@
          (path-directory
           (path-strip-trailing-directory-separator dir)))
         (create-directory dir))))
+
+;; Let with multiple values support
+(define-macro (let defs . body)
+  (define (last lst)
+    (cond ((null? lst) #f)
+          ((null? (cdr lst)) (car lst))
+          (else (last (cdr lst)))))
+  
+  (define (skip-last lst)
+    (cond
+     ((null? lst)
+      (error "Can't skip last"))
+     
+     ((null? (cdr lst))
+      '())
+     
+     (else
+      (cons (car lst)
+            (skip-last (cdr lst))))))
+
+  (define (filter pred list)
+    (if (null? list)
+        '()
+        (if (pred (car list))
+            (cons (car list) (filter pred (cdr list)))
+            (filter pred (cdr list)))))
+  
+  (cond
+   ((pair? defs)
+    (let ((single-defs
+           (filter (lambda (x)
+                     (null? (cddr x)))
+                   defs))
+          (multi-defs
+           (map (lambda (x)
+                  (cons (last x)
+                        (map (lambda (name)
+                               (cons (gensym name)
+                                     name))
+                          (skip-last x))))
+             (filter (lambda (x)
+                       (pair? (cddr x)))
+                     defs))))
+      (let loop ((mds multi-defs))
+        (cond
+         ((null? mds)
+          `(##let (,@single-defs
+                   ,@(apply
+                      append
+                      (map (lambda (multi-def)
+                             (map (lambda (def)
+                                    (list (cdr def)
+                                          (car def)))
+                               (cdr multi-def)))
+                        multi-defs)))
+             ,@body))
+         
+         (else
+          (let ((multi-def (car mds)))
+            `(call-with-values
+                 (lambda ()
+                   ,(car multi-def))
+               (lambda ,(map car (cdr multi-def))
+                 ,(loop (cdr mds))))))))))
+
+   (else
+    `(##let ,defs ,@body))))

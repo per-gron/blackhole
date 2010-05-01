@@ -138,7 +138,7 @@
                     (set! mods (cons mod mods)))))
               vals)
     (values (flatten1 defs)
-            (flatten1 mods))))
+            (remove-duplicates (flatten1 mods)))))
 
 (define (only-resolver cm mod . names)
   (call-with-values
@@ -234,6 +234,29 @@
 
 (define *export-resolvers* '())
 
+(define (macroexpansion-symbol-defs symbols env)
+  (let ((ns (module-reference-namespace
+             (environment-module-reference env))))
+    (map (lambda (pair)
+           (let ((name (car pair))
+                 (type (cdr pair)))
+             (case type
+               ((def)
+                (list name
+                      'def
+                      (gen-symbol ns name)
+                      'self-reference))
+
+               ((mac)
+                (list name
+                      'mac
+                      name
+                      'self-reference))
+
+               (else
+                (error "Internal error in macroexpansion-symbol-defs")))))
+      symbols)))
+
 (define (export-helper env name as)
   (if (not (and (symbol? name)
                 (symbol? as)))
@@ -244,8 +267,8 @@
       (if (eq? 'mac (car val))
           (list as
                 'mac
-                (cadr val) ;; Macro procedure
-                (caddr val)) ;; Macro environment
+                (cadr val)
+                (environment-module-reference env))
           (list as
                 'def
                 (cadr val)

@@ -27,12 +27,9 @@
   constructor: make-module-info/internal
 
   (symbols read-only:)
-  (exports-list read-only:) ;; As written in the source file
-  (imports-list read-only:) ;; As written in the source file
-  (imports-for-syntax-list read-only:) ;; As written in the source file
-  (exports read-only:) ;; In digested form
-  (imports read-only:) ;; In digested form
-  (imports-for-syntax read-only:) ;; In digested form
+  (exports read-only:)
+  (imports read-only:)
+  (imports-for-syntax read-only:)
   
   ;; A list of module references, possibly relative
   (runtime-dependencies read-only:)
@@ -54,9 +51,6 @@
 
 (define (make-module-info #!key
                           (symbols '())
-                          (exports-list '())
-                          (imports-list '())
-                          (imports-for-syntax-list '())
                           (exports '())
                           (imports '())
                           (imports-for-syntax '())
@@ -69,9 +63,6 @@
                           (force-compile #f)
                           namespace-string)
   (make-module-info/internal symbols
-                             exports-list
-                             imports-list
-                             imports-for-syntax-list
                              exports
                              imports
                              imports-for-syntax
@@ -171,9 +162,11 @@
   
   (let* ((tbl (list->table module-info-alist))
          (definitions (table-ref tbl 'definitions '()))
-         (exports (table-ref tbl 'exports #f))
          (imports (table-ref tbl 'imports '()))
          (imports-for-syntax (table-ref tbl 'imports-for-syntax '()))
+         (exports (table-ref tbl 'exports #f))
+         (runtime-dependencies (table-ref tbl 'runtime-dependencies '()))
+         (compiletime-dependencies (table-ref tbl 'compiletime-dependencies '()))
          (namespace-string (table-ref tbl 'namespace-string))
          (symbols (map (lambda (def)
                          (cons (car def)
@@ -195,34 +188,24 @@
             (lambda ()
               (resolve-imports imports-for-syntax))
           (lambda (import-defs-for-syntax import-for-syntax-module-refs)
-            (let ((env (recreate-module-environment
+            (let (#;(env (recreate-module-environment
+                        ;; TODO This isn't used anywhere. And it
+                        ;; doesn't make sense that it isn't
                         module-ref
                         namespace-string
                         definitions
                         import-defs
                         import-defs-for-syntax)))
-              (call-with-values
-                  (lambda ()
-                    (if exports
-                        (resolve-exports exports env)
-                        (values (macroexpansion-symbol-defs symbols
-                                                            env)
-                                '())))
-                (lambda (export-defs export-uses-module-refs)
-                  (make-module-info
-                   symbols: symbols
-                   exports-list: exports
-                   imports-list: imports
-                   imports-for-syntax-list: imports-for-syntax
-                   exports: export-defs
-                   imports: import-defs
-                   imports-for-syntax: import-defs-for-syntax
-                   runtime-dependencies: (append import-module-refs
-                                                 export-uses-module-refs)
-                   compiletime-dependencies: import-for-syntax-module-refs
-                   options: (table-ref tbl 'options '())
-                   cc-options: (table-ref tbl 'cc-options "")
-                   ld-options-prelude: (table-ref tbl 'ld-options-prelude "")
-                   ld-options: (table-ref tbl 'ld-options "")
-                   force-compile: (table-ref tbl 'force-compile #f)
-                   namespace-string: namespace-string))))))))))
+              (make-module-info
+               symbols: symbols
+               exports: exports
+               imports: imports
+               imports-for-syntax: imports-for-syntax
+               runtime-dependencies: runtime-dependencies
+               compiletime-dependencies: compiletime-dependencies
+               options: (table-ref tbl 'options '())
+               cc-options: (table-ref tbl 'cc-options "")
+               ld-options-prelude: (table-ref tbl 'ld-options-prelude "")
+               ld-options: (table-ref tbl 'ld-options "")
+               force-compile: (table-ref tbl 'force-compile #f)
+               namespace-string: namespace-string))))))))
