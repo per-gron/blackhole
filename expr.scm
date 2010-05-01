@@ -302,7 +302,8 @@
 		 )))
 
 ;; TODO This function does the same thing as ##sourcify-deep. (Does
-;; ##sourcify-deep share structure?)
+;; ##sourcify-deep share structure?) (Does ##sourcify-deep look inside
+;; source objects?)
 ;;
 ;; recursively, and peeks into existing expr's; functional, but
 ;; shares structure as much as possible

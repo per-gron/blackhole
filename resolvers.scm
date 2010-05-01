@@ -17,7 +17,7 @@
          (make-module-reference
           loader
           (loader-path-absolutize loader id path)))
-       ids))
+    ids))
 
 (define (package-module-resolver path)
   (let ((path
@@ -28,7 +28,7 @@
              (make-module-reference
               local-loader
               (loader-path-absolutize local-loader id path)))
-           ids))))
+        ids))))
 
 ;; This is a helper function for singleton loaders, for instance 'module
 (define (make-singleton-module-resolver pkg)
@@ -42,7 +42,9 @@
         (cons (cons name res)
               *module-resolvers*)))
 
-(define (resolve-module name #!optional cm)
+(define (resolve-module name
+                        #!optional cm
+                        #!key relative)
   (if (module-reference? name)
       (list name)
       (call-with-values
@@ -59,19 +61,29 @@
         (lambda (resolver-id resolver-args)
           (let ((resolver (let ((pair (assq resolver-id
                                             *module-resolvers*)))
-                            (and pair (cdr pair)))))
-            (if (not resolver)
-                (error "Module resolver not found:" resolver-id)
-                (apply resolver
-                       `(,(if cm
-                              (module-reference-loader cm)
-                              (current-loader))
-                         ,(if cm
-                              (module-reference-path cm)
-                              (let ((current-mod (current-module-reference)))
-                                (and current-mod
-                                     (module-reference-path current-mod))))
-                         ,@resolver-args))))))))
+                            (and pair (cdr pair))))
+                (loader (if cm
+                            (module-reference-loader cm)
+                            (current-loader))))
+            (cond
+             ((not resolver)
+              (error "Module resolver not found:" resolver-id))
+
+             (relative
+              (map (lambda (id)
+                     (make-module-reference loader id))
+                resolver-args))
+
+             (else
+              (apply resolver
+                     `(,loader
+                       ,(if cm
+                            (module-reference-path cm)
+                            (let ((current-mod (current-module-reference)))
+                              (and current-mod
+                                   (module-reference-path current-mod))))
+                       ,@resolver-args)))))))))
+              
 
 (define (resolve-modules names #!optional cm)
   (apply append
@@ -96,12 +108,14 @@
 ;; current module, and their arguments ((only: [mod] names ...) would
 ;; give the arguments '([mod] names ...) to the only: resolver) and
 ;; return two values: the imported symbols (in the same format as
-;; module-info-exports) and a list of the modules that this import
-;; depends on.
+;; module-info-exports except that it can't contain 'self-reference)
+;; and a list of the modules that this import depends on.
 
 (define *import-resolvers* '())
 
-(define (resolve-import val #!optional cm)
+(define (resolve-import val
+                        #!optional cm
+                        #!key relative)
   (cond
    ((and (pair? val)
          (keyword? (car val)))
@@ -116,23 +130,26 @@
                        (cdr val))))))
    
    (else
-    (let ((mods (resolve-module val cm)))
+    (let ((mods (resolve-module val cm relative: relative))
+          (absolute-mods (resolve-module val cm)))
       (values (apply
                append
                (map (lambda (module-ref)
                       (module-info-exports
                        (loaded-module-info
                         (module-reference-ref module-ref))))
-                    mods))
+                 absolute-mods))
               mods)))))
 
-(define (resolve-imports vals #!optional cm)
+(define (resolve-imports vals
+                         #!optional cm
+                         #!key relative)
   (let ((defs '())
         (mods '()))
     (for-each (lambda (val)
                 (call-with-values
                     (lambda ()
-                      (resolve-import val cm))
+                      (resolve-import val cm relative: relative))
                   (lambda (def mod)
                     (set! defs (cons def defs))
                     (set! mods (cons mod mods)))))
@@ -268,11 +285,11 @@
           (list as
                 'mac
                 (cadr val)
-                (environment-module-reference env))
+                'self-reference)
           (list as
                 'def
                 (cadr val)
-                (environment-module-reference env)))))
+                'self-reference))))
    
    (else
     (error "Name can't be exported because it isn't defined"
@@ -328,7 +345,9 @@
           '()))
 
 (define (re-export-export-resolver env . import-decls)
-  (resolve-imports import-decls (environment-module-reference env)))
+  (resolve-imports import-decls
+                   (environment-module-reference env)
+                   relative: #t))
 
 (set! *export-resolvers*
       `((rename: . ,rename-export-resolver)

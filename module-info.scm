@@ -156,6 +156,17 @@
     
     env))
 
+(define (resolve-export-self-reference ref exports)
+  (map (lambda (export)
+         (if (eq? 'self-reference
+                  (cadddr export))
+             (list (car export)
+                   (cadr export)
+                   (caddr export)
+                   ref)
+             export))
+    exports))
+
 (define (make-module-info-from-alist module-ref module-info-alist)
   (if (not (module-reference-absolute? module-ref))
       (error "Module reference must be absolute"))
@@ -164,7 +175,9 @@
          (definitions (table-ref tbl 'definitions '()))
          (imports (table-ref tbl 'imports '()))
          (imports-for-syntax (table-ref tbl 'imports-for-syntax '()))
-         (exports (table-ref tbl 'exports #f))
+         (exports (resolve-export-self-reference
+                   module-ref
+                   (table-ref tbl 'exports #f)))
          (runtime-dependencies (table-ref tbl 'runtime-dependencies '()))
          (compiletime-dependencies (table-ref tbl 'compiletime-dependencies '()))
          (namespace-string (table-ref tbl 'namespace-string))
@@ -180,32 +193,38 @@
                namespace-string
                (module-reference-namespace module-ref)))
     
-    (call-with-values
-        (lambda ()
-          (resolve-imports imports))
-      (lambda (import-defs import-module-refs)
-        (call-with-values
-            (lambda ()
-              (resolve-imports imports-for-syntax))
-          (lambda (import-defs-for-syntax import-for-syntax-module-refs)
-            (let (#;(env (recreate-module-environment
-                        ;; TODO This isn't used anywhere. And it
-                        ;; doesn't make sense that it isn't
-                        module-ref
-                        namespace-string
-                        definitions
-                        import-defs
-                        import-defs-for-syntax)))
-              (make-module-info
-               symbols: symbols
-               exports: exports
-               imports: imports
-               imports-for-syntax: imports-for-syntax
-               runtime-dependencies: runtime-dependencies
-               compiletime-dependencies: compiletime-dependencies
-               options: (table-ref tbl 'options '())
-               cc-options: (table-ref tbl 'cc-options "")
-               ld-options-prelude: (table-ref tbl 'ld-options-prelude "")
-               ld-options: (table-ref tbl 'ld-options "")
-               force-compile: (table-ref tbl 'force-compile #f)
-               namespace-string: namespace-string))))))))
+    (let (#;(env (recreate-module-environment
+          ;; TODO This isn't used anywhere. And it
+          ;; doesn't make sense that it isn't
+          module-ref
+          namespace-string
+          definitions
+          imports
+          imports-for-syntax)))
+      (pp 
+      (make-module-info
+       symbols: symbols
+       exports: exports
+       imports: imports
+       imports-for-syntax: imports-for-syntax
+       runtime-dependencies: runtime-dependencies
+       compiletime-dependencies: compiletime-dependencies
+       options: (table-ref tbl 'options '())
+       cc-options: (table-ref tbl 'cc-options "")
+       ld-options-prelude: (table-ref tbl 'ld-options-prelude "")
+       ld-options: (table-ref tbl 'ld-options "")
+       force-compile: (table-ref tbl 'force-compile #f)
+       namespace-string: namespace-string))
+      (make-module-info
+       symbols: symbols
+       exports: exports
+       imports: imports
+       imports-for-syntax: imports-for-syntax
+       runtime-dependencies: runtime-dependencies
+       compiletime-dependencies: compiletime-dependencies
+       options: (table-ref tbl 'options '())
+       cc-options: (table-ref tbl 'cc-options "")
+       ld-options-prelude: (table-ref tbl 'ld-options-prelude "")
+       ld-options: (table-ref tbl 'ld-options "")
+       force-compile: (table-ref tbl 'force-compile #f)
+       namespace-string: namespace-string))))

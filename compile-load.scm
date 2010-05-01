@@ -89,7 +89,8 @@
                 (eval-no-hook runtime-code))
               (eval-no-hook compiletime-code)
               (eval-no-hook visit-code)
-              (u8vector->object (eval-no-hook info-code))))))
+              (u8vector->module-reference
+               (eval-no-hook info-code))))))
 
 ;; Takes the return value of ##load-object-file and returns a table
 ;; mapping "[module namespace]-[rt, ct or mi]" to the instantiation
@@ -190,7 +191,8 @@
         (values rt
                 (ct)
                 (vt)
-                (u8vector->object (mi))))))))
+                (u8vector->module-reference
+                 (mi))))))))
 
 
 

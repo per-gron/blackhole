@@ -242,43 +242,44 @@
            (not (loaded-module-stamp-is-fresh? lm)))))
 
   (let loop ()
-    (call-with-values
-        (lambda () (resolve-imports modules))
-      (lambda (defs module-references)
-        ;; Modules with a non-fresh stamp (that is, modules that have
-        ;; changed since they were last loaded) will be reloaded if
-        ;; they are imported from the REPL. And when a module is
-        ;; reloaded all modules that depend on it must be
-        ;; reinvoked.
-        (let ((loaded-modules '())
-              (reloaded-modules '()))
+    (let ((defs
+           module-references
+           (resolve-imports modules))
           
-          (cond
-           ((repl-environment? env)
-            (for-each (lambda (ref)
-                        (if (module-loaded-but-not-fresh? ref)
-                            (set! reloaded-modules
-                                  (cons (module-reference-load! ref)
-                                        reloaded-modules))
-                            (set! loaded-modules
-                                  (cons (module-reference-ref ref)
-                                        loaded-modules))))
-              module-references))
-
-           (else
-            (set! loaded-modules
-                  (map module-reference-ref
-                    module-references))))
-
-          (loaded-modules-invoke/deps loaded-modules phase)
-          (if (null? reloaded-modules)
-              (module-add-defs-to-env defs env
-                                      phase-number: (expansion-phase-number phase))
-              (begin
-                (loaded-modules-reinvoke reloaded-modules phase)
-                ;; We need to re-resolve the imports, because the
-                ;; reloads might have caused definitions to change.
-                (loop))))))))
+          ;; Modules with a non-fresh stamp (that is, modules that have
+          ;; changed since they were last loaded) will be reloaded if
+          ;; they are imported from the REPL. And when a module is
+          ;; reloaded all modules that depend on it must be
+          ;; reinvoked.
+          (loaded-modules '())
+          (reloaded-modules '()))
+      
+      (cond
+       ((repl-environment? env)
+        (for-each (lambda (ref)
+                    (if (module-loaded-but-not-fresh? ref)
+                        (set! reloaded-modules
+                              (cons (module-reference-load! ref)
+                                    reloaded-modules))
+                        (set! loaded-modules
+                              (cons (module-reference-ref ref)
+                                    loaded-modules))))
+          module-references))
+       
+       (else
+        (set! loaded-modules
+              (map module-reference-ref
+                module-references))))
+      
+      (loaded-modules-invoke/deps loaded-modules phase)
+      (if (null? reloaded-modules)
+          (module-add-defs-to-env defs env
+                                  phase-number: (expansion-phase-number phase))
+          (begin
+            (loaded-modules-reinvoke reloaded-modules phase)
+            ;; We need to re-resolve the imports, because the
+            ;; reloads might have caused definitions to change.
+            (loop))))))
 
 (define module-module
   (let* ((repl-environment #f)

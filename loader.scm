@@ -288,8 +288,13 @@
 
    module-name:
    (lambda (path)
-     (path-strip-directory
-      (path-strip-extension path)))))
+     (cond ((symbol? path)
+            (symbol->string path))
+           ((string? path)
+            (path-strip-directory
+             (path-strip-extension path)))
+           (else
+            (error "Invalid path" path))))))
 
 (define module-module-loader
   (make-loader

@@ -50,6 +50,9 @@
   (let ((fn
          (lambda (mod)
            (let ((mod (resolve-one-module mod)))
+             (if (not (module-reference-absolute? mod))
+                 (error "Module reference must be absolute" mod))
+             
              (string-append
               (let ((loader (module-reference-loader mod))
                     (path (module-reference-path mod)))

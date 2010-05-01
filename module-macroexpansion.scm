@@ -75,6 +75,7 @@
     (let ((code (expr*:value source)))
       (expr*:value-set
        source
+       ;; TODO Make this function tail recursive
        (let found-pair ((code code) (beginning #t))
          (cond
           ((and (pair? code)
@@ -381,11 +382,13 @@
               (import-defs
                import-module-refs
                (resolve-imports imports
-                                module-reference))
+                                module-reference
+                                relative: #t))
               (import-for-syntax-defs
                import-for-syntax-module-refs
                (resolve-imports imports
-                                module-reference)))
+                                module-reference
+                                relative: #t)))
           (values (generate-runtime-code (environment-namespace env)
                                          module-reference
                                          expanded-code)
@@ -395,19 +398,21 @@
                                              import-module-refs)
                   (generate-visit-code macros
                                        import-module-refs)
-                  `',(object->u8vector
-                      `((definitions ,@definitions)
-                        (imports ,@import-defs)
-                        (imports-for-syntax ,@import-for-syntax-defs)
-                        (exports ,@export-defs)
-                        (runtime-dependencies
-                         ,@(append export-uses-module-refs
-                                   import-module-refs))
-                        (compiletime-dependencies
-                         ,@import-for-syntax-module-refs)
-                        (namespace-string ,@(environment-namespace env))
-                        (options ,@options-)
-                        (cc-options ,@cc-options-)
-                        (ld-options-prelude ,@ld-options-prelude-)
-                        (ld-options ,@ld-options-)
-                        (force-compile ,@force-compile-)))))))))
+                  (let* ((info
+                          `((definitions ,@definitions)
+                            (imports ,@import-defs)
+                            (imports-for-syntax ,@import-for-syntax-defs)
+                            (exports ,@export-defs)
+                            (runtime-dependencies
+                             ,@(append export-uses-module-refs
+                                       import-module-refs))
+                            (compiletime-dependencies
+                             ,@import-for-syntax-module-refs)
+                            (namespace-string ,@(environment-namespace env))
+                            (options ,@options-)
+                            (cc-options ,@cc-options-)
+                            (ld-options-prelude ,@ld-options-prelude-)
+                            (ld-options ,@ld-options-)
+                            (force-compile ,@force-compile-)))
+                         (vec (module-reference->u8vector info)))
+                    `',vec)))))))
