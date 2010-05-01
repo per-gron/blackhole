@@ -140,15 +140,14 @@
 (define (loaded-module-invoke! lm phase)
   (if (zero? (expansion-phase-number phase))
       ((loaded-module-invoke-runtime lm))
-      (call-with-values
-          (lambda ()
-            ((loaded-module-invoke-compiletime lm)
-             lm phase))
-        (lambda (getter setter)
-          (let* ((ref (loaded-module-reference lm))
-                 (instance (module-instance-get! phase lm)))
-            (module-instance-getter-set! instance getter)
-            (module-instance-getter-set! instance setter)))))
+      (let ((getter
+             setter
+             ((loaded-module-invoke-compiletime lm)
+              lm phase))
+            (ref (loaded-module-reference lm))
+            (instance (module-instance-get! phase lm)))
+        (module-instance-getter-set! instance getter)
+        (module-instance-getter-set! instance setter)))
   (void))
 
 (define (loaded-modules-invoke/deps lms phase)

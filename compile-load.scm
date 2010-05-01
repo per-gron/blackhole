@@ -77,20 +77,18 @@
 ;;;; ---------- Loading ----------
 
 (define (load-module-scm-file module-ref file)
-  (call-with-values
-      (lambda ()
-        (module-macroexpand module-ref
-                            (file-read-as-expr file)))
-    (lambda (runtime-code
-             compiletime-code
-             visit-code
-             info-code)
-      (values (lambda ()
-                (eval-no-hook runtime-code))
-              (eval-no-hook compiletime-code)
-              (eval-no-hook visit-code)
-              (u8vector->module-reference
-               (eval-no-hook info-code))))))
+  (let ((runtime-code
+         compiletime-code
+         visit-code
+         info-code
+         (module-macroexpand module-ref
+                             (file-read-as-expr file))))
+    (values (lambda ()
+              (eval-no-hook runtime-code))
+            (eval-no-hook compiletime-code)
+            (eval-no-hook visit-code)
+            (u8vector->module-reference
+             (eval-no-hook info-code)))))
 
 ;; Takes the return value of ##load-object-file and returns a table
 ;; mapping "[module namespace]-[rt, ct or mi]" to the instantiation
@@ -160,15 +158,16 @@
       (force-compile))
      
      ((not object-fn)
-      (call-with-values
-          (lambda ()
-            (load-module-scm-file module-ref
-                                  (string-append file ".scm")))
-        (lambda (rt ct vt mi)
-          (let ((ret (assq 'force-compile mi)))
-            (if (and ret (cdr ret))
-                (force-compile)
-                (values rt ct vt mi))))))
+      (let ((rt
+             ct
+             vt
+             mi
+             (load-module-scm-file module-ref
+                                   (string-append file ".scm"))))
+        (let ((ret (assq 'force-compile mi)))
+          (if (and ret (cdr ret))
+              (force-compile)
+              (values rt ct vt mi)))))
      
      (else      
       (let* ((ns
@@ -335,21 +334,19 @@
                    (display "." port)
                    (compile-c-to-o fn verbose: verbose)
                    (display "." port))))
-            (call-with-values
-                (lambda ()
-                  (module-macroexpand mod (file-read-as-expr file)))
-              (lambda (runtime-code
-                       compiletime-code
-                       info-code
-                       visit)
-                (compile-sexp-to-o runtime-code
-                                   (string-append c-file "-rt.c"))
-                (compile-sexp-to-o compiletime-code
-                                   (string-append c-file "-ct.c"))
-                (compile-sexp-to-o visit-code
-                                   (string-append c-file "-vt.c"))
-                (compile-sexp-to-o info-code
-                                   (string-append c-file "-mi.c")))))
+            (let ((runtime-code
+                   compiletime-code
+                   info-code
+                   visit
+                   (module-macroexpand mod (file-read-as-expr file))))
+              (compile-sexp-to-o runtime-code
+                                 (string-append c-file "-rt.c"))
+              (compile-sexp-to-o compiletime-code
+                                 (string-append c-file "-ct.c"))
+              (compile-sexp-to-o visit-code
+                                 (string-append c-file "-vt.c"))
+              (compile-sexp-to-o info-code
+                                 (string-append c-file "-mi.c"))))
           (newline))
         mods c-files-no-ext files)
        

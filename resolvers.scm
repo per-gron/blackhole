@@ -47,42 +47,41 @@
                         #!key relative)
   (if (module-reference? name)
       (list name)
-      (call-with-values
-          (lambda ()
-            (cond
-             ((symbol? name)
-              (values 'here (list name)))
-             ((string? name)
-              (values 'lib (list name)))
-             ((pair? name)
-              (values (car name) (cdr name)))
-             (else
-              (error "Invalid module identifier:" name))))
-        (lambda (resolver-id resolver-args)
-          (let ((resolver (let ((pair (assq resolver-id
-                                            *module-resolvers*)))
-                            (and pair (cdr pair))))
-                (loader (if cm
-                            (module-reference-loader cm)
-                            (current-loader))))
-            (cond
-             ((not resolver)
-              (error "Module resolver not found:" resolver-id))
-
-             (relative
-              (map (lambda (id)
-                     (make-module-reference loader id))
-                resolver-args))
-
-             (else
-              (apply resolver
-                     `(,loader
-                       ,(if cm
-                            (module-reference-path cm)
-                            (let ((current-mod (current-module-reference)))
-                              (and current-mod
-                                   (module-reference-path current-mod))))
-                       ,@resolver-args)))))))))
+      (let ((resolver-id
+             resolver-args
+             (cond
+              ((symbol? name)
+               (values 'here (list name)))
+              ((string? name)
+               (values 'lib (list name)))
+              ((pair? name)
+               (values (car name) (cdr name)))
+              (else
+               (error "Invalid module identifier:" name)))))
+        (let ((resolver (let ((pair (assq resolver-id
+                                          *module-resolvers*)))
+                          (and pair (cdr pair))))
+              (loader (if cm
+                          (module-reference-loader cm)
+                          (current-loader))))
+          (cond
+           ((not resolver)
+            (error "Module resolver not found:" resolver-id))
+           
+           (relative
+            (map (lambda (id)
+                   (make-module-reference loader id))
+              resolver-args))
+           
+           (else
+            (apply resolver
+                   `(,loader
+                     ,(if cm
+                          (module-reference-path cm)
+                          (let ((current-mod (current-module-reference)))
+                            (and current-mod
+                                 (module-reference-path current-mod))))
+                     ,@resolver-args))))))))
               
 
 (define (resolve-modules names #!optional cm)
@@ -147,89 +146,88 @@
   (let ((defs '())
         (mods '()))
     (for-each (lambda (val)
-                (call-with-values
-                    (lambda ()
-                      (resolve-import val cm relative: relative))
-                  (lambda (def mod)
-                    (set! defs (cons def defs))
-                    (set! mods (cons mod mods)))))
+                (let ((def
+                       mod
+                       (resolve-import val cm relative: relative)))
+                  (set! defs (cons def defs))
+                  (set! mods (cons mod mods))))
               vals)
     (values (flatten1 defs)
             (remove-duplicates (flatten1 mods)))))
 
 (define (only-resolver cm mod . names)
-  (call-with-values
-      (lambda () (resolve-import mod cm))
-    (lambda (defs modules)
-      (values
-       (map (lambda (name)
-              (or (assq name defs)
-                  (error "only: Symbol not defined" name mod)))
-            names)
-       modules))))
+  (let ((defs
+         modules
+         (resolve-import mod cm)))
+    (values
+     (map (lambda (name)
+            (or (assq name defs)
+                (error "only: Symbol not defined" name mod)))
+       names)
+     modules)))
 
 (define (except-resolver cm mod . names)
-  (call-with-values
-      (lambda () (resolve-import mod cm))
-    (lambda (defs modules)
-      (let ((def-clone (map (lambda (x) x) defs)))
-        (for-each
-         (lambda (name)
-           (let ((found? #f))
-             (set! def-clone
-                   (remove!
-                    (lambda (x)
-                      (and (eq? (car x) name)
-                           (begin
-                             (set! found? #t)
-                             #t)))
-                    def-clone))
-             (if (not found?)
-                 (error "except: Symbol not defined" name mod))))
-         names)
-        (values def-clone modules)))))
+  (let ((defs
+         modules
+         (resolve-import mod cm)))
+    (let ((def-clone (map (lambda (x) x) defs)))
+      (for-each
+          (lambda (name)
+            (let ((found? #f))
+              (set! def-clone
+                    (remove!
+                     (lambda (x)
+                       (and (eq? (car x) name)
+                            (begin
+                              (set! found? #t)
+                              #t)))
+                     def-clone))
+              (if (not found?)
+                  (error "except: Symbol not defined" name mod))))
+        names)
+      (values def-clone modules))))
 
 (define (prefix-resolver cm mod prefix)
   (let ((prefix-str
          (if (symbol? prefix)
              (symbol->string prefix)
-             (error "prefix: prefix must be a symbol" prefix))))
-    (call-with-values
-        (lambda () (resolve-import mod cm))
-      (lambda (defs modules)
-        (values
-         (map (lambda (def)
-                (cons (string->symbol
-                       (string-append
-                        prefix-str
-                        (symbol->string (car def))))
-                      (cdr def)))
-              defs)
-         modules)))))
+             (error "prefix: prefix must be a symbol" prefix)))
+        (defs
+         modules
+         (resolve-import mod cm)))
+    (values
+     (map (lambda (def)
+            (cons (string->symbol
+                   (string-append
+                    prefix-str
+                    (symbol->string (car def))))
+                  (cdr def)))
+       defs)
+     modules)))
 
 (define (rename-resolver cm mod . renames)
-  (call-with-values
-      (lambda () (resolve-import mod cm))
-    (lambda (defs modules)
-      (let ((def-clone (map (lambda (x) x) defs)))
-        (for-each
-         (lambda (rename)
-           (if (not (and (list? rename)
-                         (eq? 2 (length rename))
-                         (symbol? (car rename))
-                         (symbol? (cadr rename))))
-               (error "rename: Invalid rename form" rename))
-
-           (let ((pair (assq (car rename)
-                             def-clone)))
-             (if pair
-                 (if (assq (cadr rename) def-clone)
-                     (error "rename: Symbol already in set"
-                            (cadr rename))
-                     (set-car! pair (cadr rename)))
-                 (error "rename: Symbol not found" (car rename)))))
-         renames)
-        (values def-clone modules)))))
+  (let ((defs
+         modules
+         (resolve-import mod cm)))
+    (let ((def-clone (map (lambda (x) x) defs)))
+      (for-each
+          (lambda (rename)
+            (if (not (and (list? rename)
+                          (eq? 2 (length rename))
+                          (symbol? (car rename))
+                          (symbol? (cadr rename))))
+                (error "rename: Invalid rename form" rename))
+            
+            (let ((pair (assq (car rename)
+                              def-clone)))
+              (if pair
+                  (if (assq (cadr rename) def-clone)
+                      (error "rename: Symbol already in set"
+                             (cadr rename))
+                      (set-car! pair (cadr rename)))
+                  (error "rename: Symbol not found" (car rename)))))
+        renames)
+      (values def-clone modules))))
 
 (set! *import-resolvers*
       `((only: . ,only-resolver)
@@ -322,12 +320,11 @@
   (let ((defs '())
         (mods '()))
     (for-each (lambda (val)
-                (call-with-values
-                    (lambda ()
-                      (resolve-export val env))
-                  (lambda (def mod)
-                    (set! defs (cons def defs))
-                    (set! mods (cons mod mods)))))
+                (let ((def
+                       mod
+                       (resolve-export val env)))
+                  (set! defs (cons def defs))
+                  (set! mods (cons mod mods))))
               vals)
     (values (flatten1 defs)
             (flatten1 mods))))

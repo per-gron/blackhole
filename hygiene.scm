@@ -704,18 +704,18 @@
     (values exprs defs define-env)))
 
 (define (transform-forms-to-letrec form env)
-  (call-with-values
-      (lambda ()
-        (transform-forms-to-triple form env))
-    (lambda (inner-exp defs new-env)
-      (if (null? defs)
-          inner-exp
-          `((letrec
-                ,(map (lambda (def)
-                        (expand-macro (cdr def)
-                                      (car def)))
-                      defs)
-              ,@inner-exp))))))
+  (let ((inner-exp
+         defs
+         new-env
+         (transform-forms-to-triple form env)))
+    (if (null? defs)
+        inner-exp
+        `((letrec
+              ,(map (lambda (def)
+                      (expand-macro (cdr def)
+                                    (car def)))
+                 defs)
+            ,@inner-exp)))))
 
 (define (let/letrec-helper rec code env)
   (parameterize
@@ -739,44 +739,43 @@
                            (cadr x)
                            (expand-macro (cadr x) env))))
                    params)))
-        (call-with-values
-            (lambda ()
-              (environment-add-defines
-               env
-               (let ((ps (map (lambda (pair)
-                                (if (list? pair)
-                                    (car pair)
-                                    (error "Invalid form: " code)))
-                              params)))
-                 (if prefix
-                     (cons prefix ps)
-                     ps))))
-          (lambda (let-env defined-params)
-            `(,(if rec
-                   'letrec
-                   'let)
-              ,@(if prefix
-                    `(,(expand-macro prefix let-env))
-                    '())
-              ,(map (lambda (p p-val dp)
-                      (cons (caddr dp)
-                            (list
-                             (if rec
-                                 (expand-macro p-val
-                                               let-env)
-                                 p-val))))
-                    params
-                    param-values
-                    (if prefix
-                        (cdr defined-params)
-                        defined-params))
-              ,@(transform-forms-to-letrec body let-env))))))
-    ;; Handle let loop
-    (let ((code (expand-syncapture code env)))
-      (if (and (not rec)
-               (identifier? (cadr code)))
-          (cdr code)
-          (cons #f (cdr code)))))))
+        (let ((let-env
+               defined-params
+               (environment-add-defines
+                env
+                (let ((ps (map (lambda (pair)
+                                 (if (list? pair)
+                                     (car pair)
+                                     (error "Invalid form: " code)))
+                            params)))
+                  (if prefix
+                      (cons prefix ps)
+                      ps)))))
+          `(,(if rec
+                 'letrec
+                 'let)
+            ,@(if prefix
+                  `(,(expand-macro prefix let-env))
+                  '())
+            ,(map (lambda (p p-val dp)
+                    (cons (caddr dp)
+                          (list
+                           (if rec
+                               (expand-macro p-val
+                                             let-env)
+                               p-val))))
+               params
+               param-values
+               (if prefix
+                   (cdr defined-params)
+                   defined-params))
+            ,@(transform-forms-to-letrec body let-env)))))
+   ;; Handle let loop
+   (let ((code (expand-syncapture code env)))
+     (if (and (not rec)
+              (identifier? (cadr code)))
+         (cdr code)
+         (cons #f (cdr code)))))))
 
 (define (lambda-helper code env)
   (parameterize
@@ -784,69 +783,68 @@
     (scope-level (scope-level)))
    (apply
     (lambda (params . body)
-      (call-with-values
-          (lambda ()
-            (environment-add-defines
-             env
-             (filter
-              (lambda (x) x)
-              (let ((key #f))
-                (dotted-map2
-                 (lambda (x)
-                   (let ((id? (identifier? x)))
-                     (cond
-                      ((eq? x '#!key)
-                       (set! key #t)
-                       #f)
-                      
-                      ((or (eq? x '#!rest)
-                           (eq? x '#!optional))
-                       (set! key #f)
-                       #f)
-                      
-                      ((or id? (pair? x))
-                       (let ((s (if id?
-                                    x
-                                    (car x))))
-                         (if key (cons s "") s)))
-                      
-                      (else #f))))
-                 params)))))
-        (lambda (lambda-env defined-params)
-          (let ((hygparams
-                 (let ((key #f)
-                       (current-defined-params defined-params))
-                   (dotted-map
-                    (lambda (p)
+      (let ((lambda-env
+             defined-params
+             (environment-add-defines
+              env
+              (filter
+               (lambda (x) x)
+               (let ((key #f))
+                 (dotted-map2
+                  (lambda (x)
+                    (let ((id? (identifier? x)))
                       (cond
-                       ((eq? p '#!key)
+                       ((eq? x '#!key)
                         (set! key #t)
-                        p)
+                        #f)
                        
-                       ((or (eq? p '#!rest)
-                            (eq? p '#!optional))
+                       ((or (eq? x '#!rest)
+                            (eq? x '#!optional))
                         (set! key #f)
-                        p)
+                        #f)
                        
-                       (else
-                        (let ((dp (let ((dp (car current-defined-params)))
-                                    (set! current-defined-params
-                                          (cdr current-defined-params))
-                                    dp)))
-                          (cond
-                           ((identifier? p)
-                            (caddr dp))
-                           
-                           ((pair? p)
-                            (cons (caddr dp)
-                                  (expand-macro (cdr p) env)))
-                           
-                           (else
-                            (error "Invalid parameter list: "
-                                   params)))))))
-                    params))))
-            `(lambda ,hygparams
-               ,@(transform-forms-to-letrec body lambda-env))))))
+                       ((or id? (pair? x))
+                        (let ((s (if id?
+                                     x
+                                     (car x))))
+                          (if key (cons s "") s)))
+                       
+                       (else #f))))
+                  params))))))
+        (let ((hygparams
+               (let ((key #f)
+                     (current-defined-params defined-params))
+                 (dotted-map
+                  (lambda (p)
+                    (cond
+                     ((eq? p '#!key)
+                      (set! key #t)
+                      p)
+                     
+                     ((or (eq? p '#!rest)
+                          (eq? p '#!optional))
+                      (set! key #f)
+                      p)
+                     
+                     (else
+                      (let ((dp (let ((dp (car current-defined-params)))
+                                  (set! current-defined-params
+                                        (cdr current-defined-params))
+                                  dp)))
+                        (cond
+                         ((identifier? p)
+                          (caddr dp))
+                         
+                         ((pair? p)
+                          (cons (caddr dp)
+                                (expand-macro (cdr p) env)))
+                         
+                         (else
+                          (error "Invalid parameter list: "
+                                 params)))))))
+                  params))))
+          `(lambda ,hygparams
+             ,@(transform-forms-to-letrec body lambda-env)))))
    (cdr (expand-syncapture code env)))))
 
 (define (let/letrec-syntax-helper rec form env thunk)
@@ -864,13 +862,12 @@
                        (error "Invalid syntax binding" form)))
                  bindings)
 
-       (call-with-values
-                  (lambda ()
-                    (environment-add-macros env
-                                            bindings
-                                            mutate: rec))
-                (lambda (env name/code-pairs)
-                  (thunk body env name/code-pairs))))
+       (let ((env
+              name/code-pairs
+              (environment-add-macros env
+                                      bindings
+                                      mutate: rec)))
+         (thunk body env name/code-pairs)))
      (cdr form))))
 
 (define (top-level-let/letrec-syntax-helper env)
