@@ -40,7 +40,6 @@
         tree-min
         tree-max
         tree-fold
-        tree-map
         tree-members
 
         tree-search
