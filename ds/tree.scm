@@ -471,19 +471,6 @@
                 left))
         base)))
 
-(define (tree-map fn tree)
-  (check-tree tree)
-
-  (let loop ((tree tree))
-    (and tree
-         (let ((elm (%%tree-element tree))
-               (left (%%tree-left-subtree tree))
-               (right (%%tree-right-subtree tree)))
-           (make-tree/internal (fn elm)
-                               (%%tree-count tree)
-                               (loop left)
-                               (loop right))))))
-
 (define (tree-members tree)
   (tree-fold cons '() tree))
 
