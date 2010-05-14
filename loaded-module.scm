@@ -63,6 +63,7 @@
     (table-set! *loaded-module-registry* ref loaded-module)
     loaded-module))
 
+;; This function will break if invoked when macroexpanding a module
 (define (loaded-module-unload! lm) ;; This function isn't used or tested
   ;; First, de-instantiate the modules that depend on this module.
   (let rec ((lm lm))
@@ -91,6 +92,18 @@
       (module-reference-load! ref)))
 
 ;;;; Visiting and invoking functionality
+
+;; Invoking a module means loading everything that needs to be loaded
+;; to be able to use its exported variable bindings. Before invoking a
+;; module, its runtime dependencies must be invoked.
+;;
+;; Visiting a module means loading everything that needs to be loaded
+;; to be able to perform macro expansions on macros defined in that
+;; module.  Before visiting a module, its compile time dependencies
+;; must be invoked, and its runtime dependencies must be visited.
+;;
+;; When importing a module to the REPL the module should be invoked
+;; and visited.
 
 ;; A module instance object implicitly belongs to an expansion phase
 ;; and to a module reference, because it's stored in the expansion
@@ -129,6 +142,12 @@
              (module-instance-setter instance)
              #t))))
 
+(define (loaded-module-visited? lm phase)
+  (let ((instance (module-instance-ref phase lm)))
+    (and instance
+         (module-instance-macros instance)
+         #t)))
+
 ;; This procedure doesn't make sure that the module's dependencies are
 ;; invoked first, nor that the modules that depend on this module
 ;; are reinvoked or that the dependent-modules field of the
@@ -144,58 +163,124 @@
              setter
              ((loaded-module-invoke-compiletime lm)
               lm phase))
-            (ref (loaded-module-reference lm))
             (instance (module-instance-get! phase lm)))
         (module-instance-getter-set! instance getter)
         (module-instance-getter-set! instance setter)))
+  ;; It doesn't make sense to return anything, because
+  ;; loaded-module-invoke-runtime doesn't return anything useful.
   (void))
 
+;; Analogous to loaded-module-invoke!
+(define (loaded-module-visit! lm phase)
+  (let ((macros (list->table
+                 ((loaded-module-visit lm) lm phase)))
+        (instance (module-instance-get! phase lm)))
+    (module-instance-macros-set! instance macros)
+    macros))
+
+(define (loaded-module-macros lm phase)
+  (let ((instance (module-instance-get! phase lm)))
+    (or (module-instance-macros instance)
+        (loaded-module-visit! lm phase))))
+
+;; Utility procedure
+(define (invoke-dependencies info->dependencies lm invoke)
+  (for-each
+      (lambda (dep-ref)
+        (let ((dependency
+               (module-reference-ref dep-ref)))
+          ;; Update the dependent-modules field
+          (loaded-module-dependent-modules-set!
+           dependency
+           (cons lm
+                 (loaded-module-dependent-modules
+                  dependency)))
+          ;; Recurse
+          (invoke dependency)))
+    (info->dependencies
+     (loaded-module-info lm))))
+
+(define (loaded-module-invoke/deps lm phase
+                                   #!key
+                                   ;; Table of module-reference objects to #t
+                                   (memo (make-table)))
+  (cond
+   ((and (not (table-ref memo
+                         (loaded-module-reference lm)
+                         #f))
+         (not (loaded-module-invoked? lm phase)))
+    ;; Flag that this module is to be invoked, to avoid
+    ;; double-invocations and to improve the performance of this
+    ;; function.
+    (table-set! memo
+                (loaded-module-reference lm)
+                #t)
+    
+    ;; Invoke the module's runtime dependencies
+    (invoke-dependencies module-info-runtime-dependencies
+                         lm
+                         (lambda (dependency)
+                           (loaded-module-invoke/deps dependency phase
+                                                      memo: memo)))
+    
+    ;; Invoke the module
+    (loaded-module-invoke! lm phase))))
+
 (define (loaded-modules-invoke/deps lms phase)
-  (letrec
-      ((next-phase (expansion-phase-next-phase phase))
-       ;; Table of module-reference objects to #t
-       (invoke-table (make-table))
-       (rec (lambda (lm phase)
-              (cond
-               ((and (not (table-ref invoke-table
-                                     (loaded-module-reference lm)
-                                     #f))
-                     (not (loaded-module-invoked? lm phase)))
-                ;; Flag that this module is to be invoked, to
-                ;; avoid double-instantiations.
-                (table-set! invoke-table
-                            (loaded-module-reference lm)
-                            #t)
-                
-                ;; Make sure to invoke the module's dependencies first
-                (for-each
-                 (lambda (dep-ref)
-                   (let ((dependency
-                          (module-reference-ref dep-ref)))
-                     ;; Update the dependent-modules field
-                     (loaded-module-dependent-modules-set!
-                      dependency
-                      (cons lm
-                            (loaded-module-dependent-modules
-                             dependency)))
-                     ;; Recurse
-                     (rec dependency phase)))
-                 
-                 (module-info-runtime-dependencies
-                  (loaded-module-info lm)))
-                
-                ;; Invoke the module
-                (loaded-module-invoke! lm phase))))))
+  (let ((memo (make-table)))
     (for-each (lambda (lm)
-                (for-each (lambda (m-ref)
-                            (rec (module-reference-ref m-ref)
-                                 next-phase))
-                  (module-info-compiletime-dependencies
-                   (loaded-module-info lm)))
-                (rec lm phase))
-              lms)))
+                (loaded-module-invoke/deps lm phase
+                                           memo: memo))
+      lms)))
+
+(define (loaded-module-visit/deps lm phase
+                                  #!key
+                                  ;; Table of module-reference objects to #t
+                                  (invoke-memo (make-table))
+                                  (visit-memo (make-table)))
+  (cond
+   ((and (not (table-ref visit-memo
+                         (loaded-module-reference lm)
+                         #f))
+         (not (loaded-module-visited? lm phase)))
+    ;; Flag that this module is to be invoked, to avoid
+    ;; double-visitations and to improve the performance of this
+    ;; function.
+    (table-set! visit-memo
+                (loaded-module-reference lm)
+                #t)
+    
+    ;; Invoke the module's compile time dependencies
+    (let ((next-phase (expansion-phase-next-phase phase)))
+      (invoke-dependencies module-info-runtime-dependencies
+                           lm
+                           (lambda (dependency)
+                             (loaded-module-invoke/deps dependency phase
+                                                        memo: invoke-memo))))
+    
+    ;; Visit the module's runtime dependencies
+    (let ((next-phase (expansion-phase-next-phase phase)))
+      (invoke-dependencies module-info-compiletime-dependencies
+                           lm
+                           (lambda (dependency)
+                             (loaded-module-visit/deps dependency phase
+                                                       visit-memo: visit-memo
+                                                       invoke-memo: invoke-memo))))
+    
+    ;; Visit the module
+    (loaded-module-visit! lm phase))))
+
+(define (loaded-modules-visit/deps lms phase)
+  (let ((invoke-memo (make-table))
+        (visit-memo (make-table)))
+    (for-each (lambda (lm)
+                (loaded-module-visit/deps lm phase
+                                          invoke-memo: invoke-memo
+                                          visit-memo: visit-memo))
+      lms)))
 
 (define (loaded-modules-reinvoke lms phase)
+  (error "This function is incorrect")
   (letrec
       (;; Table of module-reference objects to #t
        (invoke-table (make-table))
@@ -211,7 +296,7 @@
                             (loaded-module-reference lm)
                             #t)
                 
-                ;; Re-invoke the module
+                ;; Re-invoke and re-visit the module
                 (loaded-module-invoke! lm phase)
                 
                 ;; Re-invoke the dependent modules
@@ -219,23 +304,10 @@
                  (loaded-module-dependent-modules lm)))))))
     (for-each rec lms)))
 
-(define (loaded-module-visit! lm phase)
-  (let ((macros (list->table
-                 ((loaded-module-visit lm) lm phase))))
-    (module-instance-macros-set!
-     (module-instance-get! phase lm)
-     macros)
-    macros))
-
-(define (loaded-module-macros lm phase)
-  (let ((instance (module-instance-get! phase lm)))
-    (or (module-instance-macros instance)
-        (loaded-module-visit! lm phase))))
-
 (define (module-import modules env phase)
   (define (module-loaded-but-not-fresh? ref)
-    ;; This function is pure (not a closure). It is here because it's
-    ;; only used here.
+    ;; This function is not a closure. It is here because
+    ;; it's only used here.
     (let ((lm (table-ref *loaded-module-registry* ref #f)))
       (and lm
            (not (loaded-module-stamp-is-fresh? lm)))))
@@ -271,6 +343,7 @@
                 module-references))))
       
       (loaded-modules-invoke/deps loaded-modules phase)
+      (loaded-modules-visit/deps loaded-modules phase)
       (if (null? reloaded-modules)
           (module-add-defs-to-env defs env
                                   phase-number: (expansion-phase-number phase))

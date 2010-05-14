@@ -1073,6 +1073,8 @@
                        (if (pair? fn)
                            ;; See recreate-module-environment
                            (table-ref (loaded-module-macros
+                                       ;; FIXME it is very ugly to do
+                                       ;; it like this
                                        (module-reference-ref (car fn))
                                        (*expansion-phase*))
                                       (cdr fn))

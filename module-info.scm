@@ -223,6 +223,7 @@
        ld-options: (table-ref tbl 'ld-options "")
        force-compile: (table-ref tbl 'force-compile #f)
        namespace-string: namespace-string))
+      (pp definitions)
       (make-module-info
        symbols: symbols
        exports: exports
