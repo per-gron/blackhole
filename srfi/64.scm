@@ -25,12 +25,8 @@
 
 (import (std srfi/34))
 
-(define-syntax %test-export
-  (syntax-rules ()
-    ((%test-export . names) (if #f #f))))
-
 ;; List of exported names
-(%test-export
+(export
  test-begin ;; must be listed first, since in Kawa (at least) it is "magic".
  test-end test-assert test-eqv test-eq test-equal
  test-approximate test-assert test-error test-apply test-with-runner

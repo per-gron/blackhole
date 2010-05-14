@@ -1,5 +1,3 @@
-;(import (std srfi/64))
-
 (import ./64)
 (import ./2)
 

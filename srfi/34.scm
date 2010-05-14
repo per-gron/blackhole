@@ -3,6 +3,8 @@
 ;; 
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 
+(export guard)
+
 (define-syntax guard
   (syntax-rules ()
     ((guard (var clause ...) e1 e2 ...)
