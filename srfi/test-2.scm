@@ -35,7 +35,6 @@
 (test-equal  (let ((x #f)) (and-let* (x (y (- x 1)) ((positive? y))) (/ x y))) #f)
 (test-equal  (let ((x 3)) (and-let* (x (y (- x 1)) ((positive? y))) (/ x y))) 3/2)
 
-;; Needs to use eval to expand macro in current environment (CHECK!)
 (test-error (test-read-eval-string "(and-let* ( #f (x 1)))"))
 (test-error (test-read-eval-string "(and-let* (2 (x 1)))"))
 (test-error
