@@ -23,8 +23,6 @@
 ;; 
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 
-(import (std srfi/34))
-
 ;; List of exported names
 (export
  test-begin ;; must be listed first, since in Kawa (at least) it is "magic".
@@ -489,7 +487,11 @@
 (define-syntax %test-evaluate-with-catch
   (syntax-rules ()
     ((%test-evaluate-with-catch test-expression)
-     (guard (err (else #f)) test-expression))))
+     (with-exception-catcher
+       (lambda (x) #f)
+       (lambda () test-expression)))))
+     ;(guard (err (else #f)) test-expression)))) ; implemented with exceptions to
+     ; avoid importing srfi-34
 	    
 (define (%test-source-line2 form)
   '())
@@ -586,26 +588,29 @@
 (define-syntax %test-error
   (syntax-rules ()
     ((%test-error r etype expr)
-     (%test-comp1body r (guard (ex (else #t)) expr)))))
+     (%test-comp1body r (with-exception-catcher (lambda (x) #t)
+                                                (lambda () (begin expr #f)))))))
+     ;(%test-comp1body r (guard (ex (else #t)) expr))))) ; Original implementation
+     ; Implemented with exception-catcher to avoid srfi-34
 
 (define-syntax test-error
   (syntax-rules ()
     ((test-error name etype expr)
      (let* ((r (test-runner-get))
             (name tname))
-        ;(test-result-alist! r (cons (cons 'test-name tname) '(TODO:LINE . 0)))
-        (%test-error r etype expr)))
-     ;(test-assert name (%test-error etype expr)))
+       ;(test-result-alist! r (cons (cons 'test-name tname) '(TODO:LINE . 0)))
+       (%test-error r etype expr)))
     ((test-error etype expr)
      (let* ((r (test-runner-get)))
-      ;(test-result-alist! r '(TODO:LINE . 0))
-      (%test-error r etype expr)))
-     ;(test-assert (%test-error etype expr)))
+       ;(test-result-alist! r '(TODO:LINE . 0))
+       (%test-error r etype expr)))
     ((test-error expr)
      (let* ((r (test-runner-get)))
-      ;(test-result-alist! r '(TODO:LINE . 0))
-      (%test-error r #t expr)))))
-     ;(test-assert (%test-error #t expr)))))
+       ;(test-result-alist! r '(TODO:LINE . 0))
+       (%test-error r #t expr)))))
+      ;(test-assert (%test-error etype expr)))
+      ; In the original version an additional assert was here to ensure it signals
+      ; an error, however, that was executing 2 tests instead of 1
 
 (define (test-apply first . rest)
   (if (test-runner? first)

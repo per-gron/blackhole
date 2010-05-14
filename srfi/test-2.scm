@@ -36,10 +36,10 @@
 (test-equal  (let ((x 3)) (and-let* (x (y (- x 1)) ((positive? y))) (/ x y))) 3/2)
 
 ;; Needs to use eval to expand macro in current environment (CHECK!)
-(test-error (eval '(and-let* ( #f (x 1))) (interaction-environment)))
-(test-error (eval '(and-let* (2 (x 1))) (interaction-environment)))
+(test-error (test-read-eval-string "(and-let* ( #f (x 1)))"))
+(test-error (test-read-eval-string "(and-let* (2 (x 1)))"))
 (test-error
-  (eval '(let ((x 1)) (and-let* (((positive? x)) (x (+ x 1)) (x (+ x 1))) (+ x 1)))
-        (interaction-environment)))
+  (test-read-eval-string
+    "(let ((x 1)) (and-let* (((positive? x)) (x (+ x 1)) (x (+ x 1))) (+ x 1)))"))
 
 (test-end "srfi-2")
