@@ -178,13 +178,21 @@
          (exports (resolve-export-self-reference
                    module-ref
                    (table-ref tbl 'exports #f)))
-         (runtime-dependencies (table-ref tbl 'runtime-dependencies '()))
-         (compiletime-dependencies (table-ref tbl 'compiletime-dependencies '()))
          (namespace-string (table-ref tbl 'namespace-string))
          (symbols (map (lambda (def)
                          (cons (car def)
                                (cadr def)))
-                    definitions)))
+                    definitions))
+
+         (runtime-dependencies
+          (map (lambda (ref)
+                 (module-reference-absolutize ref module-ref))
+            (table-ref tbl 'runtime-dependencies '())))
+         
+         (compiletime-dependencies
+          (map (lambda (ref)
+                 (module-reference-absolutize ref module-ref))
+            (table-ref tbl 'compiletime-dependencies '()))))
 
     (if (not (equal? (module-reference-namespace module-ref)
                      namespace-string))

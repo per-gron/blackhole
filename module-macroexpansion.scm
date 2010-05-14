@@ -170,7 +170,8 @@
                         ,val)
                       `(set! ,(cadr def) ,val))))))
 
-(define (generate-compiletime-code namespace-string
+(define (generate-compiletime-code module-reference
+                                   namespace-string
                                    expanded-code
                                    definitions
                                    dependencies)
@@ -186,7 +187,9 @@
        (let* (,@(apply
                  append
                  (map (lambda (dep)
-                        (module-instance-let-fn dep
+                        (module-instance-let-fn (module-reference-absolutize
+                                                 dep
+                                                 module-reference)
                                                 ref->rt-sym-table))
                    dependencies)))
          ,(transform-to-define
@@ -209,14 +212,17 @@
                   names)
               (else (error "Unbound variable" ,name-sym)))))))))
 
-(define (generate-visit-code macros
+(define (generate-visit-code module-reference
+                             macros
                              dependencies)
   (let ((ref->ct-sym-table (make-table)))
     `(lambda (,loaded-module-sym ,expansion-phase-sym)
        (let* (,@(apply
                  append
                  (map (lambda (dep)
-                        (module-instance-let-fn dep
+                        (module-instance-let-fn (module-reference-absolutize
+                                                 dep
+                                                 module-reference)
                                                 ref->ct-sym-table))
                    dependencies)))
          (list
@@ -392,11 +398,13 @@
           (values (generate-runtime-code (environment-namespace env)
                                          module-reference
                                          expanded-code)
-                  (generate-compiletime-code (environment-namespace env)
+                  (generate-compiletime-code module-reference
+                                             (environment-namespace env)
                                              expanded-code
                                              definitions
                                              import-module-refs)
-                  (generate-visit-code macros
+                  (generate-visit-code module-reference
+                                       macros
                                        import-module-refs)
                   (let* ((info
                           `((definitions ,@definitions)

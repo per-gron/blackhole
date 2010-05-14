@@ -42,9 +42,11 @@
             loader"))
 
    (else
-    (loader-path-absolutize (module-reference-loader ref)
-                            (module-reference-path module-reference)
-                            (module-reference-path ref)))))
+    (make-module-reference
+     (module-reference-loader module-reference)
+     (loader-path-absolutize (module-reference-loader ref)
+                             (module-reference-path module-reference)
+                             (module-reference-path ref))))))
 
 (define module-reference-namespace
   (let ((fn
