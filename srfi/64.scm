@@ -23,7 +23,7 @@
 ;; 
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 
-(import 34)
+(import (std srfi/34))
 
 (define-syntax %test-export
   (syntax-rules ()
