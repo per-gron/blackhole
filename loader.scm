@@ -187,11 +187,9 @@
           ;; The macro procedure
           (let ((fn (caddr def)))
             (if (symbol? fn)
-                (eval fn) ;; TODO Make sure this is done in the
-                          ;; correct phase (I think this always takes
-                          ;; the runtime phase)
+                (eval-no-hook fn) ;; TODO This is wrong atm
                 fn))
-          ;; The macro's environment
+          ;; The macro's environment TODO This is wrong atm
           (cadddr def)
           phase-number: phase-number)))
    defs))

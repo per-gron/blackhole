@@ -172,11 +172,91 @@
 
 ;; Analogous to loaded-module-invoke!
 (define (loaded-module-visit! lm phase)
-  (let ((macros (list->table
-                 ((loaded-module-visit lm) lm phase)))
-        (instance (module-instance-get! phase lm)))
-    (module-instance-macros-set! instance macros)
-    macros))
+  (let* ((phase-number (expansion-phase-number phase))
+         (macro-procedures (list->table
+                            ((loaded-module-visit lm) lm phase)))
+         (macros (make-table))
+         
+         (module-ref (loaded-module-reference lm))
+         (module-info (loaded-module-info lm))
+         (namespace-string (module-info-namespace-string module-info))
+         
+         (env (make-top-environment module-ref))
+         (memo-table (make-table
+                      test: eq?
+                      hash: eq?-hash)))
+    (letrec
+        ((make-env-from-letsyntax-environment
+          (lambda (parent-env ls-env)
+            (cond
+             ((null? ls-env)
+              parent-env)
+             
+             ((table-ref memo-table
+                         ls-env
+                         #f) =>
+                         (lambda (result)
+                           result))
+             
+             (else
+              (let* ((ns (box #f))
+                     (env (make-environment parent-env ns)))
+                (table-set! memo-table
+                            ls-env
+                            env)
+                (set-box!
+                 ns
+                 (map (lambda (ls-def)
+                        (let ((mac-name (car ls-def))
+                              (unique-name (cadr ls-def))
+                              (macro-ls-env (caddr ls-def)))
+                          (list (cons 0 mac-name)
+                                'mac
+                                unique-name ;; TODO Is this right?
+                                (make-env-from-letsyntax-environment
+                                 env
+                                 macro-ls-env)
+                                unique-name)))
+                   ls-env))
+                
+                env))))))
+      
+      (for-each
+          (lambda (def)
+            (cond
+             ((eq? 'def (cadr def))
+              ;; Regular define
+              (let ((name (car def)))
+                (environment-add-def!
+                 env
+                 ;; The name it's imported as
+                 name
+                 ;; The name it's imported from
+                 (gen-symbol namespace-string name)
+                 phase-number: phase-number)))
+             ((eq? 'mac (cadr def))
+              ;; Macro
+              (let ((name (car def)))
+                (environment-add-mac!
+                 env
+                 name
+                 (table-ref macro-procedures name)
+                 (make-env-from-letsyntax-environment env (caddr def))
+                 phase-number: phase-number)))
+             (else
+              (error "Internal error"))))
+        (module-info-definitions module-info)))
+    
+    (module-add-defs-to-env (module-info-imports module-info)
+                            env
+                            phase-number: phase-number)
+    (module-add-defs-to-env (module-info-imports-for-syntax module-info)
+                            env
+                            phase-number: (+ 1 phase-number))
+    
+    (module-instance-macros-set! (module-instance-get! phase lm)
+                                 env)
+    env))
 
 (define (loaded-module-macros lm phase)
   (let ((instance (module-instance-get! phase lm)))
