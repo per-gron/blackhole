@@ -3,36 +3,6 @@
 ;; 
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 
-(define *current-exception-handlers*
-  (list (lambda (condition)
-          (error "unhandled exception" condition))))
-
-#|
-(define (with-exception-handler handler thunk)
-  (with-exception-handlers (cons handler *current-exception-handlers*)
-                           thunk))
-|#
-
-(define (with-exception-handlers new-handlers thunk)
-  (let ((previous-handlers *current-exception-handlers*))
-    (dynamic-wind
-      (lambda ()
-        (set! *current-exception-handlers* new-handlers))
-      thunk
-      (lambda ()
-        (set! *current-exception-handlers* previous-handlers)))))
-
-#|
-(define (raise obj)
-  (let ((handlers *current-exception-handlers*))
-    (with-exception-handlers (cdr handlers)
-      (lambda ()
-        ((car handlers) obj)
-        (error "handler returned"
-               (car handlers)
-               obj)))))
-|#
-
 (define-syntax guard
   (syntax-rules ()
     ((guard (var clause ...) e1 e2 ...)

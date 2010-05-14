@@ -494,12 +494,6 @@
   (syntax-rules ()
     ((%test-evaluate-with-catch test-expression)
      (guard (err (else #f)) test-expression))))
-#|
-(define-syntax %test-evaluate-with-catch
-  (syntax-rules ()
-    ((%test-evaluate-with-catch test-expression)
-     test-expression)))
-|#
 	    
 (define (%test-source-line2 form)
   '())

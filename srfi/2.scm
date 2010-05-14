@@ -163,9 +163,9 @@
               (set-cdr! growth-point `((let (,claw) (and . ,var-cell))))
               (set! growth-point var-cell)))
           (else
-            (error "Syntax error: an ill-formed binding in a syntactic form let-and*" 
+            (error "Syntax error: an ill-formed binding in a syntactic form let-and*"
               claw))
-        ))
+          ))
       claws)
     (if (not (null? body))
       (andjoin! `(begin ,@body)))
