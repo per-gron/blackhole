@@ -996,7 +996,7 @@
                     ((cadr val)
                      source
                      env
-                     (caddr val)))))
+                     (make-environment (caddr val))))))
 
              ;; It's tempting to add ##begin to this list, it would
              ;; after all make ##begin a useful construct for

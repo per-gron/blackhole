@@ -282,7 +282,7 @@
                    (lambda (subs)
                      (let ((res
                             (expand-macro
-                             (substitute (make-environment mac-env)
+                             (substitute mac-env
                                          env
                                          pattern-vars
                                          (list subs)

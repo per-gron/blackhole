@@ -1202,16 +1202,16 @@
 ;; Test syntax-rules macros that use the same binding name that refer
 ;; to distinct bindings in nested macro-expansions
 (equal? '(1 2)
-        (let ()
-          (define-syntax let-values
-            (syntax-rules ()
-              ((let-values () ?args ?tmps ?body)
-               ((lambda ?args
-                  (let ?tmps ?body))
-                1 2))
+        (letrec-syntax
+            ((let-values
+              (syntax-rules ()
+                ((let-values () ?args ?tmps ?body)
+                 ((lambda ?args
+                    (let ?tmps ?body))
+                  1 2))
               
               ((let-values (?a . ?b) (?arg ...) (?tmp ...) ?body)
-               (let-values ?b (?arg ... x) (?tmp ... (?a x)) ?body))))
+               (let-values ?b (?arg ... x) (?tmp ... (?a x)) ?body)))))
           (let-values (a b) () () (list a b))))
 
 ;; This should produce an error
