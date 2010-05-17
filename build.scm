@@ -7,6 +7,7 @@
 	 (block))
 
 
+(##include "tree.scm")                  ;; A functional weighted tree data structure
 (##include "util.scm")                  ;; Utility functions.
 (##include "expr.scm")                  ;; Library for handling Gambit
                                         ;; source objects
