@@ -34,30 +34,34 @@
 ;; CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 ;; SOFTWARE.
 
-
-(export tree?
-        tree-size
-        tree-min
-        tree-max
-        tree-fold
-        tree-members
-
-        tree-search
-        tree-member?
-
-        tree-add
-        tree-delete
-        tree-delete-min
-        tree-delete-max
-
-        tree-split<
-        tree-split>
-        tree-union
-        tree-difference
-        tree-intersection
-
-        tree-rank
-        tree-index)
+(cond-expand
+ (black-hole
+  (export tree?
+          tree-size
+          tree-min
+          tree-max
+          tree-fold
+          tree-members
+          
+          tree-search
+          tree-member?
+          
+          tree-add
+          tree-delete
+          tree-delete-min
+          tree-delete-max
+          
+          tree-split<
+          tree-split>
+          tree-union
+          tree-difference
+          tree-intersection
+          
+          tree-rank
+          tree-index))
+ 
+ (else
+  #f))
 
 (define *tree-weight* 5)
 
