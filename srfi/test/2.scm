@@ -1,5 +1,5 @@
-(import ./64)
-(import ./2)
+(import ../64)
+(import ../2)
 
 (test-begin "srfi-2" 31)
 

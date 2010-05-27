@@ -1,4 +1,4 @@
-(import ./64)
+(import ../64)
 
 (define my-simple-runner (test-runner-simple))
 (test-runner-factory
