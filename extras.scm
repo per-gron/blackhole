@@ -255,7 +255,7 @@
                      (string-append ld-options-accum " "
                                     (module-info-ld-options info))))
              (display "." port)
-             (module-compile-c-file-to-o c-file verbose: verbose)
+             (module-compile-c-file-to-o c-file cc-options: (module-info-cc-options info) verbose: verbose)
              (display "." port)
              (newline))
            mods c-files files)
