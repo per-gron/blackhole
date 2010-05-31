@@ -242,25 +242,25 @@
              (display file port)
              (display " ." port)
              (let ((info (module-info mod)))
-			   (compile-with-options
+               (compile-with-options
                 mod
                 file
                 to-c: c-file
                 options: (module-info-options info)
-				cc-options: (module-info-cc-options info))
+                cc-options: (module-info-cc-options info))
                (set! ld-options-prelude-accum
                      (string-append ld-options-prelude-accum " "
                                     (module-info-ld-options-prelude info)))
-			   (set! ld-options-accum
+               (set! ld-options-accum
                      (string-append ld-options-accum " "
                                     (module-info-ld-options info)))
-			   (display "." port)
-			   (module-compile-c-file-to-o
-				c-file
-				cc-options: (module-info-cc-options info)
-				verbose: verbose))
-			   (display "." port)
-			   (newline))
+               (display "." port)
+               (module-compile-c-file-to-o
+                c-file
+                cc-options: (module-info-cc-options info)
+                verbose: verbose))
+               (display "." port)
+               (newline))
            mods c-files files)
 
           (let ((link-c-file
