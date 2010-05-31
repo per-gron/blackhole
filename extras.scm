@@ -246,8 +246,7 @@
                 mod
                 file
                 to-c: c-file
-                options: (module-info-options info)
-                cc-options: (module-info-cc-options info))
+                options: (module-info-options info))
                (set! ld-options-prelude-accum
                      (string-append ld-options-prelude-accum " "
                                     (module-info-ld-options-prelude info)))
