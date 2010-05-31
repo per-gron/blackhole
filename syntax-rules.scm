@@ -77,6 +77,7 @@
      ((identifier? pattern)
       (if (sc-memq env pattern literals)
           (and (identifier=? empty-environment pattern
+                             ;; TODO I think empty-environment should be mac-env?
                              env form)
                '())
           (list (cons pattern

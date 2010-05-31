@@ -216,7 +216,10 @@
                                (+ 1 i))))))))
 
             (standalone #f)
-            (save-links #f))
+            (save-links #f)
+
+            (ld-options-prelude-accum "")
+            (ld-options-accum ""))
 
        (case mode
          ((exe)
@@ -238,9 +241,19 @@
            (lambda (mod c-file file)
              (display file port)
              (display " ." port)
-             (compile-with-options mod
-                                   file
-                                   to-c: c-file)
+             (let ((info (module-info mod)))
+               (compile-with-options
+                mod
+                file
+                to-c: c-file
+                options: (module-info-options info)
+                cc-options: (module-info-cc-options info))
+               (set! ld-options-prelude-accum
+                     (string-append ld-options-prelude-accum " "
+                                    (module-info-ld-options-prelude info)))
+               (set! ld-options-accum
+                     (string-append ld-options-accum " "
+                                    (module-info-ld-options info))))
              (display "." port)
              (module-compile-c-file-to-o c-file verbose: verbose)
              (display "." port)
@@ -285,6 +298,8 @@
                   (cons link-c-file c-files))
              (path-expand to-file (current-directory))
              standalone: standalone
+             ld-options-prelude: ld-options-prelude-accum
+             ld-options: ld-options-accum
              verbose: verbose))
           
           (if save-links
