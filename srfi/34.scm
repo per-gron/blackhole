@@ -3,6 +3,8 @@
 ;; 
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 
+;; These are just the 2 macro definitions missing in Gambit
+
 (export guard)
 
 (define-syntax guard
