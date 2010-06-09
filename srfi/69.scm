@@ -2,7 +2,7 @@
 ;; 
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 
-#;(export make-hash-table hash-table? alist->hash-table 
+(export make-hash-table hash-table? alist->hash-table 
         hash-table-equivalence-function hash-table-hash-function 
         hash-table-ref hash-table-ref/default hash-table-set!
         hash-table-delete! hash-table-exists? hash-table-update!
@@ -80,14 +80,20 @@
 ;;   (compare hash-table-equivalence-function)
 ;;   (associate hash-table-association-function)
 ;;   (entries hash-table-entries hash-table-set-entries!))
-(define-type hash-table
+(define-type %hash-table
              size
              hash-function
              equivalence-function
              association-function
              entries)
-(define %make-hash-table make-hash-table)
-(define hash-table-set-size! hash-table-size-set!)
+(define hash-table-set-size! %hash-table-size-set!)
+(define hash-table? %hash-table?)
+(define hash-table-size %hash-table-size)
+(define hash-table-hash-function %hash-table-hash-function)
+(define hash-table-equivalence-function %hash-table-equivalence-function)
+(define hash-table-association-function %hash-table-association-function)
+(define hash-table-entries %hash-table-entries)
+(define hash-table-set-entries! %hash-table-entries-set!)
 ;; @End
 
 (define *default-table-size* 64)
@@ -117,7 +123,7 @@
           ((comparison val (caar alist)) (car alist))
           (else (associate val (cdr alist)))))))
      associate))))
-    (%make-hash-table 0 hash comparison association (make-vector size '()))))
+    (make-%hash-table 0 hash comparison association (make-vector size '()))))
 
 (define (make-hash-table-maker comp hash)
   (lambda args (apply make-hash-table (cons comp (cons hash args)))))
