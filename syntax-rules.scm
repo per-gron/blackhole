@@ -267,7 +267,9 @@
                           '())
                          
                          ((identifier? pattern)
-                          (list pattern))
+                          (if (sc-memq env pattern literals)
+                              '()
+                              (list pattern)))
                          
                          ((pair? pattern)
                           (append (loop (car pattern))
