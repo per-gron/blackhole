@@ -109,25 +109,6 @@
                 namespace don't match"
                namespace-string
                (module-reference-namespace module-ref)))
-    
-    (let ()
-      (pp 
-      (make-module-info
-       symbols: symbols
-       exports: exports
-       imports: imports
-       imports-for-syntax: imports-for-syntax
-       definitions: definitions
-       runtime-dependencies: runtime-dependencies
-       compiletime-dependencies: compiletime-dependencies
-       options: (table-ref tbl 'options '())
-       cc-options: (table-ref tbl 'cc-options "")
-       ld-options-prelude: (table-ref tbl 'ld-options-prelude "")
-       ld-options: (table-ref tbl 'ld-options "")
-       force-compile: (table-ref tbl 'force-compile #f)
-       namespace-string: namespace-string))
-      (pp definitions))
-    
     (make-module-info
      symbols: symbols
      exports: exports

@@ -265,13 +265,6 @@
                                        env))
     env))
 
-(define (loaded-module-macros lm phase)
-  (let ((instance (module-instance-get!
-                   phase
-                   (loaded-module-reference lm))))
-    (or (module-instance-macros instance)
-        (loaded-module-visit! lm phase))))
-
 ;; Utility procedure
 (define (invoke-dependencies info->dependencies lm invoke)
   (for-each
@@ -313,6 +306,7 @@
                                                       memo: memo)))
     
     ;; Invoke the module
+    (pp (list 'invoking (loaded-module-reference lm)))
     (loaded-module-invoke! lm phase))))
 
 (define (loaded-modules-invoke/deps lms phase)
@@ -357,6 +351,7 @@
                                                        invoke-memo: invoke-memo))))
     
     ;; Visit the module
+    (pp (list 'visiting (loaded-module-reference lm)))
     (loaded-module-visit! lm phase))))
 
 (define (loaded-modules-visit/deps lms phase)
@@ -369,7 +364,7 @@
       lms)))
 
 (define (loaded-modules-reinvoke lms phase)
-  (error "This function is incorrect")
+  (error "This function is incorrect") ;; TODO
   (letrec
       (;; Table of module-reference objects to #t
        (invoke-table (make-table))

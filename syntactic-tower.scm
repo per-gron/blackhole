@@ -8,7 +8,7 @@
   id: 73B5764F-51BF-4959-8A5A-C65667253AA5
   constructor: make-expansion-phase/internal
 
-  (syntactic-tower read-only:)
+  (syntactic-tower read-only: unprintable:)
   ;; An integer
   (number read-only:)
   ;; A table of an absolute module reference to a module-instance object

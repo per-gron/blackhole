@@ -135,18 +135,20 @@
     (table-set! table dep (cons get-sym
                                 set-sym))
     `((,sym
-       (module#module-instance-get!
-        ,expansion-phase-sym
-        (module#module-reference-ref
-         (module#module-reference-absolutize
-          (module#u8vector->module-reference
-           ',(module-reference->u8vector dep))
-          (module#loaded-module-reference
-           ,loaded-module-sym)))))
+       (let ((tmp (module#module-instance-ref
+                   ,expansion-phase-sym
+                   (module#module-reference-absolutize
+                    (module#u8vector->module-reference
+                     ',(module-reference->u8vector dep))
+                    (module#loaded-module-reference
+                     ,loaded-module-sym)))))
+         (or tmp (error "Internal error"))))
       (,get-sym
-       (module#module-instance-getter ,sym))
+       (let ((tmp (module#module-instance-getter ,sym)))
+         (or tmp (error "Internal error"))))
       (,set-sym
-       (module#module-instance-setter ,sym)))))
+       (let ((tmp (module#module-instance-setter ,sym)))
+         (or tmp (error "Internal error")))))))
 
 (define (clone-sexp/sym-table sexp ref->sym-table)
   (clone-sexp sexp
