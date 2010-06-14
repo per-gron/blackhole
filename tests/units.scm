@@ -1228,6 +1228,14 @@
   ((lambda (a #!key (b a))
      b) #t))
 
+;; Test the distinction between literal identifiers and keywords
+(eq? (let-syntax ((test-fail
+                   (syntax-rules (else)
+                     ((_ else (quote p)) 
+                      (cond (#f #f) (else (quote p)))))))
+       (test-fail else 'a))
+     'a)
+
 
 
 
