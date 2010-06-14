@@ -12,18 +12,20 @@
 ;; (or #f) and returns a module reference.
 
 ;; This is the 'here module resolver function
-(define (current-module-resolver loader path . ids)
+(define (current-module-resolver loader path relative . ids)
   (map (lambda (id)
          (make-module-reference
           loader
-          (loader-path-absolutize loader id path)))
+          (if relative
+              id
+              (loader-path-absolutize loader id path))))
     ids))
 
 (define (package-module-resolver path)
   (let ((path
          (string-append
           (path-strip-trailing-directory-separator path) "/")))
-    (lambda (_ __ . ids)
+    (lambda (_ __ ___ . ids)
       (map (lambda (id)
              (make-module-reference
               local-loader
@@ -32,7 +34,7 @@
 
 ;; This is a helper function for singleton loaders, for instance 'module
 (define (make-singleton-module-resolver pkg)
-  (lambda (_ __)
+  (lambda (_ __ ___)
     (list (make-module-reference pkg #f))))
 
 (define *module-resolvers* '())
@@ -68,11 +70,6 @@
            ((not resolver)
             (error "Module resolver not found:" resolver-id))
            
-           (relative
-            (map (lambda (id)
-                   (make-module-reference loader id))
-              resolver-args))
-           
            (else
             (apply resolver
                    `(,loader
@@ -81,6 +78,7 @@
                           (let ((current-mod (current-module-reference)))
                             (and current-mod
                                  (module-reference-path current-mod))))
+                     ,relative
                      ,@resolver-args))))))))
               
 
