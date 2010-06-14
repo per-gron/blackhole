@@ -353,8 +353,10 @@
                    (syntactic-tower-first-phase
                     (make-syntactic-tower)))
                   (*external-reference-access-hook*
-                   (lambda (ref phase)
-                     (make-external-reference ref phase)))
+                   (lambda (def phase)
+                     (if (equal? (caddr def) module-reference)
+                         (cadr def)
+                         (make-external-reference def phase))))
                   (*external-reference-cleanup-hook*
                    (lambda (code)
                      (clone-sexp
