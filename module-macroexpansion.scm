@@ -293,12 +293,12 @@
          (make-table test: eq? hash: eq?-hash)))
     (parameterize
         ((*module-macroexpansion-import*
-          (lambda (pkgs)
+          (lambda (pkgs env phase)
             (push! imports
                    pkgs)))
          
          (*module-macroexpansion-import-for-syntax*
-          (lambda (pkgs)
+          (lambda (pkgs env phase)
             (push! imports-for-syntax
                    pkgs)))
          

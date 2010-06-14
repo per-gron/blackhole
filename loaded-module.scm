@@ -169,16 +169,17 @@
                        phase
                        (loaded-module-reference lm))))
         (module-instance-getter-set! instance getter)
-        (module-instance-getter-set! instance setter)))
+        (module-instance-setter-set! instance setter)))
   ;; It doesn't make sense to return anything, because
   ;; loaded-module-invoke-runtime doesn't return anything useful.
   (void))
 
 ;; Analogous to loaded-module-invoke!
 (define (loaded-module-visit! lm phase)
-  (let* ((phase-number (expansion-phase-number phase))
+  (let* ((next-phase (expansion-phase-next-phase phase))
+         (phase-number (expansion-phase-number phase))
          (macro-procedures (list->table
-                            ((loaded-module-visit lm) lm phase)))
+                            ((loaded-module-visit lm) lm next-phase)))
          (macros (make-table))
          
          (module-ref (loaded-module-reference lm))
@@ -256,7 +257,7 @@
                             phase: phase)
     (module-add-defs-to-env (module-info-imports-for-syntax module-info)
                             env
-                            phase: (expansion-phase-next-phase phase))
+                            phase: next-phase)
     
     (module-instance-macros-set! (module-instance-get!
                                   phase
@@ -306,7 +307,9 @@
                                                       memo: memo)))
     
     ;; Invoke the module
-    (pp (list 'invoking (loaded-module-reference lm)))
+    (pp (list 'invoking
+              (loaded-module-reference lm)
+              phase))
     (loaded-module-invoke! lm phase))))
 
 (define (loaded-modules-invoke/deps lms phase)
@@ -338,20 +341,23 @@
       (invoke-dependencies module-info-runtime-dependencies
                            lm
                            (lambda (dependency)
-                             (loaded-module-invoke/deps dependency phase
+                             (loaded-module-invoke/deps dependency
+                                                        next-phase
                                                         memo: invoke-memo))))
     
     ;; Visit the module's runtime dependencies
-    (let ((next-phase (expansion-phase-next-phase phase)))
-      (invoke-dependencies module-info-compiletime-dependencies
-                           lm
-                           (lambda (dependency)
-                             (loaded-module-visit/deps dependency phase
-                                                       visit-memo: visit-memo
-                                                       invoke-memo: invoke-memo))))
+    (invoke-dependencies module-info-compiletime-dependencies
+                         lm
+                         (lambda (dependency)
+                           (loaded-module-visit/deps dependency
+                                                     phase
+                                                     visit-memo: visit-memo
+                                                     invoke-memo: invoke-memo)))
     
     ;; Visit the module
-    (pp (list 'visiting (loaded-module-reference lm)))
+    (pp (list 'visiting
+              (loaded-module-reference lm)
+              phase))
     (loaded-module-visit! lm phase))))
 
 (define (loaded-modules-visit/deps lms phase)
