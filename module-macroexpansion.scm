@@ -4,66 +4,81 @@
 ;;;                                                                  ;;;
 ;;;  --------------------------------------------------------------  ;;;
 
-(define (transform-to-define source)
-  (let ((code
-         (expr*:value source))
-        (default-action
-         (lambda ()
-           `(define ,(gensym)
-              ,source))))
-    (cond
-     ((pair? code)
-      (let ((code-car (expr*:value (car code))))
-        (case code-car
-          ((begin ##begin)
-           (expr*:value-set
-            source
-            (cons (car code)
-                  (map transform-to-define
-                    (filter (lambda (x)
-                              (not (eq? #!void
-                                        (expr*:value x))))
-                            (cdr code))))))
-          
-          ((c-define)
-           ;; TODO
-           (error "c-define is not implemented"))
-          
-          ((c-define-type)
-           ;; TODO
-           (error "c-define-type is not implemented"))
-          
-          ((c-initialize)
-           ;; TODO
-           (error "c-define-type is not implemented"))
-          
-          ((c-declare)
-           ;; TODO
-           (error "c-declare is not implemented"))
-          
-          ((let-syntax letrec-syntax cond-expand)
-           ;; This shouldn't happen
-           (error "Internal error in transform-to-define"))
-          
-          ((declare
-            ##define
-            define
-            ;; The macro forms are rarely or never here, but we check
-            ;; for them just in case.
-            ##define-macro
-            ##define-syntax
-            define-macro
-            define-syntax)
-           source)
-          
-          (else
-           (default-action)))))
-     
-     ((eq? #!void code)
-      #!void)
-     
-     (else
-      (default-action)))))
+(define (transform-to-let source rest)
+  (let ((names '()))
+    (letrec
+        ((loop
+          (lambda (source)
+            (let ((code
+                   (expr*:value source))
+                  (default-action
+                    (lambda ()
+                      `(define ,(gensym)
+                         ,source))))
+              (cond
+               ((pair? code)
+                (let ((code-car (expr*:value (car code))))
+                  (case code-car
+                    ((begin ##begin)
+                     (expr*:value-set
+                      source
+                      (cons (car code)
+                            (map loop
+                              (filter (lambda (x)
+                                        (not (eq? #!void
+                                                  (expr*:value x))))
+                                      (cdr code))))))
+                    
+                    ((c-define)
+                     ;; TODO
+                     (error "c-define is not implemented"))
+                    
+                    ((c-define-type)
+                     ;; TODO
+                     (error "c-define-type is not implemented"))
+                    
+                    ((c-initialize)
+                     ;; TODO
+                     (error "c-define-type is not implemented"))
+                    
+                    ((c-declare)
+                     ;; TODO
+                     (error "c-declare is not implemented"))
+                    
+                    ((cond-expand
+                      let-syntax
+                      letrec-syntax
+                      ##define-macro
+                      ##define-syntax
+                      define-macro
+                      define-syntax)
+                     ;; This shouldn't happen
+                     (error "Internal error in transform-to-let"))
+                    
+                    ((declare)
+                     source)
+                    
+                    ((##define define)
+                     (if (not (and (pair? (cdr code))
+                                   (symbol? (expr*:value (cadr code)))))
+                         (error "Internal error in transform-to-let"))
+                     (set! names (cons (expr*:value (cadr code)) names))
+                     (expr*:value-set source
+                                      (cons 'set!
+                                            (cdr code))))
+                    
+                    (else
+                     (default-action)))))
+               
+               ((eq? #!void code)
+                #!void)
+               
+               (else
+                (default-action)))))))
+      `(let ,(map (lambda (name) `(name #!unbound))
+               names)
+         ,(loop source)
+         ,rest))))
 
 (define-type external-reference
   id: 40985F98-6814-41B6-90FE-0FBFB1A8F42D
@@ -194,25 +209,24 @@
                                                  module-reference)
                                                 ref->rt-sym-table))
                    dependencies)))
-         ,(transform-to-define
+         ,(transform-to-let
            (clone-sexp/sym-table expanded-code
-                                 ref->rt-sym-table))
-         
-         (values
-          (lambda (,name-sym)
-            (case ,name-sym
-              ,@(map (lambda (name)
-                       `((,(cdr name))
-                         ,(cdr name)))
-                  names)
-              (else (error "Unbound variable" ,name-sym))))
-          (lambda (,name-sym ,val-sym)
-            (case ,name-sym
-              ,@(map (lambda (name)
-                       `((,(cdr name))
-                         (set! ,(cdr name) ,val-sym)))
-                  names)
-              (else (error "Unbound variable" ,name-sym)))))))))
+                                 ref->rt-sym-table)
+           `(values
+             (lambda (,name-sym)
+               (case ,name-sym
+                 ,@(map (lambda (name)
+                          `((,(cdr name))
+                            ,(cdr name)))
+                     names)
+                 (else (error "Unbound variable" ,name-sym))))
+             (lambda (,name-sym ,val-sym)
+               (case ,name-sym
+                 ,@(map (lambda (name)
+                          `((,(cdr name))
+                            (set! ,(cdr name) ,val-sym)))
+                     names)
+                 (else (error "Unbound variable" ,name-sym))))))))))
 
 (define (generate-visit-code module-reference
                              macros
