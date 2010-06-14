@@ -371,6 +371,9 @@
                               #!key (phase-number
                                      (expansion-phase-number
                                       (*expansion-phase*))))
+  (if (not (and (env? m-env)
+                (procedure? fun)))
+      (error "Invalid parameters"))
   (ns-add! (env-ns env)
            phase-number
            exported-name

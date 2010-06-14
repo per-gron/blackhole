@@ -116,7 +116,9 @@
 
   (getter init: #f)
   (setter init: #f)
-  (macros init: #f))
+  
+  (macros init: #f)
+  (macro-env init: #f))
 
 (define (module-instance-ref phase ref)
   (let ((table (expansion-phase-module-instances phase)))
@@ -148,6 +150,7 @@
                    (loaded-module-reference lm))))
     (and instance
          (module-instance-macros instance)
+         (module-instance-macro-env instance)
          #t)))
 
 ;; This procedure doesn't make sure that the module's dependencies are
@@ -258,12 +261,13 @@
     (module-add-defs-to-env (module-info-imports-for-syntax module-info)
                             env
                             phase: next-phase)
+
+    (let ((instance (module-instance-get!
+                     phase
+                     (loaded-module-reference lm))))
+      (module-instance-macros-set! instance macro-procedures)
+      (module-instance-macro-env-set! instance env))
     
-    (module-instance-macros-set! (module-instance-get!
-                                  phase
-                                  (loaded-module-reference lm))
-                                 (cons macro-procedures
-                                       env))
     env))
 
 ;; Utility procedure
@@ -490,25 +494,32 @@
                 (if (symbol? fn)
                     (let* ((mac-module-ref (cadddr def))
                            (mi (module-instance-ref phase mac-module-ref))
-                           (macros/env-pair (and mi (module-instance-macros mi))))
-                      (if (not macros/env-pair)
+                           (macros (and mi (module-instance-macros mi)))
+                           (env (and mi (module-instance-macro-env mi))))
+                      (if (not (and macros env))
                           (error "Internal error"))
                       (environment-add-mac! env
                                             ;; The name it's imported as
                                             (car def)
                                             ;; The macro procedure
-                                            (table-ref (car macros/env-pair) fn)
+                                            (table-ref macros fn)
                                             ;; The macro's environment
-                                            (cdr macros/env-pair)
+                                            env
                                             phase-number: phase-number))
-                    (environment-add-mac! env
-                                          ;; The name it's imported as
-                                          (car def)
-                                          ;; The macro procedure
-                                          fn
-                                          ;; The macro's environment
-                                          (cadddr def)
-                                          phase-number: phase-number)))))
+                    (let* ((env-or-ref (cadddr def))
+                           (env (if (env? env)
+                                    env
+                                    (let ((mi (module-instance-ref phase env)))
+                                      (or (and mi (module-instance-macro-env mi))
+                                          (error "Internal error"))))))
+                      (environment-add-mac! env
+                                            ;; The name it's imported as
+                                            (car def)
+                                            ;; The macro procedure
+                                            fn
+                                            ;; The macro's environment
+                                            env
+                                            phase-number: phase-number))))))
       defs)))
 
 (define module-env-table
