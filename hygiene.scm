@@ -1368,10 +1368,10 @@
 
 (make-macroexpansion-vars (import
                            (lambda (pkgs env phase)
-                             (module-import pkgs env phase)))
+                             (void)))
                           (import-for-syntax
                            (lambda (pkgs env phase)
-                             (module-import pkgs env phase)))
+                             (void)))
                           (export
                            (lambda (exports) (void)))
                           (define
@@ -1397,8 +1397,10 @@
                  (expr*:strip-locationinfo source)))
 
       (let ((pkgs (extract-synclosure-crawler
-                   (cdr (expr*:strip-locationinfo source)))))
-        ((*module-macroexpansion-import*) pkgs env (*expansion-phase*)))))
+                   (cdr (expr*:strip-locationinfo source))))
+            (phase (*expansion-phase*)))
+        (module-import pkgs env phase)
+        ((*module-macroexpansion-import*) pkgs env phase))))
 
    (import-for-syntax
     (lambda (source env mac-env)
@@ -1407,12 +1409,11 @@
                  (expr*:strip-locationinfo source)))
 
       (let ((pkgs (extract-synclosure-crawler
-                   (cdr (expr*:strip-locationinfo source)))))
-        ((*module-macroexpansion-import-for-syntax*)
-         pkgs
-         env
-         (expansion-phase-next-phase
-          (*expansion-phase*))))))
+                   (cdr (expr*:strip-locationinfo source))))
+            (phase (expansion-phase-next-phase
+                    (*expansion-phase*))))
+        (module-import pkgs env phase)
+        ((*module-macroexpansion-import-for-syntax*) pkgs env phase))))
 
    (export
     (lambda (code env mac-env)

@@ -397,6 +397,7 @@
                (resolve-imports imports
                                 module-reference
                                 relative: #t)))
+
           (values (generate-runtime-code (environment-namespace env)
                                          module-reference
                                          expanded-code)
