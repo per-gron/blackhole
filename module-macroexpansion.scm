@@ -10,11 +10,7 @@
         ((loop
           (lambda (source)
             (let ((code
-                   (expr*:value source))
-                  (default-action
-                    (lambda ()
-                      `(define ,(gensym)
-                         ,source))))
+                   (expr*:value source)))
               (cond
                ((pair? code)
                 (let ((code-car (expr*:value (car code))))
@@ -68,13 +64,13 @@
                                             (cdr code))))
                     
                     (else
-                     (default-action)))))
+                     source))))
                
                ((eq? #!void code)
                 #!void)
                
                (else
-                (default-action)))))))
+                source))))))
       `(let ,(map (lambda (name) `(name #!unbound))
                names)
          ,(loop source)
