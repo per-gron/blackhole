@@ -118,32 +118,34 @@
   (setter init: #f)
   (macros init: #f))
 
-(define (module-instance-ref phase lm)
+(define (module-instance-ref phase ref)
   (let ((table (expansion-phase-module-instances phase)))
     (and table
-         (table-ref table
-                    (loaded-module-reference lm)
-                    #f))))
+         (table-ref table ref #f))))
 
-(define (module-instance-get! phase lm)
-  (or (module-instance-ref phase lm)
+(define (module-instance-get! phase ref)
+  (or (module-instance-ref phase ref)
       (let ((instance (make-module-instance)))
         (table-set! (expansion-phase-module-instances phase)
-                    (loaded-module-reference lm)
+                    ref
                     instance)
         instance)))
 
 (define (loaded-module-invoked? lm phase)
   (if (zero? (expansion-phase-number phase))
       (loaded-module-runtime-invoked lm)
-      (let ((instance (module-instance-ref phase lm)))
+      (let ((instance (module-instance-ref
+                       phase
+                       (loaded-module-reference lm))))
         (and instance
              (module-instance-getter instance)
              (module-instance-setter instance)
              #t))))
 
 (define (loaded-module-visited? lm phase)
-  (let ((instance (module-instance-ref phase lm)))
+  (let ((instance (module-instance-ref
+                   phase
+                   (loaded-module-reference lm))))
     (and instance
          (module-instance-macros instance)
          #t)))
@@ -163,7 +165,9 @@
              setter
              ((loaded-module-invoke-compiletime lm)
               lm phase))
-            (instance (module-instance-get! phase lm)))
+            (instance (module-instance-get!
+                       phase
+                       (loaded-module-reference lm))))
         (module-instance-getter-set! instance getter)
         (module-instance-getter-set! instance setter)))
   ;; It doesn't make sense to return anything, because
@@ -249,17 +253,22 @@
     
     (module-add-defs-to-env (module-info-imports module-info)
                             env
-                            phase-number: phase-number)
+                            phase: phase)
     (module-add-defs-to-env (module-info-imports-for-syntax module-info)
                             env
-                            phase-number: (+ 1 phase-number))
+                            phase: (expansion-phase-next-phase phase))
     
-    (module-instance-macros-set! (module-instance-get! phase lm)
-                                 env)
+    (module-instance-macros-set! (module-instance-get!
+                                  phase
+                                  (loaded-module-reference lm))
+                                 (cons macro-procedures
+                                       env))
     env))
 
 (define (loaded-module-macros lm phase)
-  (let ((instance (module-instance-get! phase lm)))
+  (let ((instance (module-instance-get!
+                   phase
+                   (loaded-module-reference lm))))
     (or (module-instance-macros instance)
         (loaded-module-visit! lm phase))))
 
@@ -426,7 +435,7 @@
       (loaded-modules-visit/deps loaded-modules phase)
       (if (null? reloaded-modules)
           (module-add-defs-to-env defs env
-                                  phase-number: (expansion-phase-number phase))
+                                  phase: phase)
           (begin
             (loaded-modules-reinvoke reloaded-modules phase)
             ;; We need to re-resolve the imports, because the
@@ -453,3 +462,91 @@
           (fn mod)
           (*top-environment* repl-environment))
       (void))))
+
+
+
+;;;; ---------- Some environment creation stuff ----------
+
+(define (module-add-defs-to-env defs
+                                env
+                                #!key
+                                ;; phase can be #f to apply to all phases
+                                (phase
+                                 (*expansion-phase*)))
+  (let ((phase-number (and phase (expansion-phase-number phase))))
+    (for-each
+        (lambda (def)
+          (if (eq? 'def (cadr def))
+              ;; Regular define
+              (environment-add-def!
+               env
+               (car def) ;; The name it's imported as
+               (caddr def) ;; The name it's imported from
+               module-reference: (cadddr def)
+               phase-number: phase-number)
+              ;; Macro
+              (let ((fn (caddr def)))
+                (if (symbol? fn)
+                    (let* ((mac-module-ref (cadddr def))
+                           (mi (module-instance-ref phase mac-module-ref))
+                           (macros/env-pair (and mi (module-instance-macros mi))))
+                      (if (not macros/env-pair)
+                          (error "Internal error"))
+                      (environment-add-mac! env
+                                            ;; The name it's imported as
+                                            (car def)
+                                            ;; The macro procedure
+                                            (table-ref (car macros/env-pair) fn)
+                                            ;; The macro's environment
+                                            (cdr macros/env-pair)
+                                            phase-number: phase-number))
+                    (environment-add-mac! env
+                                          ;; The name it's imported as
+                                          (car def)
+                                          ;; The macro procedure
+                                          fn
+                                          ;; The macro's environment
+                                          (cadddr def)
+                                          phase-number: phase-number)))))
+      defs)))
+
+(define module-env-table
+  (let* ((ns (make-table))
+         (env (make-environment #f ns)))
+    (module-add-defs-to-env module-exports-list
+                            env
+                            phase: #f)
+    ns))
+
+
+(define builtin-ns
+  (let* ((builtin-pair
+          (cons (env-ns builtin-environment)
+                gambit-builtin-table))
+         (inside-letrec-table
+          (env-ns inside-letrec-environment))
+         (inside-letrec-pair
+          (cons inside-letrec-table
+                builtin-pair)))
+    (lambda ()
+      (let ((ns
+             (if (inside-letrec)
+                 inside-letrec-pair
+                 builtin-pair)))
+        (values (if (or (not (zero? (expansion-phase-number
+                                     (*expansion-phase*))))
+                        (not (environment-module-reference
+                              (*top-environment*))))
+                    (cons module-env-table ns)
+                    ns)
+                #f)))))
+
+(define (make-top-environment module-reference)
+  (let ((ns (cons (make-table)
+                  builtin-ns)))
+    (make-environment module-reference ns)))
+
+(define empty-environment
+  (make-top-environment #f))
+
+(*top-environment* (make-top-environment #f))

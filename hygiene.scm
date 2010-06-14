@@ -1071,7 +1071,7 @@
                                        (cdr code))))
                     ((let ((fn (cadr val)))
                        (if (pair? fn)
-                           ;; See recreate-module-environment
+                           ;; See recreate-module-environment (TODO)
                            (table-ref (loaded-module-macros
                                        ;; FIXME it is very ugly to do
                                        ;; it like this
