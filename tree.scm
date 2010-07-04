@@ -37,6 +37,7 @@
 (cond-expand
  (black-hole
   (export tree?
+          empty-tree
           tree-size
           tree-min
           tree-max
@@ -84,8 +85,10 @@
   (right-subtree read-only:))
 
 (define (tree? x)
-  (or (not x)
+  (or (eq? x empty-tree)
       (tree/internal? x)))
+
+(define empty-tree (list 'empty-tree))
 
 (define-macro (%%tree-element t)
   `(##vector-ref ,t 1))
@@ -102,9 +105,9 @@
 (define-macro (%%tree-size t)
   (let ((gs (gensym)))
     `(let ((,gs ,t))
-       (if ,gs
-           (%%tree-count ,gs)
-           0))))
+       (if (eq? ,gs empty-tree)
+           0
+           (%%tree-count ,gs)))))
 
 (define-macro (%%< a b)
   `(##< ,a ,b))
@@ -227,8 +230,8 @@
              (left left)
              (right right))
     (cond
-     ((not left) (%%tree-add right elm <?))
-     ((not right) (%%tree-add left elm <?))
+     ((eq? left empty-tree) (%%tree-add right elm <?))
+     ((eq? right empty-tree) (%%tree-add left elm <?))
      (else
       (let ((left-elm (%%tree-element left))
             (left-size (%%tree-count left))
@@ -264,10 +267,10 @@
   (let loop ((left left)
              (right right))
     (cond
-     ((not left)
+     ((eq? left empty-tree)
       right)
      
-     ((not right)
+     ((eq? right empty-tree)
       left)
      
      (else
@@ -309,7 +312,8 @@
 ;; replaced.
 (define (%%tree-add tree elm <? #!key (already-there (lambda () #f)))
   (let loop ((tree tree))
-    (if tree
+    (if (eq? tree empty-tree)
+        (make-tree/internal elm 1 empty-tree empty-tree)
         (let ((tree-elm (%%tree-element tree))
               (tree-left (%%tree-left-subtree tree))
               (tree-right (%%tree-right-subtree tree)))
@@ -328,9 +332,7 @@
             (already-there)
             (%%make-tree elm
                          tree-left
-                         tree-right))))
-        ;; if (not tree)
-        (make-tree/internal elm 1 #f #f))))
+                         tree-right)))))))
 
 (define (tree-add tree elm <? #!key (already-there (lambda () #f)))
   (check-tree tree)
@@ -338,31 +340,31 @@
 
 (define (tree-delete-min tree)
   (check-tree tree)
-  (if (not tree)
+  (if (eq? tree empty-tree)
       (error "Can't delete empty tree"))
 
   (let loop ((tree tree))
     (let ((left (%%tree-left-subtree tree))
           (right (%%tree-right-subtree tree)))
-      (if left
+      (if (eq? empty-tree left)
+          right
           (%%make-tree (%%tree-element tree)
                        (tree-delete-min left)
-                       right)
-          right))))
+                       right)))))
 
 (define (tree-delete-max tree)
   (check-tree tree)
-  (if (not tree)
+  (if (eq? tree empty-tree)
       (error "Can't delete empty tree"))
 
   (let loop ((tree tree))
     (let ((left (%%tree-left-subtree tree))
           (right (%%tree-right-subtree tree)))
-      (if right
+      (if (eq? right empty-tree)
+          left
           (%%make-tree (%%tree-element tree)
                        left
-                       (tree-delete-max right))
-          left))))
+                       (tree-delete-max right))))))
 
 ;; This is a utility function for tree-delete
 ;;
@@ -370,10 +372,10 @@
 ;; right should be (tree-right-subtree parent)
 (define (tree-delete-root parent left right <?)
   (cond
-   ((not right)
+   ((eq? right empty-tree)
     left)
 
-   ((not left)
+   ((eq? left empty-tree)
     right)
 
    (else
@@ -388,7 +390,8 @@
                               (error "Not found"))))
   (check-tree tree)
   (let loop ((tree tree))
-    (if tree
+    (if (eq? tree empty-tree)
+        (not-found)
         (let ((tree-elm (%%tree-element tree))
               (left (%%tree-left-subtree tree))
               (right (%%tree-right-subtree tree)))
@@ -404,19 +407,19 @@
                          (loop right)))
            
            (else
-            (tree-delete-root tree left right <?))))
-        (not-found))))
+            (tree-delete-root tree left right <?)))))))
 
 (define (tree-size tree)
-  (if tree
-      (tree-count tree)
-      0))
+  (if (eq? tree empty-tree)
+      0
+      (tree-count tree)))
 
 (define (tree-search tree elm <? fail found)
   (check-tree tree)
   
   (let loop ((tree tree))
-    (if tree
+    (if (eq? tree empty-tree)
+        (fail)
         (let ((tree-elm (%%tree-element tree)))
           (cond
            ((<? elm tree-elm)
@@ -424,8 +427,7 @@
            ((<? tree-elm elm)
             (loop (%%tree-right-subtree tree)))
            (else
-            (found tree-elm))))
-        (fail))))
+            (found tree-elm)))))))
 
 (define (tree-member? tree elm <?)
   (tree-search tree
@@ -437,13 +439,13 @@
 (define-macro (define-tree-search-min/max name fn)
   `(define (,name tree fail found)
      (check-tree tree)
-     (if tree
+     (if (eq? tree empty-tree)
+         (fail)
          (let loop ((tree tree))
            (let ((subtree (,fn tree)))
-             (if subtree
-                 (loop subtree)
-                 (found (%%tree-element tree)))))
-         (fail))))
+             (if (eq? subtree empty-tree)
+                 (found (%%tree-element tree))
+                 (loop subtree)))))))
 
 (define-tree-search-min/max tree-search-min %%tree-left-subtree)
 (define-tree-search-min/max tree-search-max %%tree-right-subtree)
@@ -465,14 +467,14 @@
 
   (let loop ((base base)
              (tree tree))
-    (if tree
+    (if (eq? tree empty-tree)
+        base
         (let ((elm (%%tree-element tree))
               (left (%%tree-left-subtree tree))
               (right (%%tree-right-subtree tree)))
           (loop (fn elm
                     (loop base right))
-                left))
-        base)))
+                left)))))
 
 (define (tree-members tree)
   (tree-fold cons '() tree))
@@ -480,7 +482,8 @@
 (define (tree-split< tree elm <?)
   (check-tree tree)
   (let loop ((tree tree))
-    (if tree
+    (if (eq? tree empty-tree)
+        empty-tree
         (let ((tree-elm (%%tree-element tree))
               (tree-left (%%tree-left-subtree tree))
               (tree-right (%%tree-right-subtree tree)))
@@ -493,14 +496,14 @@
                        (loop tree-right)
                        <?))
            (else
-            tree-left)))
-        #f)))
+            tree-left))))))
 
 
 (define (tree-split> tree elm <?)
   (check-tree tree)
   (let loop ((tree tree))
-    (if tree
+    (if (eq? tree empty-tree)
+        empty-tree
         (let ((tree-elm (%%tree-element tree))
               (tree-left (%%tree-left-subtree tree))
               (tree-right (%%tree-right-subtree tree)))
@@ -513,8 +516,7 @@
            ((<? tree-elm elm)
             (loop tree-right))
            (else
-            tree-right)))
-        #f)))
+            tree-right))))))
 
 ;; This function is here for testing purposes. The tree-union function
 ;; is faster but more complex (and thus more bug-prone).
@@ -523,10 +525,10 @@
   (let loop ((tree1 tree1)
              (tree2 tree2))
     (cond
-     ((not tree1)
+     ((eq? tree1 empty-tree)
       tree2)
      
-     ((not tree2)
+     ((eq? tree2 empty-tree)
       tree1)
      
      (else
@@ -545,22 +547,23 @@
 
 (define (tree-union tree1 tree2 <?)
   (define (trim lo hi tree)
-    (and tree
-         (let ((tree-elm (%%tree-element tree))
-               (tree-left (%%tree-left-subtree tree))
-               (tree-right (%%tree-right-subtree tree)))
-           (if (<? lo tree-elm)
-               (if (<? tree-elm hi)
-                   tree
-                   (trim lo hi tree-left))
-               (trim lo hi tree-right)))))
+    (if (eq? tree empty-tree)
+        empty-tree
+        (let ((tree-elm (%%tree-element tree))
+              (tree-left (%%tree-left-subtree tree))
+              (tree-right (%%tree-right-subtree tree)))
+          (if (<? lo tree-elm)
+              (if (<? tree-elm hi)
+                  tree
+                  (trim lo hi tree-left))
+              (trim lo hi tree-right)))))
              
   (define (uni-bd tree1 tree2 lo hi)
     (cond
-     ((not tree2)
+     ((eq? tree2 empty-tree)
       tree1)
 
-     ((not tree1)
+     ((eq? tree1 empty-tree)
       (let ((tree-elm (%%tree-element tree2))
             (tree-left (%%tree-left-subtree tree2))
             (tree-right (%%tree-right-subtree tree2)))
@@ -575,89 +578,91 @@
             (tree1-right (%%tree-right-subtree tree1)))
         ;; Invariant lo < tree1-elm < hi
         (%%tree-join tree1-elm
-                   (uni-bd tree1-left
-                           (trim lo tree1-elm tree2)
-                           lo
+                     (uni-bd tree1-left
+                             (trim lo tree1-elm tree2)
+                             lo
+                             tree1-elm)
+                     (uni-bd tree1-right
+                             (trim tree1-elm hi tree2)
+                             tree1-elm
+                             hi)
+                     <?)))))
+
+  ;; All the other versions of uni and trim are specializations of the
+  ;; above two functions with lo=-infinity and/or hi=+infinity
+
+  (define (trim-lo lo tree)
+    (if (eq? tree empty-tree)
+        empty-tree
+        (if (<? lo (%%tree-element tree))
+            tree
+            (trim-lo lo (%%tree-right-subtree tree)))))
+  (define (trim-hi hi tree)
+    (if (eq? tree empty-tree)
+        empty-tree
+        (if (<? (%%tree-element tree) hi)
+            tree
+            (trim-hi hi (%%tree-left-subtree tree)))))
+  
+  (define (uni-hi tree1 tree2 hi)
+    (cond
+     ((eq? tree2 empty-tree)
+      tree1)
+
+     ((eq? tree1 empty-tree)
+      (%%tree-join (%%tree-element tree2)
+                   (%%tree-left-subtree tree2)
+                   (tree-split< (%%tree-right-subtree tree2)
+                                hi
+                                <?)
+                   <?))
+     
+     (else
+      (let ((tree1-elm (%%tree-element tree1))
+            (tree1-left (%%tree-left-subtree tree1))
+            (tree1-right (%%tree-right-subtree tree1)))
+      (%%tree-join tree1-elm
+                   (uni-hi tree1-left
+                           (trim-hi tree1-elm tree2)
                            tree1-elm)
                    (uni-bd tree1-right
                            (trim tree1-elm hi tree2)
                            tree1-elm
                            hi)
                    <?)))))
-
-  ;; All the other versions of uni and trim are specializations of the
-  ;; above two functions with lo=-infinity and/or hi=+infinity
-
-  (define (trim-lo lo tree)
-    (and tree
-         (if (<? lo (%%tree-element tree))
-             tree
-             (trim-lo lo (%%tree-right-subtree tree)))))
-  (define (trim-hi hi tree)
-    (and tree
-         (if (<? (%%tree-element tree) hi)
-             tree
-             (trim-hi hi (%%tree-left-subtree tree)))))
-
-  (define (uni-hi tree1 tree2 hi)
-    (cond
-     ((not tree2)
-      tree1)
-
-     ((not tree1)
-      (%%tree-join (%%tree-element tree2)
-                 (%%tree-left-subtree tree2)
-                 (tree-split< (%%tree-right-subtree tree2)
-                              hi
-                              <?)
-                 <?))
-
-     (else
-      (let ((tree1-elm (%%tree-element tree1))
-            (tree1-left (%%tree-left-subtree tree1))
-            (tree1-right (%%tree-right-subtree tree1)))
-      (%%tree-join tree1-elm
-                 (uni-hi tree1-left
-                         (trim-hi tree1-elm tree2)
-                         tree1-elm)
-                 (uni-bd tree1-right
-                         (trim tree1-elm hi tree2)
-                         tree1-elm
-                         hi)
-                 <?)))))
   (define (uni-lo tree1 tree2 lo)
     (cond
-     ((not tree2)
+     ((eq? tree2 empty-tree)
       tree1)
 
-     ((not tree1)
+     ((eq? tree1 empty-tree)
       (%%tree-join (%%tree-element tree2)
-                 (tree-split> (%%tree-left-subtree tree2)
-                              lo
-                              <?)
-                 (%%tree-right-subtree tree2)
-                 <?))
-
+                   (tree-split> (%%tree-left-subtree tree2)
+                                lo
+                                <?)
+                   (%%tree-right-subtree tree2)
+                   <?))
+     
      (else
       (let ((tree1-elm (%%tree-element tree1))
             (tree1-left (%%tree-left-subtree tree1))
             (tree1-right (%%tree-right-subtree tree1)))
         (%%tree-join tree1-elm
-                   (uni-bd tree1-left
-                           (trim lo tree1-elm tree2)
-                           lo
-                           tree1-elm)
-                   (uni-lo tree1-right
-                           (trim-lo tree1-elm tree2)
-                           tree1-elm)
-                   <?)))))
+                     (uni-bd tree1-left
+                             (trim lo tree1-elm tree2)
+                             lo
+                             tree1-elm)
+                     (uni-lo tree1-right
+                             (trim-lo tree1-elm tree2)
+                             tree1-elm)
+                     <?)))))
   
   (check-tree tree1 tree2)
   (cond
-   ((not tree1)
+   ((eq? tree1 empty-tree)
     tree2)
    
-   ((not tree2)
+   ((eq? tree2 empty-tree)
     tree1)
    
    (else
@@ -665,22 +670,22 @@
           (tree1-left (%%tree-left-subtree tree1))
           (tree1-right (%%tree-right-subtree tree1)))
       (%%tree-join tree1-elm
-                 (uni-hi tree1-left
-                         (trim-hi tree1-elm tree2)
-                         tree1-elm)
-                 (uni-lo tree1-right
-                         (trim-lo tree1-elm tree2)
-                         tree1-elm)
-                 <?)))))
+                   (uni-hi tree1-left
+                           (trim-hi tree1-elm tree2)
+                           tree1-elm)
+                   (uni-lo tree1-right
+                           (trim-lo tree1-elm tree2)
+                           tree1-elm)
+                   <?)))))
 
 (define (tree-difference tree1 tree2 <?)
   (check-tree tree1 tree2)
   (let loop ((tree1 tree1) (tree2 tree2))
     (cond
-     ((not tree1)
-      #f)
+     ((eq? tree1 empty-tree)
+      empty-tree)
 
-     ((not tree2)
+     ((eq? tree2 empty-tree)
       tree1)
 
      (else
@@ -696,9 +701,9 @@
 (define (tree-intersection tree1 tree2 <?)
   (check-tree tree1 tree2)
   (let loop ((tree1 tree1) (tree2 tree2))
-    (if (or (not tree1)
-            (not tree2))
-        #f
+    (if (or (eq? tree1 empty-tree)
+            (eq? tree2 empty-tree))
+        empty-tree
         (let* ((tree2-elm (%%tree-element tree2))
                (tree2-left (%%tree-left-subtree tree2))
                (tree2-right (%%tree-right-subtree tree2))
@@ -726,7 +731,8 @@
   (check-tree tree)
 
   (let loop ((tree tree) (accum 0))
-    (if tree
+    (if (eq? tree empty-tree)
+        (fail)
         (let ((tree-elm (%%tree-element tree))
               (tree-left (%%tree-left-subtree tree))
               (tree-right (%%tree-right-subtree tree)))
@@ -740,8 +746,7 @@
                      (%%tree-size tree-left))))
            (else
             (+ accum
-               (%%tree-size tree-left)))))
-        (fail))))
+               (%%tree-size tree-left))))))))
 
 (define (tree-index tree idx
                            #!key
@@ -753,7 +758,8 @@
       (error "Invalid parameter" idx))
 
   (let loop ((tree tree) (idx idx))
-    (if tree
+    (if (eq? tree empty-tree)
+        (fail)
         (let* ((tree-left (%%tree-left-subtree tree))
                (left-size (%%tree-size tree-left)))
           (cond
@@ -763,9 +769,7 @@
             (loop (%%tree-right-subtree tree)
                   (- idx left-size 1)))
            (else
-            (%%tree-element tree))))
-            
-        (fail))))
+            (%%tree-element tree)))))))
 
 
 
@@ -774,13 +778,13 @@
   ;; Some testing stuff
   (define (make-count from to)
     (if (> from to)
-        #f
+        empty-tree
         (tree-add (make-count (+ from 1) to)
                   from
                   <)))
 
   (define (list->tree list <?)
-    (let loop ((list list) (accum #f))
+    (let loop ((list list) (accum empty-tree))
       (if (null? list)
           accum
           (loop (cdr list)
@@ -790,24 +794,26 @@
   
   (define (pt tree)
     (let loop ((tree tree))
-      (and tree
-           (let ((elm (tree-element tree))
-                 (l (tree-left-subtree tree))
-                 (r (tree-right-subtree tree)))
-             (if (and (not l)
-                      (not r))
-                 elm
-                 (list (loop l)
-                       elm
-                       (loop r)))))))
+      (if (eq? empty-tree tree)
+          empty-tree
+          (let ((elm (tree-element tree))
+                (l (tree-left-subtree tree))
+                (r (tree-right-subtree tree)))
+            (if (and (eq? l empty-tree)
+                     (eq? r empty-tree))
+                elm
+                (list (loop l)
+                      elm
+                      (loop r)))))))
   
   (define (tp list)
     (if (pair? list)
         (%%make-tree-nonbalancing (cadr list)
-                                (tp (car list))
-                                (tp (caddr list)))
-        (and list
-             (%%make-tree-nonbalancing list #f #f))))
+                                  (tp (car list))
+                                  (tp (caddr list)))
+        (if (eq? list empty-tree)
+            empty-tree
+            (%%make-tree-nonbalancing list empty-tree empty-tree))))
   
   (define (rm tree)
     (list->tree
