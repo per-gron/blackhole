@@ -406,7 +406,7 @@
                                 relative: #t))
               (import-for-syntax-defs
                import-for-syntax-module-refs
-               (resolve-imports imports
+               (resolve-imports imports-for-syntax
                                 module-reference
                                 relative: #t)))
 
@@ -420,7 +420,7 @@
                                              import-module-refs)
                   (generate-visit-code module-reference
                                        macros
-                                       import-module-refs)
+                                       import-for-syntax-module-refs)
                   (let* ((info
                           `((definitions ,@definitions)
                             (imports ,@import-defs)

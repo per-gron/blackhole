@@ -254,7 +254,7 @@
              (else
               (error "Internal error"))))
         (module-info-definitions module-info)))
-    
+
     (module-add-defs-to-env (module-info-imports module-info)
                             env
                             phase: phase)
@@ -311,7 +311,7 @@
                                                       memo: memo)))
     
     ;; Invoke the module
-    (pp (list 'invoking
+    #;(pp (list 'invoking ;; TODO Remove this
               (loaded-module-reference lm)
               phase))
     (loaded-module-invoke! lm phase))))
@@ -342,7 +342,7 @@
     
     ;; Invoke the module's compile time dependencies
     (let ((next-phase (expansion-phase-next-phase phase)))
-      (invoke-dependencies module-info-runtime-dependencies
+      (invoke-dependencies module-info-compiletime-dependencies
                            lm
                            (lambda (dependency)
                              (loaded-module-invoke/deps dependency
@@ -350,7 +350,7 @@
                                                         memo: invoke-memo))))
     
     ;; Visit the module's runtime dependencies
-    (invoke-dependencies module-info-compiletime-dependencies
+    (invoke-dependencies module-info-runtime-dependencies
                          lm
                          (lambda (dependency)
                            (loaded-module-visit/deps dependency
@@ -359,7 +359,7 @@
                                                      invoke-memo: invoke-memo)))
     
     ;; Visit the module
-    (pp (list 'visiting
+    #;(pp (list 'visiting TODO Remove this
               (loaded-module-reference lm)
               phase))
     (loaded-module-visit! lm phase))))
@@ -478,6 +478,13 @@
                                 ;; phase can be #f to apply to all phases
                                 (phase
                                  (*expansion-phase*)))
+  (define (macro+env-from-module-ref phase ref)
+    (let* ((mi (module-instance-ref phase ref))
+           (macros (and mi (module-instance-macros mi)))
+           (env (and mi (module-instance-macro-env mi))))
+      (values macros
+              env)))
+  
   (let ((phase-number (and phase (expansion-phase-number phase))))
     (for-each
         (lambda (def)
@@ -492,11 +499,10 @@
               ;; Macro
               (let ((fn (caddr def)))
                 (if (symbol? fn)
-                    (let* ((mac-module-ref (cadddr def))
-                           (mi (module-instance-ref phase mac-module-ref))
-                           (macros (and mi (module-instance-macros mi)))
-                           (env (and mi (module-instance-macro-env mi))))
-                      (if (not (and macros env))
+                    (let ((macros
+                           macros-env
+                           (macro+env-from-module-ref phase (cadddr def))))
+                      (if (not (and macros macros-env))
                           (error "Internal error"))
                       (environment-add-mac! env
                                             ;; The name it's imported as
@@ -504,21 +510,23 @@
                                             ;; The macro procedure
                                             (table-ref macros fn)
                                             ;; The macro's environment
-                                            env
+                                            macros-env
                                             phase-number: phase-number))
-                    (let* ((env-or-ref (cadddr def))
-                           (env (if (env? env)
-                                    env
-                                    (let ((mi (module-instance-ref phase env)))
-                                      (or (and mi (module-instance-macro-env mi))
-                                          (error "Internal error"))))))
+                    (let* ((env-or-ref
+                            (cadddr def))
+                           (macro-env
+                            (if (env? env)
+                                env
+                                (let ((mi (module-instance-ref phase env)))
+                                  (or (and mi (module-instance-macro-env mi))
+                                      (error "Internal error"))))))
                       (environment-add-mac! env
                                             ;; The name it's imported as
                                             (car def)
                                             ;; The macro procedure
                                             fn
                                             ;; The macro's environment
-                                            env
+                                            macro-env
                                             phase-number: phase-number))))))
       defs)))
 
