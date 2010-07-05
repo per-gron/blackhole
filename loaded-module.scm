@@ -207,25 +207,26 @@
                            result))
              
              (else
-              (let* ((ns (box #f))
-                     (env (make-environment parent-env ns)))
+              (let* ((env (make-environment parent-env)))
                 (table-set! memo-table
                             ls-env
                             env)
-                (set-box!
-                 ns
-                 (map (lambda (ls-def)
-                        (let ((mac-name (car ls-def))
-                              (unique-name (cadr ls-def))
-                              (macro-ls-env (caddr ls-def)))
-                          (list (cons 0 mac-name)
-                                'mac
-                                unique-name ;; TODO Is this right?
-                                (make-env-from-letsyntax-environment
-                                 env
-                                 macro-ls-env)
-                                unique-name)))
-                   ls-env))
+
+                (for-each
+                    (lambda (ls-def)
+                      (let ((mac-name (car ls-def))
+                            (unique-name (cadr ls-def))
+                            (macro-ls-env (caddr ls-def)))
+                        (ns-add! env
+                                 0
+                                 mac-name
+                                 (list 'mac
+                                       unique-name ;; TODO Is this right?
+                                       (make-env-from-letsyntax-environment
+                                        env
+                                        macro-ls-env)
+                                       unique-name))))
+                  ls-env)
                 
                 env))))))
       
@@ -532,7 +533,7 @@
 
 (define module-env-table
   (let* ((ns (make-table))
-         (env (make-environment #f ns)))
+         (env (make-environment #f ns: ns)))
     (module-add-defs-to-env module-exports-list
                             env
                             phase: #f)
@@ -564,7 +565,7 @@
 (define (make-top-environment module-reference)
   (let ((ns (cons (make-table)
                   builtin-ns)))
-    (make-environment module-reference ns)))
+    (make-environment module-reference ns: ns)))
 
 (define empty-environment
   (make-top-environment #f))

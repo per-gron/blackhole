@@ -106,7 +106,9 @@
 ;; The ns field is the field that contain the hygiene information. 
 ;;
 ;; The actual data structure looks like this. It is one of:
-;; * A box of an alist, where the cars are pairs of (phase . identifier).
+;; * A box of a functional tree structure as defined in tree.scm,
+;;   where the values are a list of ns-tree-entry objects. See
+;;   ns-tree-entry and ns<?.
 ;; * A table, where the keys are pairs of (phase . symbol).
 ;; * A pair of two datastructures of the this type. Lookups are done
 ;;   first in the car, and if nothing was found, search in the
@@ -117,10 +119,10 @@
 ;;
 ;; An important thing to note here is that tables, pairs and
 ;; procedures are used exclusively for top-level bindings. Only the
-;; boxed alists are used for lexical bindings. identifier=? and
+;; trees are used for lexical bindings. identifier=? and
 ;; environment-get relies on this to be able to do the right thing.
 ;;
-;; The values that the ns data structur contains are lists that can
+;; The values that the ns data structure contains are lists that can
 ;; either be ('mac [macro function] [macro environment] [unique macro
 ;; name]) or ('def [symbol to be expanded to])
 (define-type env
@@ -165,8 +167,17 @@
   (environment-module-reference (*top-environment*)))
 
 (define (make-environment parent
-                          #!optional
-                          (ns (box '()))
+                          #!key
+                          (ns (if (env? parent)
+                                  (let ((pns (env-ns parent)))
+                                    (if (let has-tree? ((ns pns))
+                                          (or (box? ns)
+                                              (and (pair? ns)
+                                                   (has-tree? (car ns)))))
+                                        pns
+                                        (cons (box empty-tree)
+                                              pns)))
+                                  (box empty-tree)))
                           (introduces-scope? #t))
   (let ((res (make-env (and (env? parent) parent)
                        (if (env? parent)
@@ -195,107 +206,150 @@
 
 (define environment-parent env-parent)
 
+;; Function for debugging purposes
+(define (environment-parents env)
+  (if (not (env? env))
+      '()
+      (cons `(serial-number->object
+              ,(object->serial-number env))
+            (environment-parents (env-parent env)))))
+
 (define environment-module-reference env-module-reference)
 
 (define (repl-environment? env)
   (not (environment-module-reference env)))
 
 (define (environment-ancestor-of? env descendant #!optional (distance 0))
-  ;; TODO Make this test constant-time (is that possible)
+  ;; TODO Make this test constant-time (is that possible/feasible?)
   (if (eq? env descendant)
       distance
       (let ((p (env-parent descendant)))
         (and (env? p)
              (environment-ancestor-of? env p (+ 1 distance))))))
 
+(define-type ns-tree-entry
+  constructor: make-ns-tree-entry/internal
+  phase-number
+  name
+  env
+  val)
+
+(define (make-ns-tree-entry phase-number name env val)
+  (if (syntactic-closure? name)
+      (make-ns-tree-entry/internal phase-number
+                                   (syntactic-closure-symbol name)
+                                   (env-scope-env
+                                    (syntactic-closure-env name))
+                                   val)
+      (make-ns-tree-entry/internal phase-number
+                                   name
+                                   env
+                                   val)))
+
+(define (ns<? a b)
+  (let* ((a-entry (car a))
+         (b-entry (car b))
+
+         (a-pn (ns-tree-entry-phase-number a-entry))
+         (b-pn (ns-tree-entry-phase-number b-entry))
+         
+         (extract-str
+          (lambda (entry)
+            (symbol->string
+             (ns-tree-entry-name entry)))))
+    (or (< a-pn b-pn)
+        (and (= a-pn b-pn)
+             (string<? (extract-str a-entry)
+                       (extract-str b-entry))))))
+
 ;; This is one of the really core functions of the hygiene system.
 ;;
 ;; It does a lookup in an orig-env for name. When looking up a
 ;; syntactic closure, sc-environment is the closure's environment.
-;;
-;; 
 (define (environment-get orig-env name
                          #!key
-                         sc-environment
+                         (sc-environment orig-env)
                          ignore-globals
                          (phase-number
                           (expansion-phase-number
                            (*expansion-phase*))))
-  (if (not sc-environment)
-      (set! sc-environment orig-env))
-  (let* ((gone-through-sc-env #f)
-         (best-def #f)
-         (best-distance #f)
-         (maybe-update-best-def
-          (lambda (distance def)
-            (and distance
-                 def
-                 (if (or (not best-distance)
-                         (< distance best-distance))
-                     (begin
-                       (set! best-def def)
-                       (set! best-distance distance)))))))
-    
-    (let env-get ((env orig-env))
-      (let ns-get ((ns (env-ns env)) (phase-number phase-number))
-        (cond
-         ((and (not gone-through-sc-env)
-               (eq? env sc-environment))
-          (set! gone-through-sc-env #t)
-          (env-get env))
-         
-         ((box? ns)
-          (let ((env-ancestor-of?-env-sc-env
-                 ;; Avoid caculating this many times
-                 (environment-ancestor-of? env sc-environment)))
-            (for-each
-             (lambda (def)
-               (let* ((phase/name-pair (car def))
-                      (p (car phase/name-pair))
-                      (n (cdr phase/name-pair)))
-                 (and (= p phase-number)
-                      (maybe-update-best-def
-                       (cond
-                        ((syntactic-closure? n)
-                         (and (eq? name
-                                   (syntactic-closure-symbol n))
-                              (environment-ancestor-of?
-                               (env-scope-env
-                                (syntactic-closure-env n))
-                               sc-environment)))
-                        
-                        (else
-                         (and (eq? name n)
-                              env-ancestor-of?-env-sc-env)))
-                       (cdr def)))))
-             (unbox ns)))
-          
-          (env-get (env-parent env)))
-         
-         ((pair? ns)
-          (or (ns-get (car ns) phase-number)
-              (ns-get (cdr ns) phase-number)))
-         
-         ((table? ns)
-          (if (not gone-through-sc-env)
-              (env-get sc-environment)
-              (and (not ignore-globals)
-                   (maybe-update-best-def
-                    (environment-ancestor-of? env sc-environment)
-                    (table-ref ns
-                               (cons phase-number name)
-                               #f)))))
-         
-         ((procedure? ns)
-          (if (not gone-through-sc-env)
-              (env-get sc-environment)
-              (call-with-values ns
-                (lambda (new-ns new-phase-number)
-                  (ns-get new-ns new-phase-number)))))
-         
-         (else
-          (error "Invalid ns" ns)))))
-    
+  (let*
+      ((sc-env-or-orig-env (or sc-environment orig-env))
+       (env-get
+        (lambda (env found only-trees)
+          (let ns-get ((ns (env-ns env))
+                       (phase-number phase-number))
+            (cond
+             ((box? ns)
+              (tree-search (unbox ns)
+                           (list (make-ns-tree-entry
+                                  phase-number
+                                  name
+                                  'phony-value
+                                  'phony-value))
+                           ns<?
+                           (lambda () #f) ;; Not found
+                           (lambda (result)
+                             (for-each
+                                 (lambda (ns-tree-entry)
+                                   (found (ns-tree-entry-env
+                                           ns-tree-entry)
+                                          (ns-tree-entry-val
+                                           ns-tree-entry)))
+                               result))))
+             
+             ((pair? ns)
+              (ns-get (car ns) phase-number)
+              (ns-get (cdr ns) phase-number))
+             
+             ((table? ns)
+              (if (and (not ignore-globals)
+                       ;; This is purely an optimization
+                       (not only-trees))
+                  (let ((seek
+                         (lambda (phase-num)
+                           (let ((res (table-ref
+                                       ns
+                                       (cons phase-num name)
+                                       #f)))
+                             (if res
+                                 (found (environment-find-top env) res))))))
+                    (seek phase-number)
+                    (seek #f))))
+
+             ((procedure? ns)
+              (if (not only-trees) ;; This is purely an optimization
+                  (call-with-values
+                      ns
+                    (lambda (new-ns new-phase-number)
+                      (ns-get new-ns new-phase-number)))))
+             
+             (else
+              (error "Invalid ns" ns))))))
+
+       (best-def #f)
+       (best-distance #f)
+       (maybe-update-best-def
+        (lambda (e def)
+          (let ((distance (environment-ancestor-of?
+                           e
+                           sc-env-or-orig-env)))
+            (if (and distance
+                     (or (not best-distance)
+                         (< distance best-distance)))
+                (begin
+                  (set! best-def def)
+                  (set! best-distance distance)))))))
+
+    (if (eq? orig-env sc-environment)
+        ;; This first clause is purely an optimization
+        (env-get orig-env maybe-update-best-def #f)
+        (begin
+          (env-get orig-env maybe-update-best-def #t)
+          (env-get sc-environment
+                   maybe-update-best-def
+                   #f)))
+
     best-def))
 
 (define scope-level (make-parameter 0))
@@ -326,28 +380,43 @@
         (env-ns-string-set! env ns-string)
         ns-string)))
 
-(define (ns-add! ns phase-number name val)
-  (cond
-   ((table? ns)
-    (table-set! ns
-                (cons phase-number name)
-                val))
+(define (ns-add! env phase-number name val)
+  (let loop ((ns (env-ns env)))
+    (cond
+     ((table? ns)
+      (table-set! ns
+                  (cons phase-number name)
+                  val))
 
-   ((box? ns)
-    (set-box! ns
-              (cons (cons (cons phase-number
-                                name)
-                          val)
-                    (unbox ns))))
+     ((box? ns)
+      (set-box!
+       ns
+       (let ((tree (unbox ns))
+             (tree-entry
+              (make-ns-tree-entry phase-number
+                                  name
+                                  env
+                                  val)))
+         (tree-add tree
+                   `(,tree-entry
+                     .
+                     ,(tree-search tree
+                                   `(,tree-entry)
+                                   ns<?
+                                   ;; Fail
+                                   (lambda () '())
+                                   ;; Found
+                                   (lambda (value) value)))
+                   ns<?))))
 
-   ((pair? ns)
-    (ns-add! (car ns) phase-number name val))
+     ((pair? ns)
+      (loop (car ns)))
 
-   ((procedure? ns)
-    (error "Cannot modify procedure ns" ns))
+     ((procedure? ns)
+      (error "Cannot modify procedure ns" ns))
 
-   (else
-    (error "Invalid ns" ns))))
+     (else
+      (error "Invalid ns" ns)))))
 
 
 
@@ -360,7 +429,7 @@
                               (phase-number
                                (expansion-phase-number
                                 (*expansion-phase*))))
-  (ns-add! (env-ns env)
+  (ns-add! env
            phase-number
            exported-name
            (list 'def
@@ -374,7 +443,7 @@
   (if (not (and (env? m-env)
                 (procedure? fun)))
       (error "Invalid parameters"))
-  (ns-add! (env-ns env)
+  (ns-add! env
            phase-number
            exported-name
            (list 'mac fun m-env)))
@@ -386,6 +455,11 @@
   
   (env read-only:)
   (symbol read-only:))
+
+(define (synclosure-or-symbol-symbol sc)
+  (if (symbol? sc)
+      sc
+      (syntactic-closure-symbol sc)))
 
 (define (make-syntactic-closure env ids form)
   (cond
@@ -415,9 +489,9 @@
      (else
       (make-syntactic-capture
        (lambda (inner-env)
-         (let ((created-env (make-environment env (box '()) #f)))
+         (let ((created-env (make-environment env introduces-scope?: #f)))
            (for-each (lambda (symbol)
-                       (ns-add! (env-ns created-env)
+                       (ns-add! created-env
                                 (expansion-phase-number
                                  (*expansion-phase*))
                                 symbol
@@ -499,23 +573,27 @@
           (if mutate
               env
               (make-environment env
-                                (box '())
-                                introduces-scope?)))
+                                introduces-scope?: introduces-scope?)))
          (box (env-ns new-env)))
     
-    (if (not (box? box))
-        (error "Environment must not be top-level" new-env))
-    
-    (let ((defined-names
-            (map (lambda (n)
-                   (list->val n new-env))
-                 names)))
-      (set-box!
-       box
-       (append defined-names
-               (unbox box)))
-      
-      (values new-env defined-names))))
+    (values
+     new-env
+     (map
+         (lambda (n)
+           (let ((phase-number
+                  name
+                  def
+                  (list->val n new-env)))
+             ;; Mutate the environment
+             (ns-add! new-env
+                      phase-number
+                      name
+                      def)
+             ;; Return a value, to let map accumulate this
+             ;; environment-add-to-ns's return value
+             (cons (cons phase-number name)
+                   def)))
+       names))))
 
 ;; Names is a list of identifiers or pairs, where the car is the
 ;; identifier and the cdr is its namespace.
@@ -527,23 +605,27 @@
      names
      (lambda (n new-env)
        (if (pair? n)
-           (list (cons phase-number (car n))
-                 'def
-                 (gen-symbol (cdr n)
-                             (let ((sc (car n)))
-                               (if (syntactic-closure? sc)
-                                   (syntactic-closure-symbol sc)
-                                   sc)))
-                 (environment-module-reference new-env))
+           (values phase-number
+                   (car n)
+                   (list
+                    'def
+                    (gen-symbol (cdr n)
+                                (let ((sc (car n)))
+                                  (if (syntactic-closure? sc)
+                                      (syntactic-closure-symbol sc)
+                                      sc)))
+                    (environment-module-reference new-env)))
            (begin
              (scope-level (+ 1 (scope-level)))
-             (list (cons phase-number n)
-                   'def
-                   (gen-symbol (generate-namespace)
-                               (if (syntactic-closure? n)
-                                   (syntactic-closure-symbol n)
-                                   n))
-                   (environment-module-reference new-env)))))
+             (values phase-number
+                     n
+                     (list
+                      'def
+                      (gen-symbol (generate-namespace)
+                                  (if (syntactic-closure? n)
+                                      (syntactic-closure-symbol n)
+                                      n))
+                      (environment-module-reference new-env))))))
      mutate: mutate)))
 
 
@@ -556,7 +638,7 @@
                                  (number->string
                                   counter)
                                  "-")
-                  macro-name))))
+                  (synclosure-or-symbol-symbol macro-name)))))
 
 ;; Macs is a list of lists where car is name, cadr is the sexp
 ;; of the macro transformer
@@ -593,13 +675,14 @@
                      (cons (cons unique-macro-name
                                  macro-code)
                            code/name-pairs))
-               (list (cons phase-number
-                           macro-name)
-                     'mac
-                     (eval-no-hook ((*external-reference-cleanup-hook*)
-                                    macro-code))
-                     mac-env
-                     unique-macro-name)))
+               (values phase-number
+                       macro-name
+                       (list
+                        'mac
+                        (eval-no-hook ((*external-reference-cleanup-hook*)
+                                       macro-code))
+                        mac-env
+                        unique-macro-name))))
            mutate: mutate
            introduces-scope?: #f))
       (lambda (env _)
@@ -879,7 +962,9 @@
        ,@(map (lambda (name/code-pair)
                 `(define ,(car name/code-pair)
                    ,(cdr name/code-pair)))
-           name/code-pairs)
+           (if (top-level)
+               name/code-pairs
+               '()))
        ,@(map (lambda (x)
                 (expand-macro x inner-env))
            body))))
@@ -1066,7 +1151,8 @@
               (lambda (val)
                 (if (eq? 'def (car val))
                     (parameterize
-                     ((inside-letrec #f))
+                     ((inside-letrec #f)
+                      (top-level #f))
                      (cons (expr*:value-set (car code)
                                             (cadr val))
                            (dotted-map (lambda (x)
@@ -1291,7 +1377,7 @@
                                name))
                        macs macro-names)))))
        (set! ,name
-             (make-environment #f -ns-))))))
+             (make-environment #f ns: -ns-))))))
 
 (define-env inside-letrec-environment
   "module#inside-letrec-env-"
