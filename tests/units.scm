@@ -907,7 +907,7 @@
 (begin
   (expand-macro
    `(define-syntax
-      ,(make-syntactic-closure (module#top-environment)
+      ,(make-syntactic-closure (module#*top-environment*)
                                '()
                                'xx)
       (syntax-rules ()
@@ -935,7 +935,7 @@
  (expand-macro
   `(let ((xx (lambda () #t)))
      (let-syntax
-         ((,(make-syntactic-closure (module#top-environment)
+         ((,(make-syntactic-closure (module#*top-environment*)
                                     '()
                                     'xx)
            (syntax-rules ()
