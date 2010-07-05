@@ -200,7 +200,7 @@
                  (environment-module-reference env))
              (error "Incorrectly placed module form"))
          (module-module name))
-       (cdr (expr*:strip-locationinfoit code)))))
+       (cdr (expr*:strip-locationinfo code)))))
 
    (quote
     (lambda (code env mac-env)
