@@ -723,10 +723,10 @@
                              <?))))))
 
 (define (tree-rank tree elm <?
-                          #!key
-                          (found
-                           (lambda ()
-                             (error "Tree doesn't contain" elm))))
+                   #!key
+                   (fail
+                    (lambda ()
+                      (error "Tree doesn't contain" elm))))
   (check-tree tree)
 
   (let loop ((tree tree) (accum 0))
