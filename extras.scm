@@ -16,14 +16,15 @@
 (define (module-compile! mod
                          #!key
                          continue-on-error
-                         to-c)
+                         to-c
+                         (port (current-output-port)))
   (let ((mod (resolve-one-module mod)))
     (with-exception-catcher
      (lambda (e)
        (if continue-on-error
            (begin
-             (display "Warning: Compilation failed: ")
-             (display-exception e)
+             (display "Warning: Compilation failed: " port)
+             (display-exception e port)
              #f)
            (raise e)))
      (lambda ()
@@ -45,7 +46,8 @@
                         cc-options: (module-info-cc-options info)
                         ld-options-prelude: (module-info-ld-options-prelude
                                              info)
-                        ld-options: (module-info-ld-options info))))
+                        ld-options: (module-info-ld-options info)
+                        port: port)))
            (if (not result)
                (error "Compilation failed"))))))))
 
@@ -85,7 +87,9 @@
        (display ")\n" port)
        ;; The module might have been compiled by load-once earlier.
        (if (module-needs-compile? mod)
-           (module-compile! mod continue-on-error: continue-on-error))
+           (module-compile! mod
+                            continue-on-error: continue-on-error
+                            port: (open-u8vector)))
        (set! file-number (+ file-number 1)))
      mods-sorted)))
 
