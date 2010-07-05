@@ -13,6 +13,7 @@
                                         ;; source objects
 (##include "syntactic-tower.scm")       ;; Syntactic tower data structure
 (##include "hygiene.scm")               ;; The hygiene system implementation
+(##include "core-forms.scm")            ;; Core forms
 (##include "syntax-rules.scm")          ;; The syntax-rules implementation
 (##include "resolvers.scm")             ;; Module, import and export resolvers
 (##include "namespace.scm")             ;; Namespace choice functionality
