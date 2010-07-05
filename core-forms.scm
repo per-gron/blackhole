@@ -119,8 +119,8 @@
 (make-macroexpansion-vars (import
                            (lambda (pkgs env phase)
                              (void)))
-                          (import-for-syntax
-                           (lambda (pkgs env phase)
+                          (syntax-begin
+                           (lambda (phase code)
                              (void)))
                           (export
                            (lambda (exports) (void)))
@@ -152,18 +152,34 @@
         (module-import pkgs env phase)
         ((*module-macroexpansion-import*) pkgs env phase))))
 
-   (import-for-syntax
-    (lambda (source env mac-env)
+   (syntax-begin
+    (lambda (code env mac-env)
       (if (not (environment-top? env))
-          (error "Incorrectly placed import-for-syntax form"
-                 (expr*:strip-locationinfo source)))
-
-      (let ((pkgs (extract-synclosure-crawler
-                   (cdr (expr*:strip-locationinfo source))))
-            (phase (expansion-phase-next-phase
-                    (*expansion-phase*))))
-        (module-import pkgs env phase)
-        ((*module-macroexpansion-import-for-syntax*) pkgs env phase))))
+          (error "Incorrectly placed syntax-begin form"
+                 (expr*:strip-locationinfo code)))
+      (let* ((next-phase
+              (expansion-phase-next-phase
+               (*expansion-phase*)))
+             (expansion
+              (parameterize
+                  ((*expansion-phase* next-phase)
+                   ;; Inside-letrec must be set to #f, otherwise
+                   ;; strange errors will occur when the continuation
+                   ;; that is within that closure gets invoked at the
+                   ;; wrong time.
+                   (inside-letrec #f))
+                (expand-macro
+                 (expr*:value-set
+                  code
+                  `(begin ,@(cdr (expr*:value code))))
+                 env))))
+        ((*module-macroexpansion-syntax-begin*)
+         next-phase
+         expansion)
+        (parameterize
+            ((*expansion-phase* next-phase))
+          (eval-no-hook ((*external-reference-cleanup-hook*)
+                         expansion))))))
 
    (export
     (lambda (code env mac-env)
@@ -184,7 +200,7 @@
                  (environment-module-reference env))
              (error "Incorrectly placed module form"))
          (module-module name))
-       (cdr (expr*:strip-locationinfo code)))))
+       (cdr (expr*:strip-locationinfoit code)))))
 
    (quote
     (lambda (code env mac-env)

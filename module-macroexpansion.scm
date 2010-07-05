@@ -230,6 +230,7 @@
                  (else (error "Unbound variable" ,name-sym))))))))))
 
 (define (generate-visit-code module-reference
+                             syntax-begin-code
                              macros
                              dependencies)
   (let ((ref->ct-sym-table (make-table)))
@@ -242,15 +243,18 @@
                                                  module-reference)
                                                 ref->ct-sym-table))
                    dependencies)))
-         (list
-          ,@(map
-                (lambda (name/sexp-pair)
-                  `(cons
-                    ',(car name/sexp-pair)
-                    ,(clone-sexp/sym-table
-                      (cdr name/sexp-pair)
-                      ref->ct-sym-table)))
-              macros))))))
+         ,(transform-to-let
+           (clone-sexp/sym-table syntax-begin-code
+                                 ref->ct-sym-table)
+           `(list
+             ,@(map
+                   (lambda (name/sexp-pair)
+                     `(cons
+                       ',(car name/sexp-pair)
+                       ,(clone-sexp/sym-table
+                         (cdr name/sexp-pair)
+                         ref->ct-sym-table)))
+                 macros)))))))
 
 (define (calculate-letsyntax-environment memo-table env)
   (define (memoize-function-with-one-parameter fn)
@@ -297,6 +301,7 @@
         (macros '())
         (imports '())
         (imports-for-syntax '())
+        (syntax-begin-code '())
         (exports #f)
         (options- '())
         (cc-options- "")
@@ -309,14 +314,20 @@
     (parameterize
         ((*module-macroexpansion-import*
           (lambda (pkgs env phase)
-            (push! imports
-                   pkgs)
+            (let ((phase-number (expansion-phase-number phase)))
+              (cond
+               ((zero? phase-number)
+                (push! imports
+                       pkgs))
+               ((= 1 phase-number)
+                (push! imports-for-syntax
+                       pkgs))))
             (void)))
          
-         (*module-macroexpansion-import-for-syntax*
-          (lambda (pkgs env phase)
-            (push! imports-for-syntax
-                   pkgs)
+         (*module-macroexpansion-syntax-begin*
+          (lambda (phase code)
+            (if (= 1 (expansion-phase-number phase))
+                (push! syntax-begin-code code))
             (void)))
          
          (*module-macroexpansion-export*
@@ -426,6 +437,8 @@
                                              definitions
                                              import-module-refs)
                   (generate-visit-code module-reference
+                                       `(begin
+                                          ,@(reverse syntax-begin-code))
                                        macros
                                        import-for-syntax-module-refs)
                   (let* ((info
