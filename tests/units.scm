@@ -406,25 +406,19 @@
                    (haha var)))))
     (test 4)))
 
-(equal? '(begin (begin (+ 1 2) (+ 3 4)))
-        (expand-macro
-         '(let-syntax ((test
-                        (syntax-rules ()
-                          ((test (a b) ...)
-                           (begin (+ a b) ...)))))
-            (test (1 2) (3 4)))))
+(equal? '(3 7)
+        (let-syntax ((test
+                      (syntax-rules ()
+                        ((test (a b) ...)
+                         (list (+ a b) ...)))))
+          (test (1 2) (3 4))))
 
-(equal? '(begin (1 2) (1 3) (1 4) (1 5))
-        (reverse
-         (cdr
-          (reverse
-           (cadr
-            (expand-macro
-             '(let-syntax ((test
-                            (syntax-rules ()
-                              ((test var hej ...)
-                               (begin (var hej) ... end)))))
-                (test 1 2 3 4 5))))))))
+(equal? '(3 4 5 6 end)
+        (let-syntax ((test
+                      (syntax-rules ()
+                        ((test var hej ...)
+                         (list (+ var hej) ... 'end)))))
+          (test 1 2 3 4 5)))
 
 ;; Test that syntax-rules ... rules can take empty parameters
 (let-syntax ((test
@@ -441,46 +435,41 @@
                          'b))))
           (test (hej alla idioter) 44)))
 
-(equal? '(begin (begin (+ 1 3) (+ 2 4)))
-        (expand-macro
-         '(let-syntax ((test
-                        (syntax-rules ()
-                          ((test (a ...) (b ...))
-                           (begin (+ a b) ...)))))
-            (test (1 2) (3 4)))))
+(equal? '(4 6)
+        (let-syntax ((test
+                      (syntax-rules ()
+                        ((test (a ...) (b ...))
+                         (list (+ a b) ...)))))
+          (test (1 2) (3 4))))
 
 ;; This really should give an error. At least it doesn't crash.
-(equal? '(begin (begin (+ 1 3) (+ 2 4)))
-        (expand-macro
-         '(let-syntax ((test
-                        (syntax-rules ()
-                          ((test (a ...) (b ...))
-                           (begin (+ a b) ...)))))
-            (test (1 2) (3 4 5)))))
+(equal? '(4 6)
+        (let-syntax ((test
+                      (syntax-rules ()
+                        ((test (a ...) (b ...))
+                         (list (+ a b) ...)))))
+          (test (1 2) (3 4 5))))
 
-(equal? '(begin (+ 1 2 3 4 5))
-        (expand-macro
-         '(let-syntax ((test
-                        (syntax-rules ()
-                          ((test (a ...) (b ...))
-                           (+ a ... b ...)))))
-            (test (1 2) (3 4 5)))))
+(equal? '(1 2 3 4 5)
+        (let-syntax ((test
+                      (syntax-rules ()
+                        ((test (a ...) (b ...))
+                         (list a ... b ...)))))
+          (test (1 2) (3 4 5))))
 
-(equal? '(begin '((a) (b c d)))
-        (expand-macro
-         '(let-syntax ((test
-                        (syntax-rules ()
-                          ((test (a ...) ...)
-                           '((a ...) ...)))))
-            (test (a) (b c d)))))
+(equal? '((a) (b c d))
+        (let-syntax ((test
+                      (syntax-rules ()
+                        ((test (a ...) ...)
+                         '((a ...) ...)))))
+          (test (a) (b c d))))
 
-(equal? '(begin '((2 3) (5)))
-        (expand-macro
-         '(let-syntax ((test
-                        (syntax-rules ()
-                          ((test (_ val ...) ...)
-                           '((val ...) ...)))))
-            (test (1 2 3) (4 5)))))
+(equal? '((2 3) (5))
+        (let-syntax ((test
+                      (syntax-rules ()
+                        ((test (_ val ...) ...)
+                         '((val ...) ...)))))
+          (test (1 2 3) (4 5))))
 
 ;; Test letrec-syntax
 (eq? 'YaY
