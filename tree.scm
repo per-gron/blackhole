@@ -59,7 +59,10 @@
           tree-intersection
           
           tree-rank
-          tree-index))
+          tree-index
+
+          list->tree
+          tree->list))
  
  (else
   #f))
@@ -79,10 +82,10 @@
 (define-type tree
   constructor: make-tree/internal
   predicate: tree/internal?
-  (element read-only:)
+  (element read-only: unprintable:)
   (count read-only: unprintable:)
-  (left-subtree read-only:)
-  (right-subtree read-only:))
+  (left-subtree read-only: unprintable:)
+  (right-subtree read-only: unprintable:))
 
 (define (tree? x)
   (or (eq? x empty-tree)
@@ -770,6 +773,18 @@
                   (- idx left-size 1)))
            (else
             (%%tree-element tree)))))))
+
+(define (list->tree list <?)
+  (let loop ((list list) (accum empty-tree))
+    (if (null? list)
+        accum
+        (loop (cdr list)
+              (tree-add accum
+                        (car list)
+                        <?)))))
+
+(define (tree->list tree)
+  (tree-fold cons '() tree))
 
 
 
