@@ -220,8 +220,9 @@
                         #!key
                         output
                         (cc-options "")
+                        shared
                         verbose)
-  (if (not (and (or (not output)
+    (if (not (and (or (not output)
                     (string? output))
                 (string? cc-options)))
       (error "Invalid parameters"))
@@ -237,7 +238,9 @@
               (path-directory output)
               (list c-filename)
               output
-              cc-options
+              (if shared
+                  (string-append "-D___DYNAMIC " cc-options)
+                  cc-options)
               "" ;; ld-options-prelude
               "" ;; ld-options
               verbose))
@@ -340,12 +343,13 @@
                    (display "." port)
                    (compile-c-to-o fn
                                    verbose: verbose
-                                   cc-options: cc-options)
+                                   cc-options: cc-options
+                                   shared: (not (eq? mode 'exe)))
                    (display "." port))))
             (let ((runtime-code
                    compiletime-code
-                   info-code
                    visit-code
+                   info-code
                    (module-macroexpand mod (file-read-as-expr file))))
               (compile-sexp-to-o runtime-code
                                  (string-append c-file "-rt.c"))
@@ -388,7 +392,8 @@
          (display "Compiling link file..\n" port)
          (compile-c-to-o link-c-file
                          verbose: verbose
-                         cc-options: cc-options)
+                         cc-options: cc-options
+                         shared: (not (eq? mode 'exe)))
          
          (display "Linking files..\n" port)
          (link-files
