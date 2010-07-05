@@ -347,17 +347,19 @@
             (cdr (expand-syncapture code env))))))
 
    (define-macro
-     (lambda (code env mac-env)
-       ;; TODO This doesn't generate source code locations correctly
-       (let ((code (expr*:strip-locationinfo code)))
-         (let* ((src (transform-to-lambda (cdr code))))
+     (lambda (source env mac-env)
+       (let ((code (expr*:value source)))
+         (let* ((src (expr*:value
+                      (expr*:transform-to-lambda (cdr code)))))
            (expand-macro
-            `(,(make-syntactic-closure
-                empty-environment
-                '()
-                'define-syntax)
-              ,(car src)
-              (module#nh-macro-transformer ,(cadr src)))
+            (expr*:value-set
+             source
+             `(,(make-syntactic-closure
+                 empty-environment
+                 '()
+                 'define-syntax)
+               ,(car src)
+               (module#nh-macro-transformer ,(cadr src))))
             env)))))
 
    (declare
