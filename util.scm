@@ -196,6 +196,8 @@
 ;; Takes an expression of the form ((mname . arglist) . funbody)
 ;; and transforms it into (mname (lambda arglist funbody))
 ;; (it does nothing if the input is already in the latter form)
+;;
+;; TODO This is obsoleted by expr*:transform-to-lambda.
 (define (transform-to-lambda expr #!optional (lmb 'lambda))
   (if (pair? (car expr))
       `(,(caar expr)

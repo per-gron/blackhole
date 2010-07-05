@@ -51,15 +51,17 @@
 ;; ---------- Add the hooks =) ----------
 
 (define (apply-hooks!)
-  (set! ##expand-source
-        (lambda (src)
-          (let ((ret (expr:deep-fixup
-                      (suspend-ns-table-changes
-                       (lambda ()
-                         (expand-macro src))))))
-            ;; Useful when debugging
-            ;; (pp (expr*:strip-locationinfo ret))
-            ret)))
+  (let ((hook
+         (lambda (src)
+           (let ((ret (expr:deep-fixup
+                       (suspend-ns-table-changes
+                        (lambda ()
+                          (expand-macro src))))))
+             ;; Useful when debugging
+             ;; (pp (expr*:strip-locationinfo ret))
+             ret))))
+    (set! ##expand-source hook)
+    (set! c#expand-source hook))
 
   (##vector-set!
    (##thread-repl-channel-get! (current-thread))
@@ -77,5 +79,46 @@
                 (if (##fixnum.< 0 level)
                     (print "/")))))))
      (##repl-channel-ports-read-command channel level depth))))
+
+(define (start-repl! #!key suppress-message)
+  (apply-hooks!)
+  (if (not suppress-message)
+      (println "Gambit-C with Black Hole"))
+  (##repl))
+
+
+
+
+(define (module-files-args)
+  (if (null? (cdr (command-line)))
+      '()
+      (cddr (command-line))))
+
+(define (module-file-arg)
+  (car (module-files-args)))
+
+(define (read-string str)
+  (with-input-from-string str
+    (lambda ()
+      (read))))
+
+(define (module-reference-prettyprint ref)
+  (println (module-reference-path ref)))
+
+#;(let ((command
+       (if (null? (cdr (command-line)))
+           'repl
+           (string->symbol (cadr (command-line))))))
+  (case command
+    ((repl)
+     (start-repl!))
+    ((dependencies)
+     (for-each (lambda (module)
+                 (for-each module-reference-prettyprint
+                   (module-deps module)))
+       (resolve-modules
+        (map read-string (module-files-args)))))
+    (else
+     (error "Unknown command"))))
 
 (apply-hooks!)

@@ -89,6 +89,11 @@
        (set! file-number (+ file-number 1)))
      mods-sorted)))
 
+(define (module-clean! mod)
+  (let* ((mod (resolve-one-module mod))
+         (fn (module-reference-path mod)))
+    (and fn (clean-file (module-reference-path mod)))))
+
 (define (modules-clean! mods)
   (for-each module-clean! mods))
 
@@ -130,7 +135,7 @@
               (let loop ((mod mod))
                 (let ((uses (module-info-dependencies
                              (loaded-module-info
-                              (module-reference-ref x)))))
+                              (module-reference-ref mod)))))
                   (cons uses
                         (map loop uses)))))))
         ;; Sort the modules in the order of which they depend on
