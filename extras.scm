@@ -13,8 +13,6 @@
           (not (file-newer? of path))
           'not-compiled))))
 
-;; TODO This doesn't work atm
-;; This should be implemented in terms of module-compile-bunch
 (define (module-compile! mod
                          #!key
                          continue-on-error
@@ -29,7 +27,8 @@
              #f)
            (raise e)))
      (lambda ()
-       (let ((info (module-info mod))
+       (let ((info (loaded-module-info
+                    (module-reference-ref mod)))
              (path (module-reference-path mod)))
          (let ((result (module-compile-bunch
                         'dyn
@@ -37,8 +36,10 @@
                          (path-strip-extension path)
                          ".o"
                          (number->string
-                          (+ 1 (object-file-extract-number
-                                (last-object-file path)))))
+                          (+ 1 (let ((lo (last-object-file path)))
+                                 (if lo
+                                     (object-file-extract-number lo)
+                                     0)))))
                         (list path)
                         options: (module-info-options info)
                         cc-options: (module-info-cc-options info)

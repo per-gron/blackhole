@@ -516,9 +516,9 @@
                     (let* ((env-or-ref
                             (cadddr def))
                            (macro-env
-                            (if (env? env)
-                                env
-                                (let ((mi (module-instance-ref phase env)))
+                            (if (env? env-or-ref)
+                                env-or-ref
+                                (let ((mi (module-instance-ref phase env-or-ref)))
                                   (or (and mi (module-instance-macro-env mi))
                                       (error "Internal error"))))))
                       (environment-add-mac! env
