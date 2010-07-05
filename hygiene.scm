@@ -159,12 +159,28 @@
   ;;
   ;; It is not read-only, but that's only to be able to implement the
   ;; circular pointer.
-  (scope-env unprintable:))
+  (scope-env unprintable:)
+
+  ;; An integer that uniquely identifies this environment object
+  (unique-id unprintable: read-only:)
+  ;; A tree with the ancestors. This is used to be able to implement
+  ;; environment-ancestor-of? in log time instead of linear. That
+  ;; makes it possible to implement environment-get in n*log(n) time
+  ;; wrt the environment nesting depth, instead of n^2.
+  (ancestors unprintable: read-only:)
+  ;; For top level environments, this is 0. Otherwise it is (+ 1
+  ;; (env-nesting-depth (env-parent env)))
+  (nesting-depth unprintable: read-only:))
 
 (define *top-environment* (make-parameter #f))
 
 (define (current-module-reference)
   (environment-module-reference (*top-environment*)))
+
+(define *environment-counter* 0)
+
+(define (environment<? a b)
+  (< (env-unique-id a) (env-unique-id b)))
 
 (define (make-environment parent
                           #!key
@@ -186,7 +202,19 @@
                        (and (env? parent)
                             (env-ns-string parent))
                        ns
-                       #f)))
+                       #f
+                       (begin
+                         (set! *environment-counter*
+                               (+ 1 *environment-counter*))
+                         *environment-counter*)
+                       (if (env? parent)
+                           (tree-add (env-ancestors parent)
+                                     parent
+                                     environment<?)
+                           empty-tree)
+                       (if (env? parent)
+                           (+ 1 (env-nesting-depth parent))
+                           0))))
     (env-scope-env-set! res
                         (if introduces-scope?
                             res
@@ -220,8 +248,14 @@
   (not (environment-module-reference env)))
 
 (define (environment-ancestor-of? env descendant #!optional (distance 0))
-  ;; TODO Make this test constant-time (is that possible/feasible?)
-  (if (eq? env descendant)
+  (and (or (eq? env descendant)
+           (tree-member? (env-ancestors descendant)
+                         env
+                         environment<?))
+       (- (env-nesting-depth descendant)
+          (env-nesting-depth env)))
+
+  #;(if (eq? env descendant)
       distance
       (let ((p (env-parent descendant)))
         (and (env? p)
@@ -331,9 +365,8 @@
        (best-distance #f)
        (maybe-update-best-def
         (lambda (e def)
-          (let ((distance (environment-ancestor-of?
-                           e
-                           sc-env-or-orig-env)))
+          (let ((distance
+                 (environment-ancestor-of? e sc-env-or-orig-env)))
             (if (and distance
                      (or (not best-distance)
                          (< distance best-distance)))
