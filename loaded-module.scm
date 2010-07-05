@@ -459,7 +459,10 @@
                      (set! repl-environment (*top-environment*)))
                  
                  (*top-environment* (make-top-environment module-reference))
-                 (loaded-modules-invoke/deps (list loaded-module))
+                 (loaded-modules-invoke/deps
+                  (list loaded-module)
+                  (syntactic-tower-first-phase
+                   *repl-syntactic-tower*))
                  
                  (module-add-defs-to-env (module-info-imports info)
                                          (*top-environment*))))))

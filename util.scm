@@ -316,14 +316,19 @@
   (build clauses))
 
 (define (eval-no-hook expr)
-  (let ((hook ##expand-source))
+  (let ((hook ##expand-source)
+        (c-hook c#expand-source)
+
+        (id (lambda (x) x)))
     (dynamic-wind
         (lambda ()
-          (set! ##expand-source (lambda (src) src)))
+          (set! ##expand-source id)
+          (set! c#expand-source id))
         (lambda ()
           (eval expr))
         (lambda ()
-          (set! ##expand-source hook)))))
+          (set! ##expand-source hook)
+          (set! c#expand-source c-hook)))))
 
 ;; Beware of n^2 algorithms
 (define (remove-duplicates list #!optional (predicate eq?))

@@ -177,12 +177,14 @@
       (void)))
    
    (module
-    (nh-macro-transformer
-     (lambda (#!optional name)
-       (if (or (not (environment-top? env))
-               (environment-module-reference env))
-           (error "Incorrectly placed module form"))
-       (module-module name))))
+    (lambda (code env mac-env)
+      (apply
+       (lambda (#!optional name)
+         (if (or (not (environment-top? env))
+                 (environment-module-reference env))
+             (error "Incorrectly placed module form"))
+         (module-module name))
+       (cdr (expr*:strip-locationinfo code)))))
 
    (quote
     (lambda (code env mac-env)

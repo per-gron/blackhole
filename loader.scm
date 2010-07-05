@@ -256,10 +256,7 @@
        "module#"
 
        exports:
-       module-exports-list
-
-       environment:
-       (make-top-environment #f))
+       module-exports-list)
 
       reference:
       (make-module-reference module-module-loader #f)))

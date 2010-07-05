@@ -40,6 +40,10 @@
                     ((c-declare)
                      ;; TODO
                      (error "c-declare is not implemented"))
+
+                    ((##define-macro
+                      ##define-syntax)
+                     (error "##define-macro and ##define-syntax are not allowed" code))
                     
                     ((cond-expand
                       let-syntax
@@ -49,15 +53,16 @@
                       define-macro
                       define-syntax)
                      ;; This shouldn't happen
-                     (error "Internal error in transform-to-let"))
+                     (error "Internal error in transform-to-let (1)" code))
                     
-                    ((declare)
+                    ((declare
+                      ##declare)
                      source)
                     
                     ((##define define)
                      (if (not (and (pair? (cdr code))
                                    (symbol? (expr*:value (cadr code)))))
-                         (error "Internal error in transform-to-let"))
+                         (error "Internal error in transform-to-let (2)" code))
                      (set! names (cons (expr*:value (cadr code)) names))
                      (expr*:value-set source
                                       (cons 'set!
@@ -305,12 +310,14 @@
         ((*module-macroexpansion-import*
           (lambda (pkgs env phase)
             (push! imports
-                   pkgs)))
+                   pkgs)
+            (void)))
          
          (*module-macroexpansion-import-for-syntax*
           (lambda (pkgs env phase)
             (push! imports-for-syntax
-                   pkgs)))
+                   pkgs)
+            (void)))
          
          (*module-macroexpansion-export*
           (lambda (e)
