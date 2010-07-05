@@ -161,7 +161,9 @@
   ;; circular pointer.
   (scope-env unprintable:)
 
-  ;; An integer that uniquely identifies this environment object
+  ;; An integer that uniquely identifies this environment object. It
+  ;; makes it possible to implement environment<?, which is required
+  ;; for the ancestors tree to work.
   (unique-id unprintable: read-only:)
   ;; A tree with the ancestors. This is used to be able to implement
   ;; environment-ancestor-of? in log time instead of linear. That
@@ -170,7 +172,12 @@
   (ancestors unprintable: read-only:)
   ;; For top level environments, this is 0. Otherwise it is (+ 1
   ;; (env-nesting-depth (env-parent env)))
-  (nesting-depth unprintable: read-only:))
+  (nesting-depth unprintable: read-only:)
+  ;; environment-get needs to be able to access the top environment
+  ;; real fast, faster than linear wrt environment nesting depth. So
+  ;; we store a direct pointer here. It is not read-only because it
+  ;; might be a self-reference.
+  (top-env unprintable: init: #f))
 
 (define *top-environment* (make-parameter #f))
 
@@ -215,17 +222,15 @@
                        (if (env? parent)
                            (+ 1 (env-nesting-depth parent))
                            0))))
+    (env-top-env-set! res
+                      (if (env? parent)
+                          (env-top-env parent)
+                          res))
     (env-scope-env-set! res
                         (if introduces-scope?
                             res
                             (env-scope-env parent)))
     res))
-
-(define (environment-find-top env)
-  (let ((parent (env-parent env)))
-    (if (environment? parent)
-        (environment-find-top parent)
-        env)))
 
 (define (environment-top? env)
   (not (env? (env-parent env))))
@@ -234,7 +239,7 @@
 
 (define environment-parent env-parent)
 
-;; Function for debugging purposes
+;; Utility function for inspecting environments when debugging
 (define (environment-parents env)
   (if (not (env? env))
       '()
@@ -253,13 +258,7 @@
                          env
                          environment<?))
        (- (env-nesting-depth descendant)
-          (env-nesting-depth env)))
-
-  #;(if (eq? env descendant)
-      distance
-      (let ((p (env-parent descendant)))
-        (and (env? p)
-             (environment-ancestor-of? env p (+ 1 distance))))))
+          (env-nesting-depth env))))
 
 (define-type ns-tree-entry
   constructor: make-ns-tree-entry/internal
@@ -347,7 +346,7 @@
                                        (cons phase-num name)
                                        #f)))
                              (if res
-                                 (found (environment-find-top env) res))))))
+                                 (found (env-top-env env) res))))))
                     (seek phase-number)
                     (seek #f))))
 
