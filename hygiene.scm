@@ -164,6 +164,11 @@
   ;; An integer that uniquely identifies this environment object. It
   ;; makes it possible to implement environment<?, which is required
   ;; for the ancestors tree to work.
+  ;;
+  ;; Note that because this number always increases, the ancestors
+  ;; tree will be sorted in ancestor order; the minimum value will be
+  ;; the top and the maximum value will be the parent. This is used in
+  ;; environment-get.
   (unique-id unprintable: read-only:)
   ;; A tree with the ancestors. This is used to be able to implement
   ;; environment-ancestor-of? in log time instead of linear. That
@@ -172,12 +177,7 @@
   (ancestors unprintable: read-only:)
   ;; For top level environments, this is 0. Otherwise it is (+ 1
   ;; (env-nesting-depth (env-parent env)))
-  (nesting-depth unprintable: read-only:)
-  ;; environment-get needs to be able to access the top environment
-  ;; real fast, faster than linear wrt environment nesting depth. So
-  ;; we store a direct pointer here. It is not read-only because it
-  ;; might be a self-reference.
-  (top-env unprintable: init: #f))
+  (nesting-depth unprintable: read-only:))
 
 (define *top-environment* (make-parameter #f))
 
@@ -222,10 +222,6 @@
                        (if (env? parent)
                            (+ 1 (env-nesting-depth parent))
                            0))))
-    (env-top-env-set! res
-                      (if (env? parent)
-                          (env-top-env parent)
-                          res))
     (env-scope-env-set! res
                         (if introduces-scope?
                             res
@@ -295,6 +291,12 @@
              (string<? (extract-str a-entry)
                        (extract-str b-entry))))))
 
+(define (environment-find-top env)
+  (let ((ancestors (env-ancestors env)))
+    (if (zero? (tree-size ancestors))
+        env
+        (tree-min ancestors))))
+
 ;; This is one of the really core functions of the hygiene system.
 ;;
 ;; It does a lookup in an orig-env for name. When looking up a
@@ -346,7 +348,7 @@
                                        (cons phase-num name)
                                        #f)))
                              (if res
-                                 (found (env-top-env env) res))))))
+                                 (found (environment-find-top env) res))))))
                     (seek phase-number)
                     (seek #f))))
 
