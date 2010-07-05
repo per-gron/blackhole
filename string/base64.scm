@@ -31,10 +31,10 @@
 (define-macro (macro-fifo-elem fifo)        `(##car ,fifo))
 (define-macro (macro-fifo-elem-set! fifo x) `(##set-car! ,fifo ,x))
 
-(##define-macro (macro-fifo->list fifo)
+(define-macro (macro-fifo->list fifo)
   `(macro-fifo-next ,fifo))
 
-(##define-macro (macro-fifo-remove-all! fifo)
+(define-macro (macro-fifo-remove-all! fifo)
   `(let ((fifo ,fifo))
 
      (##declare (not interrupts-enabled))
@@ -44,7 +44,7 @@
        (macro-fifo-next-set! fifo '())
        head)))
 
-(##define-macro (macro-fifo-remove-head! fifo)
+(define-macro (macro-fifo-remove-head! fifo)
   `(let ((fifo ,fifo))
 
      (##declare (not interrupts-enabled))
@@ -69,7 +69,7 @@
          (macro-fifo-tail-set! fifo x)
          (##void)))))
 
-(##define-macro (macro-fifo-insert-at-head! fifo elem)
+(define-macro (macro-fifo-insert-at-head! fifo elem)
   `(let ((fifo ,fifo) (elem ,elem))
      (let ((x (##cons elem '())))
 
@@ -89,7 +89,7 @@
          (macro-fifo-next-set! x head)
          (##void)))))
 
-(##define-macro (macro-fifo-advance-to-tail! fifo)
+(define-macro (macro-fifo-advance-to-tail! fifo)
   `(let ((fifo ,fifo))
      ; It is assumed that the fifo contains at least one element
      ; (i.e. the fifo's tail does not change).
@@ -97,7 +97,7 @@
        (macro-fifo-next-set! fifo new-head)
        (macro-fifo-elem new-head))))
 
-(##define-macro (macro-fifo-advance! fifo)
+(define-macro (macro-fifo-advance! fifo)
   `(let ((fifo ,fifo))
      ; It is assumed that the fifo contains at least two elements
      ; (i.e. the fifo's tail does not change).
@@ -106,16 +106,16 @@
        (macro-fifo-next-set! fifo new-head)
        (macro-fifo-elem new-head))))
 
-(##define-macro (fifo->u8vector fifo start end)
+(define-macro (fifo->u8vector fifo start end)
   `(##fifo->u8vector ,fifo ,start ,end))
 
-(##define-macro (u8vector-shrink! u8vect len)
+(define-macro (u8vector-shrink! u8vect len)
   `(##u8vector-shrink! ,u8vect ,len))
 
-(##define-macro (fifo->string fifo start end)
+(define-macro (fifo->string fifo start end)
   `(##fifo->string ,fifo ,start ,end))
 
-(##define-macro (string-shrink! str len)
+(define-macro (string-shrink! str len)
   `(##string-shrink! ,str ,len))
 
 ;==============================================================================

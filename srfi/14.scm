@@ -88,12 +88,8 @@
 
 ;/cj
 
-(define-record-type :char-set
-  (make-char-set s)
-  char-set?
+(define-type char-set
   (s char-set:s))
-
-(define char-set make-char-set)
 
 (define (%string-copy s) (substring s 0 (string-length s)))
 
