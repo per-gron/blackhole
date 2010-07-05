@@ -42,7 +42,6 @@
           tree-min
           tree-max
           tree-fold
-          tree-members
           
           tree-search
           tree-member?
@@ -479,9 +478,6 @@
                     (loop base right))
                 left)))))
 
-(define (tree-members tree)
-  (tree-fold cons '() tree))
-
 (define (tree-split< tree elm <?)
   (check-tree tree)
   (let loop ((tree tree))
@@ -832,35 +828,35 @@
   
   (define (rm tree)
     (list->tree
-     (tree-members tree)
+     (tree->list tree)
      <))
   
-  (tree-members (make-count 11 20))
-  (tree-members (make-count 0 9))
-  (tree-members
+  (tree->list (make-count 11 20))
+  (tree->list (make-count 0 9))
+  (tree->list
    (%%tree-join 10
               (make-count 0 10)
               (make-count 11 12)
               <))
-  (tree-members (tree-split> (make-count 1 20) 10 <))
-  (tree-members (tree-split< (make-count 1 20) 10 <))
+  (tree->list (tree-split> (make-count 1 20) 10 <))
+  (tree->list (tree-split< (make-count 1 20) 10 <))
   
-  (tree-members
+  (tree->list
    (tree-union (tree-split> (make-count 1 20) 10 <)
                (tree-split< (make-count 1 20) 10 <)
                <))
   
-  (tree-members
+  (tree->list
    (tree-difference (make-count 1 10)
                     (make-count 4 8)
                     <))
   
-  (tree-members
+  (tree->list
    (tree-intersection (make-count 1 5)
                       (make-count 4 8)
                       <))
   
-  (tree-members
+  (tree->list
    (tree-union (make-count 1 8)
                (make-count 12 20)
                <)))
