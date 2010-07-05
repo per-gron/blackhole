@@ -73,7 +73,7 @@
     (let ((ref (loaded-module-reference lm)))
       (vector-for-each
        (lambda (phase)
-         (table-set! (expansion-phase-instances phase)
+         (table-set! (expansion-phase-module-instances phase)
                      ref))
        (syntactic-tower-phases *repl-syntactic-tower*))))
   

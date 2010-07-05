@@ -29,20 +29,24 @@
              #f)
            (raise e)))
      (lambda ()
-       (let ((info (module-info mod)))
-         (TODO-with-module-macroexpansion ;; For *module-macroexpansion-uses* (??)
-          (lambda ()
-            (let ((result (compile-with-options
-                           mod
-                           (module-reference-path mod)
-                           to-c: to-c
-                           options: (module-info-options info)
-                           cc-options: (module-info-cc-options info)
-                           ld-options-prelude: (module-info-ld-options-prelude
-                                                info)
-                           ld-options: (module-info-ld-options info))))
-              (if (not result)
-                  (error "Compilation failed"))))))))))
+       (let ((info (module-info mod))
+             (path (module-reference-path mod)))
+         (let ((result (module-compile-bunch
+                        'dyn
+                        (string-append
+                         (path-strip-extension path)
+                         ".o"
+                         (number->string
+                          (+ 1 (object-file-extract-number
+                                (last-object-file path)))))
+                        (list path)
+                        options: (module-info-options info)
+                        cc-options: (module-info-cc-options info)
+                        ld-options-prelude: (module-info-ld-options-prelude
+                                             info)
+                        ld-options: (module-info-ld-options info))))
+           (if (not result)
+               (error "Compilation failed"))))))))
 
 
 (define (modules-compile! mods #!optional continue-on-error port)

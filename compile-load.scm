@@ -187,6 +187,7 @@
                             #f)))
         (if (not (and rt ct vt mi))
             (error "Module initializers not found for:" ns))
+        
         (values rt
                 (ct)
                 (vt)
@@ -272,6 +273,10 @@
                               files
                               #!key
                               (port (current-output-port))
+                              (options '())
+                              (cc-options "")
+                              (ld-options-prelude "")
+                              (ld-options "")
                               verbose)
   (generate-tmp-dir
    (lambda (dir)
@@ -330,14 +335,17 @@
           (display " ." port)
           (let ((compile-sexp-to-o
                  (lambda (sexp fn)
-                   (compile-sexp-to-c (expr:deep-fixup sexp) fn)
+                   (compile-sexp-to-c (expr:deep-fixup sexp) fn
+                                      options: options)
                    (display "." port)
-                   (compile-c-to-o fn verbose: verbose)
+                   (compile-c-to-o fn
+                                   verbose: verbose
+                                   cc-options: cc-options)
                    (display "." port))))
             (let ((runtime-code
                    compiletime-code
                    info-code
-                   visit
+                   visit-code
                    (module-macroexpand mod (file-read-as-expr file))))
               (compile-sexp-to-o runtime-code
                                  (string-append c-file "-rt.c"))
@@ -378,7 +386,9 @@
             output: link-c-file))
          
          (display "Compiling link file..\n" port)
-         (compile-c-to-o link-c-file verbose: verbose)
+         (compile-c-to-o link-c-file
+                         verbose: verbose
+                         cc-options: cc-options)
          
          (display "Linking files..\n" port)
          (link-files
@@ -388,7 +398,9 @@
                (cons link-c-file c-files))
           (path-expand to-file (current-directory))
           standalone: standalone
-          verbose: verbose))
+          verbose: verbose
+          ld-options-prelude: ld-options-prelude
+          ld-options: ld-options))
        
        (if save-links
            (for-each (lambda (file)
