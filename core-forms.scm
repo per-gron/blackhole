@@ -486,17 +486,18 @@
       (extract-synclosure-crawler source)))
    
    (receive
-    (lambda (code env mac-env)
-      ;; TODO This doesn't generate source code locations correctly
-      (let ((code (expr*:strip-locationinfo code)))
+    (lambda (source env mac-env)
+      (let ((code (expr*:value source)))
         (apply
          (lambda (formals expression . body)
            (let ((lmb (make-syntactic-closure env '() 'lambda)))
              (expand-macro
-              `(,(make-syntactic-closure env '() 'call-with-values)
-                (,lmb () ,expression)
-                (,lmb ,formals
-                      ,@body))
+              (expr*:value-set
+               source
+               `(,(make-syntactic-closure env '() 'call-with-values)
+                 (,lmb () ,expression)
+                 (,lmb ,formals
+                       ,@body)))
               env)))
          (cdr code)))))
    
