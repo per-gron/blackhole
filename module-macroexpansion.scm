@@ -353,10 +353,6 @@
                    (cons name
                          proc-sexp))))
          
-         (*module-macroexpansion-force-compile*
-          (lambda ()
-            (set! force-compile #t)))
-         
          (*module-macroexpansion-compile-options*
           (lambda (#!key options
                          cc-options
