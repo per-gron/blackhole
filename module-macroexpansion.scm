@@ -298,6 +298,7 @@
                             sexpr
                             #!optional (tower (make-syntactic-tower)))
   (let ((definitions '())
+        (unknown-definitions '())
         (macros '())
         (imports '())
         (imports-for-syntax '())
@@ -381,10 +382,16 @@
                    (syntactic-tower-first-phase
                     (make-syntactic-tower)))
                   (*external-reference-access-hook*
-                   (lambda (def phase)
-                     (if (equal? (caddr def) module-reference)
-                         (cadr def)
-                         (make-external-reference def phase))))
+                   (lambda (def phase unknown?)
+                     (cond
+                      (unknown?
+                       (push! unknown-definitions
+                              (list unknown? phase def))
+                       (cadr def))
+                      ((equal? (caddr def) module-reference)
+                       (cadr def))
+                      (else
+                       (make-external-reference def phase)))))
                   (*external-reference-cleanup-hook*
                    (lambda (code)
                      (clone-sexp
@@ -400,6 +407,19 @@
              (apply append imports))
             (imports-for-syntax
              (apply append imports-for-syntax)))
+
+        (for-each
+            (lambda (name/phase/def-list)
+              (apply
+               (lambda (name phase def)
+                 (if (not (environment-get
+                           env
+                           name
+                           phase-number: (expansion-phase-number phase)))
+                     (pp name)))
+               name/phase/def-list))
+          unknown-definitions)
+        
         ;; TODO Add something to check for duplicate imports and
         ;; exports.
         (let ((export-defs

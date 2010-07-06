@@ -1118,7 +1118,8 @@
 
 (define *external-reference-access-hook*
   (make-parameter
-   (lambda (def phase) (cadr def))))
+   ;; unknown? implies that the definition is not treated as a macro
+   (lambda (def phase unknown?) (cadr def))))
 
 (define *external-reference-cleanup-hook*
   (make-parameter
@@ -1138,7 +1139,8 @@
        (if (eq? 'def (car val))
            ((*external-reference-access-hook*)
             val
-            (*expansion-phase*))
+            (*expansion-phase*)
+            #f)
            (error "Macro name can't be used as a variable:"
                   (syntactic-closure-symbol sc)))))
    
@@ -1237,7 +1239,8 @@
             (if (eq? 'def (car val))
                 ((*external-reference-access-hook*)
                  val
-                 (*expansion-phase*))
+                 (*expansion-phase*)
+                 #f)
                 (error "Macro name can't be used as a variable:" code))))
 
         (else
@@ -1259,12 +1262,18 @@
            (if (eq? 'def (car val))
                ((*external-reference-access-hook*)
                 val
-                (*expansion-phase*))
+                (*expansion-phase*)
+                #f)
                (error "Macro name can't be used as a variable:" code))))
         
         (else
-         (gen-symbol (environment-namespace env)
-                     code)))))
+         ((*external-reference-access-hook*)
+          (list 'def
+                (gen-symbol (environment-namespace env)
+                            code)
+                (environment-module-reference env))
+          (*expansion-phase*)
+          code)))))
      
      ((or (number? code)
           (string? code)
