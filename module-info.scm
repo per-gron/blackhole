@@ -29,6 +29,8 @@
   (ld-options read-only:)
   ;; A boolean
   (force-compile read-only:)
+  ;; A boolean
+  (single-instance read-only:)
 
   (namespace-string read-only:))
 
@@ -44,7 +46,8 @@
                           (cc-options "")
                           (ld-options-prelude "")
                           (ld-options "")
-                          (force-compile #f)
+                          force-compile
+                          single-instance
                           namespace-string)
   (make-module-info/internal symbols
                              exports
@@ -58,6 +61,7 @@
                              ld-options-prelude
                              ld-options
                              force-compile
+                             single-instance
                              namespace-string))
 
 (define (module-info-dependencies info)
@@ -122,4 +126,5 @@
      ld-options-prelude: (table-ref tbl 'ld-options-prelude "")
      ld-options: (table-ref tbl 'ld-options "")
      force-compile: (table-ref tbl 'force-compile #f)
+     single-instance: (table-ref tbl 'single-instance #f)
      namespace-string: namespace-string)))
