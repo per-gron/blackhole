@@ -145,42 +145,54 @@
      `(set! ,(cadr def) ,val))))
 
 (define (module-instance-let-fn dep table)
-  (let ((sym (generate-module-instance-symbol dep "instance"))
-        (get-sym (generate-module-instance-symbol dep "get"))
-        (set-sym (generate-module-instance-symbol dep "set")))
-    (table-set! table dep (cons get-sym
-                                set-sym))
-    `((,sym
-       (let ((tmp (module#module-instance-ref
-                   ,expansion-phase-sym
-                   (module#module-reference-absolutize
-                    (module#u8vector->module-reference
-                     ',(module-reference->u8vector dep))
-                    (module#loaded-module-reference
-                     ,loaded-module-sym)))))
-         (or tmp (error "Internal error"))))
-      (,get-sym
-       (let ((tmp (module#module-instance-getter ,sym)))
-         (or tmp (error "Internal error"))))
-      (,set-sym
-       (let ((tmp (module#module-instance-setter ,sym)))
-         (or tmp (error "Internal error")))))))
+  (let ((info
+         (loaded-module-info (module-reference-ref dep))))
+    (if (module-info-single-instance info)
+        (begin
+          (table-set! table def 'single-instance)
+          '())
+        (let ((sym (generate-module-instance-symbol dep "instance"))
+              (get-sym (generate-module-instance-symbol dep "get"))
+              (set-sym (generate-module-instance-symbol dep "set")))
+          (table-set! table dep (cons get-sym
+                                      set-sym))
+          `((,sym
+             (let ((tmp (module#module-instance-ref
+                         ,expansion-phase-sym
+                         (module#module-reference-absolutize
+                          (module#u8vector->module-reference
+                           ',(module-reference->u8vector dep))
+                          (module#loaded-module-reference
+                           ,loaded-module-sym)))))
+               (or tmp (error "Internal error"))))
+            (,get-sym
+             (let ((tmp (module#module-instance-getter ,sym)))
+               (or tmp (error "Internal error"))))
+            (,set-sym
+             (let ((tmp (module#module-instance-setter ,sym)))
+               (or tmp (error "Internal error")))))))))
 
 (define (clone-sexp/sym-table sexp ref->sym-table)
   (clone-sexp sexp
               ;; References to external modules
               (lambda (def phase)
-                (let ((ref (caddr def)))
-                  (if ref
-                      `(,(car
-                          (table-ref ref->sym-table
-                                     ref))
+                (let ((ref (caddr def))
+                      (sym-pair (table-ref ref->sym-table
+                                           ref)))
+                  (if (and ref
+                           (not (eq? 'single-instance
+                                     sym-pair)))
+                      `(,(car sym-pair)
                         ',(cadr def))
                       (cadr def))))
               ;; set!s to external modules
               (lambda (def phase val)
-                (let ((ref (caddr def)))
-                  (if ref
+                (let ((ref (caddr def))
+                      (sym-pair (table-ref ref->sym-table
+                                           ref)))
+                  (if (and ref
+                           (not (eq? 'single-instance
+                                     sym-pair)))
                       `(,(cdr
                           (table-ref ref->sym-table
                                      ref))
@@ -452,15 +464,16 @@
                (resolve-imports imports-for-syntax
                                 module-reference
                                 relative: #t)))
-
           (values (generate-runtime-code (environment-namespace env)
                                          module-reference
                                          expanded-code)
-                  (generate-compiletime-code module-reference
-                                             (environment-namespace env)
-                                             expanded-code
-                                             definitions
-                                             import-module-refs)
+                  (and
+                   (not single-instance-)
+                   (generate-compiletime-code module-reference
+                                              (environment-namespace env)
+                                              expanded-code
+                                              definitions
+                                              import-module-refs))
                   (generate-visit-code module-reference
                                        `(begin
                                           ,@(reverse syntax-begin-code))
