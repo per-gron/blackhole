@@ -76,10 +76,12 @@
                
                (else
                 source))))))
-      `(let ,(map (lambda (name) `(name #!unbound))
-               names)
-         ,(loop source)
-         ,rest))))
+      (let (;; This needs to be called before we map over names
+            (body (loop source)))
+        `(let ,(map (lambda (name) `(,name #!unbound))
+                 names)
+           ,body
+           ,rest)))))
 
 (define-type external-reference
   id: 40985F98-6814-41B6-90FE-0FBFB1A8F42D
