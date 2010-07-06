@@ -178,9 +178,11 @@
   (clone-sexp sexp
               ;; References to external modules
               (lambda (def phase)
-                (let ((ref (caddr def))
-                      (sym-pair (table-ref ref->sym-table
-                                           ref)))
+                (let* ((ref (caddr def))
+                       (sym-pair
+                        (and ref
+                             (table-ref ref->sym-table
+                                        ref))))
                   (if (and ref
                            (not (eq? 'single-instance
                                      sym-pair)))
@@ -189,9 +191,11 @@
                       (cadr def))))
               ;; set!s to external modules
               (lambda (def phase val)
-                (let ((ref (caddr def))
-                      (sym-pair (table-ref ref->sym-table
-                                           ref)))
+                (let* ((ref (caddr def))
+                       (sym-pair
+                        (and ref
+                             (table-ref ref->sym-table
+                                        ref))))
                   (if (and ref
                            (not (eq? 'single-instance
                                      sym-pair)))
