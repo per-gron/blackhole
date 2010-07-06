@@ -508,6 +508,9 @@
    (receive
     (lambda (source env mac-env)
       (let ((code (expr*:value source)))
+        (if (< (length code) 4)
+            (error "Invalid receive form"
+                   (expr*:strip-locationinfo source)))
         (apply
          (lambda (formals expression . body)
            (let ((lmb (make-syntactic-closure env '() 'lambda)))
@@ -520,6 +523,54 @@
                        ,@body)))
               env)))
          (cdr code)))))
+
+   (do
+    (lambda (source env mac-env)
+      (let* ((assert
+              (lambda (x)
+                (if (not x)
+                    (error "Invalid do form"
+                           (expr*:strip-locationinfo source)))))
+             (c (lambda (x)
+                  (make-syntactic-closure builtin-environment '() x)))
+
+             (code (expr*:value source))
+             (do-loop (c 'do-loop)))
+        (assert (>= (length code) 3))
+        (let ((vars (expr*:value (cadr code)))
+              (test (expr*:value (caddr code)))
+              (exprs (expr*:value (cdddr code))))
+          (assert (and (list? vars)
+                       (list? test)
+                       (not (null? test))
+                       (list? exprs)))
+          (expand-macro
+           (expr*:value-set
+            source
+            `(,(c 'let)
+              ,do-loop
+              ,(map (lambda (var)
+                      (let ((var (expr*:value var)))
+                        (assert (and (list? var)
+                                     (<= 2 (length var) 3)))
+                        (list (car var)
+                              (cadr var))))
+                 vars)
+              (,(c 'cond)
+               (,(car test)
+                ,(if (null? (cdr test))
+                     #!void
+                     `(,(c 'begin) ,@(cdr test))))
+               (,(c 'else)
+                ,@exprs
+                (,do-loop
+                 ,@(map (lambda (var)
+                          (let ((var (expr*:value var)))
+                            (if (null? (cddr var))
+                                (car var)
+                                (caddr var))))
+                     vars))))))
+           env)))))
    
    (compile-options
     (nh-macro-transformer

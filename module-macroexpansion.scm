@@ -416,7 +416,7 @@
                            env
                            name
                            phase-number: (expansion-phase-number phase)))
-                     (pp name)))
+                     #t #;(pp name)))
                name/phase/def-list))
           unknown-definitions)
         
