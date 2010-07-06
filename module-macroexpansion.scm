@@ -353,6 +353,10 @@
                    (cons name
                          proc-sexp))))
          
+         (*module-macroexpansion-force-compile*
+          (lambda ()
+            (set! force-compile #t)))
+         
          (*module-macroexpansion-compile-options*
           (lambda (#!key options
                          cc-options
@@ -371,7 +375,7 @@
             (if force-compile
                 (set! force-compile- force-compile))
             (if single-instance
-                (set! single-instance- single-instance))))
+                (set! single-instance- single-instance)))))
       
       (let ((expanded-code
              env
