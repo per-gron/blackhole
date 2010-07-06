@@ -29,7 +29,8 @@
                             stamp
                             reference)
   (if (not (and (procedure? invoke-runtime)
-                (procedure? invoke-compiletime)
+                (or (procedure? invoke-compiletime)
+                    (not invoke-compiletime))
                 (procedure? visit)
                 (module-info? info)
                 (module-reference? reference)))
@@ -164,15 +165,18 @@
 (define (loaded-module-invoke! lm phase)
   (if (zero? (expansion-phase-number phase))
       ((loaded-module-invoke-runtime lm))
-      (let ((getter
-             setter
-             ((loaded-module-invoke-compiletime lm)
-              lm phase))
-            (instance (module-instance-get!
-                       phase
-                       (loaded-module-reference lm))))
-        (module-instance-getter-set! instance getter)
-        (module-instance-setter-set! instance setter)))
+      (let ((invoke-compiletime
+             (loaded-module-invoke-compiletime lm)))
+        (if invoke-compiletime
+            (let ((getter
+                   setter
+                   ((loaded-module-invoke-compiletime lm)
+                    lm phase))
+                  (instance (module-instance-get!
+                             phase
+                             (loaded-module-reference lm))))
+              (module-instance-getter-set! instance getter)
+              (module-instance-setter-set! instance setter)))))
   ;; It doesn't make sense to return anything, because
   ;; loaded-module-invoke-runtime doesn't return anything useful.
   (void))
