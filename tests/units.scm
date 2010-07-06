@@ -525,7 +525,7 @@
 ;; This is REALLY a corner case
 ;; http://groups.google.com/group/comp.lang.scheme/msg/eb6cc6e11775b619
 ;; says that this should return 1, and SISC returns 1.
-(eq? 2
+(eq? 1
      (let ((x 1))
        (let-syntax
            ((foo (syntax-rules ()
@@ -766,13 +766,13 @@
 
 ;; Another corner case. I don't really know what this should be. SISC
 ;; returns #f
-(let ((test #f))
+(let ((test #t))
   (let-syntax
       ((one
         (syntax-rules ()
           ((one) (begin
-                   (define test #t)
-                   #f)))))
+                   (define test #f)
+                   #!void)))))
     (one)
     test))
 
@@ -953,10 +953,10 @@
         ((mac)
          (define-syntax xx
            (syntax-rules ()
-             ((xx) #t)))))))
+             ((xx) #f)))))))
   (define-syntax xx
     (syntax-rules ()
-      ((xx) #f)))
+      ((xx) #t)))
   (mac)
   (xx))
 
@@ -1132,22 +1132,6 @@
     (one test)
     (test)))
 
-;; This is a quirky case. I don't know exactly what the results of
-;; this one should be. SISC returns #t on this one. Gauche gives an
-;; error.
-(let-syntax
-    ((mac
-      (syntax-rules ()
-        ((mac)
-         (define-syntax xx
-           (syntax-rules ()
-             ((xx) #t)))))))
-  (define-syntax xx
-    (syntax-rules ()
-      ((xx) #f)))
-  (mac)
-  (xx))
-
 ;; Test that we don't leak scope over expansion phase borders
 (begin
   (syntax-begin (define ---test-variable #t))
@@ -1217,6 +1201,21 @@
                  '()
                  'a)))))))))
 
+;; Test syntax-rules macros that use the same binding name that refer
+;; to distinct bindings in nested macro-expansions
+(equal? '(1 2)
+        (letrec-syntax
+            ((let-values
+              (syntax-rules ()
+                ((let-values () ?args ?tmps ?body)
+                 ((lambda ?args
+                    (let ?tmps ?body))
+                  1 2))
+              
+              ((let-values (?a . ?b) (?arg ...) (?tmp ...) ?body)
+               (let-values ?b (?arg ... x) (?tmp ... (?a x)) ?body)))))
+          (let-values (a b) () () (list a b))))
+
 ;; This should produce an error
 (with-exception-catcher
  (lambda (e)
@@ -1225,17 +1224,26 @@
   (expand-macro '(let ((a 5) (a 6)) a))
   #f))
 
+;; Test default values of DSSSL parameters whose expressions use other
+;; values in the parameter list
+(let ((a #f))
+  ((lambda (a #!key (b a))
+     b) #t))
+
+;; Test the distinction between literal identifiers and keywords
+(eq? (let-syntax ((test-fail
+                   (syntax-rules (else)
+                     ((_ else (quote p)) 
+                      (cond (#f #f) (else (quote p)))))))
+       (test-fail else 'a))
+     'a)
+
 
 
 
 
 ;;; Problematic things:
 
-
-;; This should make it up to the real tests
-(let ((a #f))
-  ((lambda (a #!key (b a))
-     b) #t))
 
 ;; calcing is never set back to #f. It probably should, at least in
 ;; load-once.
