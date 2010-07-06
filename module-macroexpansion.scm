@@ -408,17 +408,22 @@
             (imports-for-syntax
              (apply append imports-for-syntax)))
 
-        (for-each
-            (lambda (name/phase/def-list)
-              (apply
-               (lambda (name phase def)
-                 (if (not (environment-get
-                           env
-                           name
-                           phase-number: (expansion-phase-number phase)))
-                     #t #;(pp name)))
-               name/phase/def-list))
-          unknown-definitions)
+        (let ((undefined-names '()))
+          (for-each
+              (lambda (name/phase/def-list)
+                (apply
+                 (lambda (name phase def)
+                   (if (not (environment-get
+                             env
+                             name
+                             phase-number: (expansion-phase-number phase)))
+                       (push! undefined-names name)))
+                 name/phase/def-list))
+            unknown-definitions)
+
+          (if (not (null? undefined-names))
+              (error "These variables are undefined:"
+                     (remove-duplicates undefined-names))))
         
         ;; TODO Add something to check for duplicate imports and
         ;; exports.
