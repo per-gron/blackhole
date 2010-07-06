@@ -4,7 +4,6 @@
 
 (declare (standard-bindings)
 	 (extended-bindings)
-         (not proper-tail-calls)
 	 (block))
 
 

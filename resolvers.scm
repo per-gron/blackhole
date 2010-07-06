@@ -280,7 +280,7 @@
       (if (eq? 'mac (car val))
           (list as
                 'mac
-                (cadr val)
+                name
                 'self-reference)
           (list as
                 'def
