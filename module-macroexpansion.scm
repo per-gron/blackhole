@@ -309,6 +309,7 @@
         (ld-options-prelude- "")
         (ld-options- "")
         (force-compile- #f)
+        (single-instance- #f)
 
         (calculate-letsyntax-environment-memo
          (make-table test: eq? hash: eq?-hash)))
@@ -361,7 +362,8 @@
                          cc-options
                          ld-options-prelude
                          ld-options
-                         force-compile)
+                         force-compile
+                         single-instance)
             (if options
                 (set! options- options))
             (if cc-options
@@ -371,7 +373,9 @@
             (if ld-options
                 (set! ld-options- ld-options))
             (if force-compile
-                (set! force-compile- force-compile)))))
+                (set! force-compile- force-compile))
+            (if single-instance
+                (set! single-instance- single-instance))))
       
       (let ((expanded-code
              env
