@@ -151,7 +151,7 @@
          (loaded-module-info (module-reference-ref dep))))
     (if (module-info-single-instance info)
         (begin
-          (table-set! table def 'single-instance)
+          (table-set! table dep 'single-instance)
           '())
         (let ((sym (generate-module-instance-symbol dep "instance"))
               (get-sym (generate-module-instance-symbol dep "get"))
@@ -441,7 +441,8 @@
 
           (if (not (null? undefined-names))
               (error "These variables are undefined:"
-                     (remove-duplicates undefined-names))))
+                     (remove-duplicates undefined-names)
+                     module-reference)))
         
         ;; TODO Add something to check for duplicate imports and
         ;; exports.
