@@ -748,10 +748,10 @@
                (%%tree-size tree-left))))))))
 
 (define (tree-index tree idx
-                           #!key
-                           (fail
-                            (lambda ()
-                              (error "Tree has no element with index" idx))))
+                    #!key
+                    (fail
+                     (lambda ()
+                       (error "Tree has no element with index" idx))))
   (check-tree tree)
   (if (not (fixnum? idx))
       (error "Invalid parameter" idx))
