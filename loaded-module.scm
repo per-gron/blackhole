@@ -58,9 +58,15 @@
 
 ;; Loads a module, regardless of whether it's already loaded or not.
 (define (module-reference-load! ref)
-  (let ((loaded-module
+  (let ((previously-loaded-module
+         (table-ref *loaded-module-registry* ref #f))
+        (loaded-module
          (loader-load-module (module-reference-loader ref)
                              (module-reference-path ref))))
+    (if previously-loaded-module
+        (loaded-module-dependent-modules-set!
+         loaded-module
+         (loaded-module-dependent-modules previously-loaded-module)))
     (table-set! *loaded-module-registry* ref loaded-module)
     loaded-module))
 
@@ -379,7 +385,6 @@
       lms)))
 
 (define (loaded-modules-reinvoke lms phase)
-  (error "This function is incorrect") ;; TODO
   (letrec
       (;; Table of module-reference objects to #t
        (invoke-table (make-table))
@@ -397,10 +402,11 @@
                 
                 ;; Re-invoke and re-visit the module
                 (loaded-module-invoke! lm phase)
+                (loaded-module-visit! lm phase)
                 
                 ;; Re-invoke the dependent modules
                 (for-each rec
-                 (loaded-module-dependent-modules lm)))))))
+                  (loaded-module-dependent-modules lm)))))))
     (for-each rec lms)))
 
 (define (module-import modules env phase)
