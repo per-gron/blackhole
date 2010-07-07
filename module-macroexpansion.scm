@@ -35,7 +35,7 @@
                     
                     ((c-initialize)
                      ;; TODO
-                     (error "c-define-type is not implemented"))
+                     (error "c-initialize is not implemented"))
                     
                     ((c-declare)
                      ;; TODO

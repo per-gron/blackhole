@@ -473,29 +473,39 @@
 
    (c-declare
     (lambda (source env mac-env)
-      ((*module-macroexpansion-compile-options*) force-compile: #t)
+      ((*module-macroexpansion-compile-options*)
+       force-compile: #t
+       no-global-state: #t)
       (extract-synclosure-crawler source)))
 
    (c-initialize
     (lambda (source env mac-env)
-      ((*module-macroexpansion-compile-options*) force-compile: #t)
+      ((*module-macroexpansion-compile-options*)
+       force-compile: #t
+       no-global-state: #t)
       (extract-synclosure-crawler source)))
 
    (c-define-type
     (lambda (source env mac-env)
-      ((*module-macroexpansion-compile-options*) force-compile: #t)
+      ((*module-macroexpansion-compile-options*)
+       force-compile: #t
+       no-global-state: #t)
       (extract-synclosure-crawler source)))
 
    (c-lambda
     (lambda (source env mac-env)
-      ((*module-macroexpansion-compile-options*) force-compile: #t)
+      ((*module-macroexpansion-compile-options*)
+       force-compile: #t
+       no-global-state: #t)
       (extract-synclosure-crawler source)))
 
    (c-define
     ;; TODO I'm pretty sure that this isn't correct; you have to
     ;; macro-expand the body of the function.
     (lambda (source env mac-env)
-      ((*module-macroexpansion-compile-options*) force-compile: #t)
+      ((*module-macroexpansion-compile-options*)
+       force-compile: #t
+       no-global-state: #t)
       (extract-synclosure-crawler source)))
    
    (receive
