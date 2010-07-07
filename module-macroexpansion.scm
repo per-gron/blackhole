@@ -149,9 +149,9 @@
 (define (module-instance-let-fn dep table)
   (let ((info
          (loaded-module-info (module-reference-ref dep))))
-    (if (module-info-single-instance info)
+    (if (module-info-no-global-state info)
         (begin
-          (table-set! table dep 'single-instance)
+          (table-set! table dep 'no-global-state)
           '())
         (let ((sym (generate-module-instance-symbol dep "instance"))
               (get-sym (generate-module-instance-symbol dep "get"))
@@ -184,7 +184,7 @@
                              (table-ref ref->sym-table
                                         ref))))
                   (if (and ref
-                           (not (eq? 'single-instance
+                           (not (eq? 'no-global-state
                                      sym-pair)))
                       `(,(car sym-pair)
                         ',(cadr def))
@@ -197,7 +197,7 @@
                              (table-ref ref->sym-table
                                         ref))))
                   (if (and ref
-                           (not (eq? 'single-instance
+                           (not (eq? 'no-global-state
                                      sym-pair)))
                       `(,(cdr
                           (table-ref ref->sym-table
@@ -327,7 +327,7 @@
         (ld-options-prelude- "")
         (ld-options- "")
         (force-compile- #f)
-        (single-instance- #f)
+        (no-global-state- #f)
 
         (calculate-letsyntax-environment-memo
          (make-table test: eq? hash: eq?-hash)))
@@ -377,7 +377,7 @@
                          ld-options-prelude
                          ld-options
                          force-compile
-                         single-instance)
+                         no-global-state)
             (if options
                 (set! options- options))
             (if cc-options
@@ -388,8 +388,8 @@
                 (set! ld-options- ld-options))
             (if force-compile
                 (set! force-compile- force-compile))
-            (if single-instance
-                (set! single-instance- single-instance)))))
+            (if no-global-state
+                (set! no-global-state- no-global-state)))))
       
       (let ((expanded-code
              env
@@ -475,7 +475,7 @@
                                          module-reference
                                          expanded-code)
                   (and
-                   (not single-instance-)
+                   (not no-global-state-)
                    (generate-compiletime-code module-reference
                                               (environment-namespace env)
                                               expanded-code

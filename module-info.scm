@@ -30,7 +30,7 @@
   ;; A boolean
   (force-compile read-only:)
   ;; A boolean
-  (single-instance read-only:)
+  (no-global-state read-only:)
 
   (namespace-string read-only:))
 
@@ -47,7 +47,7 @@
                           (ld-options-prelude "")
                           (ld-options "")
                           force-compile
-                          single-instance
+                          no-global-state
                           namespace-string)
   (make-module-info/internal symbols
                              exports
@@ -61,7 +61,7 @@
                              ld-options-prelude
                              ld-options
                              force-compile
-                             single-instance
+                             no-global-state
                              namespace-string))
 
 (define (module-info-dependencies info)
@@ -126,5 +126,5 @@
      ld-options-prelude: (table-ref tbl 'ld-options-prelude "")
      ld-options: (table-ref tbl 'ld-options "")
      force-compile: (table-ref tbl 'force-compile #f)
-     single-instance: (table-ref tbl 'single-instance #f)
+     no-global-state: (table-ref tbl 'no-global-state #f)
      namespace-string: namespace-string)))

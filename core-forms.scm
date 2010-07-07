@@ -572,14 +572,14 @@
                     ld-options-prelude
                     ld-options
                     force-compile
-                    single-instance)
+                    no-global-state)
        ((*module-macroexpansion-compile-options*)
         options: options
         cc-options: cc-options
         ld-options-prelude: ld-options-prelude
         ld-options: ld-options
         force-compile: force-compile
-        single-instance: single-instance)
+        no-global-state: no-global-state)
        (void))))
 
    (define-type
