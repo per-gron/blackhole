@@ -189,8 +189,7 @@
     (lambda (code env mac-env)
       (apply
        (lambda (#!optional name)
-         (if (or (not (environment-top? env))
-                 (environment-module-reference env))
+         (if (not (environment-top? env))
              (error "Incorrectly placed module form"))
          (module-module name))
        (cdr (expr*:strip-locationinfo code)))))
