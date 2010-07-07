@@ -50,6 +50,9 @@
        (set! ,list (cdr ,list))
        ,tmp)))
 
+;; TODO As an optimization, implement this
+(define reverse! reverse)
+
 (define (file-last-changed-seconds fn)
   (time->seconds
    (file-info-last-change-time

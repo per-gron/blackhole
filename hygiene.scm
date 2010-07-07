@@ -907,43 +907,89 @@
              defined-param+envs
              (let loop ((params params)
                         (env env)
-                        (accum '())
-                        (key #f))
-               (let
-                   ((action
-                     (lambda (x rest)
-                       (let ((id? (identifier? x)))
-                         (cond
-                          ((eq? x '#!key)
-                           (loop rest env accum #t))
-                          
-                          ((or (eq? x '#!rest)
-                               (eq? x '#!optional))
-                           (loop rest env accum #f))
-                          
-                          ((or id? (pair? x))
+                        (accum-result '())
+                        (key #f)
+                        ;; accum-ids is there to reduce the number of
+                        ;; calls to environment-add-defines, and thus
+                        ;; reducing the number of allocated
+                        ;; environment objects. A new environment
+                        ;; object needs to be allocated for each
+                        ;; parameter with a default value initializer,
+                        ;; so a correct default would be to create a
+                        ;; new environment for each parameter, but for
+                        ;; lambdas with non-DSSSL parameter lists,
+                        ;; it's sufficient to create one environment
+                        ;; object. accum-ids is an accumulator that
+                        ;; contains the parameters without a default
+                        ;; value initializer, and is reset on each
+                        ;; occasion that a default value initializer
+                        ;; is found.
+                        (accum-ids '()))
+               (let*
+                   ((handle-accum-ids
+                     (lambda (env accum-result accum-ids)
+                       (if (null? accum-ids)
+                           (values env
+                                   accum-result)
                            (let ((new-env
                                   defined-params
                                   (environment-add-defines
                                    env
-                                   (let ((s (if id?
-                                                x
-                                                (car x))))
-                                     (list
-                                      (if key (cons s "") s))))))
-                             (loop rest
-                                   new-env
-                                   (cons (cons (car defined-params)
-                                               new-env)
-                                         accum)
-                                   key)))
+                                   (reverse! accum-ids))))
+                             (values new-env
+                                     (append
+                                      (map (lambda (dp)
+                                             (cons dp new-env))
+                                        defined-params)
+                                      accum-result))))))
+                    (action
+                     (lambda (x rest)
+                       (let ((id? (identifier? x)))
+                         (cond
+                          ((eq? x '#!key)
+                           (loop rest env accum-result #t accum-ids))
+                          
+                          ((or (eq? x '#!rest)
+                               (eq? x '#!optional))
+                           (loop rest env accum-result #f accum-ids))
+                          
+                          ((identifier? x)
+                           (loop rest
+                                 env
+                                 accum-result
+                                 key
+                                 (cons (if key (cons x "") x)
+                                       accum-ids)))
+
+                          ((pair? x)
+                           (let ((new-env
+                                  new-accum-result
+                                  (handle-accum-ids env
+                                                    accum-result
+                                                    accum-ids)))
+                             (let ((new-env
+                                    new-accum-result
+                                    (handle-accum-ids
+                                     new-env
+                                     new-accum-result
+                                     (let ((s (car x)))
+                                       (list
+                                        (if key (cons s "") s))))))
+                               (loop rest
+                                     new-env
+                                     new-accum-result
+                                     key
+                                     '()))))
                           
                           (else
-                           (loop rest env accum key)))))))
+                           (loop rest env accum-result key)))))))
                  (cond
                   ((null? params)
-                   (values env
-                           (reverse accum)))
+                   (let ((new-env
+                          new-accum-result
+                          (handle-accum-ids env accum-result accum-ids)))
+                     (values new-env
+                             (reverse! new-accum-result))))
                   ((pair? params)
                    (action (car params)
                            (cdr params)))

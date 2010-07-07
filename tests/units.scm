@@ -1230,6 +1230,12 @@
   ((lambda (a #!key (b a))
      b) #t))
 
+;; Test default values of DSSSL parameters whose expressions use other
+;; values in the parameter list
+(let ((b #t))
+    ((lambda (#!key (a b) (c #f))
+       b)))
+
 ;; Test the distinction between literal identifiers and keywords
 (eq? (let-syntax ((test-fail
                    (syntax-rules (else)
