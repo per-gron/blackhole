@@ -42,6 +42,14 @@
 (define-macro (push! list obj)
   `(set! ,list (cons ,obj ,list)))
 
+(define-macro (pop! list)
+  ;; We don't need to worry about double-evaluating list, because it
+  ;; has to be a simple identifier anyways or the set! won't work.
+  (let ((tmp (gensym 'tmp)))
+    `(let* ((,tmp (car ,list)))
+       (set! ,list (cdr ,list))
+       ,tmp)))
+
 (define (file-last-changed-seconds fn)
   (time->seconds
    (file-info-last-change-time

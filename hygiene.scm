@@ -18,6 +18,7 @@
                 ,@(cdr code)))
         expr)))
 
+;; If lst is an improper list, the return value will be an improper list
 (define (dotted-map fun lst)
   (cond
    ((pair? lst)
@@ -26,7 +27,7 @@
    ((null? lst) '())
    (else (fun lst))))
 
-
+;; The return value is a proper list even if lst isn't
 (define (dotted-map2 fun lst)
   (cond
    ((pair? lst)
@@ -903,36 +904,55 @@
    (apply
     (lambda (params . body)
       (let ((lambda-env
-             defined-params
-             (environment-add-defines
-              env
-              (filter
-               (lambda (x) x)
-               (let ((key #f))
-                 (dotted-map2
-                  (lambda (x)
-                    (let ((id? (identifier? x)))
-                      (cond
-                       ((eq? x '#!key)
-                        (set! key #t)
-                        #f)
-                       
-                       ((or (eq? x '#!rest)
-                            (eq? x '#!optional))
-                        (set! key #f)
-                        #f)
-                       
-                       ((or id? (pair? x))
-                        (let ((s (if id?
-                                     x
-                                     (car x))))
-                          (if key (cons s "") s)))
-                       
-                       (else #f))))
-                  params))))))
+             defined-param+envs
+             (let loop ((params params)
+                        (env env)
+                        (accum '())
+                        (key #f))
+               (let
+                   ((action
+                     (lambda (x rest)
+                       (let ((id? (identifier? x)))
+                         (cond
+                          ((eq? x '#!key)
+                           (loop rest env accum #t))
+                          
+                          ((or (eq? x '#!rest)
+                               (eq? x '#!optional))
+                           (loop rest env accum #f))
+                          
+                          ((or id? (pair? x))
+                           (let ((new-env
+                                  defined-params
+                                  (environment-add-defines
+                                   env
+                                   (let ((s (if id?
+                                                x
+                                                (car x))))
+                                     (list
+                                      (if key (cons s "") s))))))
+                             (loop rest
+                                   new-env
+                                   (cons (cons (car defined-params)
+                                               new-env)
+                                         accum)
+                                   key)))
+                          
+                          (else
+                           (loop rest env accum key)))))))
+                 (cond
+                  ((null? params)
+                   (values env
+                           (reverse accum)))
+                  ((pair? params)
+                   (action (car params)
+                           (cdr params)))
+                  (else
+                   (action params
+                           '())))))))
         (let ((hygparams
                (let ((key #f)
-                     (current-defined-params defined-params))
+                     (current-defined-param+envs defined-param+envs))
                  (dotted-map
                   (lambda (p)
                     (cond
@@ -946,17 +966,18 @@
                       p)
                      
                      (else
-                      (let ((dp (let ((dp (car current-defined-params)))
-                                  (set! current-defined-params
-                                        (cdr current-defined-params))
-                                  dp)))
+                      (let ((dp
+                             dp-env
+                             (let ((dp+env (pop! current-defined-param+envs)))
+                               (values (car dp+env)
+                                       (cdr dp+env)))))
                         (cond
                          ((identifier? p)
                           (caddr dp))
                          
                          ((pair? p)
                           (cons (caddr dp)
-                                (expand-macro (cdr p) env)))
+                                (expand-macro (cdr p) dp-env)))
                          
                          (else
                           (error "Invalid parameter list: "
