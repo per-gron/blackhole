@@ -13,7 +13,12 @@
                                    ".o")))
     (map (lambda (fn)
            (path-expand fn dir))
-         (filter (lambda (fn) (string-begins-with fn begin-str))
+         (filter (lambda (fn)
+                   (and (string-begins-with fn begin-str)
+                        (string->number
+                         (substring fn
+                                    (string-length begin-str)
+                                    (string-length fn)))))
                  (directory-files dir)))))
 
 (define (object-file-extract-number fn)
