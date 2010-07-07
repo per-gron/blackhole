@@ -166,13 +166,6 @@
                                 (last-object-file file))))
             (and object-fn
                  (path-normalize object-fn #f file))))
-         
-         (module-object-table
-          (and object-fn
-               (let ((deps-fn (deps-file-name object-fn)))
-                 (if (file-exists? deps-fn)
-                     (load-deps-from-deps-file deps-fn))
-                 (load-module-object-table object-fn))))
 
          (force-compile
           (lambda ()
@@ -196,7 +189,12 @@
               (values rt ct vt mi)))))
      
      (else      
-      (let* ((ns
+      (let* ((module-object-table
+              (let ((deps-fn (deps-file-name object-fn)))
+                (if (file-exists? deps-fn)
+                    (load-deps-from-deps-file deps-fn))
+                (load-module-object-table object-fn)))
+             (ns
               (let ((str (module-reference-namespace module-ref)))
                 (substring str 0 (- (string-length str) 1))))
              (rt (table-ref module-object-table
@@ -489,7 +487,7 @@
                          (write-subu8vector u8v
                                             0
                                             (u8vector-length u8v)))))))))
-       
+
        (if save-links
            (for-each (lambda (file)
                        (with-output-to-file
