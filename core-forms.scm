@@ -577,19 +577,10 @@
    
    (compile-options
     (nh-macro-transformer
-     (lambda (#!key options
-                    cc-options
-                    ld-options-prelude
-                    ld-options
-                    force-compile
-                    no-global-state)
-       ((*module-macroexpansion-compile-options*)
-        options: options
-        cc-options: cc-options
-        ld-options-prelude: ld-options-prelude
-        ld-options: ld-options
-        force-compile: force-compile
-        no-global-state: no-global-state)
+     (lambda args
+       (apply
+        (*module-macroexpansion-compile-options*)
+        args)
        (void))))
 
    (define-type
