@@ -100,26 +100,6 @@ special identifier objects instead of just symbols when combined with
 hygienic macros. Usage of the other forms of macros is strongly
 recommended.
 
-
-# Known issues
-
-The syntactic tower is only partially implemented. This can lead to
-confusion about what code is executed on compile-time versus
-run-time. If you don't use macros, or only use `syntax-rules` macros,
-these issues will never arise.
-
-The hygiene system doesn't do DSSSL parameter scoping quite right. In
-particular, `#!key` and `#!optional` parameters with default values of
-other parameters in the same parameter list don't work:
-
-    > (define (fun a #!key (b a))
-        b)
-    > (fun a)
-    *** ERROR IN (console)@6.6 -- Unbound variable: ~#a
-    1> 
-    > 
-
-
 # More information / Contact
 
 Please drop me a line at *per dot eckerdal at gmail dot com* or use
