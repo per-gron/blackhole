@@ -25,6 +25,8 @@
         (lb (module-reference-loader b)))
   (or (loader<? la lb)
       (and (equal? la lb)
+           ;; It's really dirty to assume that module-reference-path
+           ;; is a string...
            (string<? (module-reference-path a)
                      (module-reference-path b))))))
 

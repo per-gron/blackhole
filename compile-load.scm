@@ -47,7 +47,11 @@
     res))
 
 (define (clean-file path)
-  (for-each delete-file
+  (for-each (lambda (fn)
+              (let ((dep-fn (deps-file-name fn)))
+                (if (file-exists? dep-fn)
+                    (delete-file dep-fn)))
+              (delete-file fn))
             (object-files path)))
 
 (define (generate-tmp-dir thunk)
@@ -128,6 +132,21 @@
               (table-set! registry file table)
               table))))))
 
+(define (deps-file-name fn)
+  (string-append fn ".deps"))
+
+(define (load-deps-file fn)
+  (with-input-from-file fn
+    (lambda ()
+      (let* ((fs (file-size fn))
+             (u8v (make-u8vector fs)))
+        (read-subu8vector u8v 0 fs)
+        (u8vector->module-reference u8v)))))
+
+(define (load-deps-from-deps-file fn)
+  (for-each module-reference-ref
+    (load-deps-file fn)))
+
 (define (load-module-from-file module-ref file-with-extension)
   (let* ((file
           (path-strip-trailing-directory-separator
@@ -145,7 +164,10 @@
          
          (module-object-table
           (and object-fn
-               (load-module-object-table object-fn)))
+               (let ((deps-fn (deps-file-name object-fn)))
+                 (if (file-exists? deps-fn)
+                     (load-deps-from-deps-file deps-fn))
+                 (load-module-object-table object-fn))))
 
          (force-compile
           (lambda ()
@@ -431,7 +453,7 @@
                  (begin
                    (display "Writing dependencies file..\n" port)
                    (with-output-to-file
-                       (string-append to-file ".deps")
+                       (deps-file-name to-file)
                      (lambda ()
                        (let ((u8v (module-reference->u8vector dep-list)))
                          (write-subu8vector u8v
