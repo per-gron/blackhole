@@ -5,6 +5,8 @@
 
 ;; These are just the 2 macro definitions missing in Gambit
 
+(compile-options no-global-state: #t)
+
 (export guard)
 
 (define-syntax guard

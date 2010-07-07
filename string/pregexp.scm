@@ -15,6 +15,8 @@
 ; docs:
 ; http://www.ccs.neu.edu/home/dorai/pregexp/pregexp.html
 
+(compile-options no-global-state: #t)
+
 (export pregexp
         pregexp-match-positions
         pregexp-match

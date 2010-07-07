@@ -2,6 +2,8 @@
 
 ;; This code is in the public domain.
 
+(compile-options no-global-state: #t)
+
 (define-syntax case-lambda
   (syntax-rules ()
     ((case-lambda 

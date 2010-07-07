@@ -138,6 +138,8 @@
 
 (export and-let*)
 
+(compile-options no-global-state: #t)
+
 (define-macro (and-let* claws . body)
   (let* ((new-vars '()) (result (cons 'and '())) (growth-point result))
 

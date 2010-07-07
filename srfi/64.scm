@@ -24,6 +24,8 @@
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 
 ;; List of exported names
+(compile-options no-global-state: #t)
+
 (export
  test-begin ;; must be listed first, since in Kawa (at least) it is "magic".
  test-end test-assert test-eqv test-eq test-equal
@@ -619,7 +621,7 @@
 	(if r
 	    (let ((run-list (%test-runner-run-list r)))
 	      (cond ((null? rest)
-		     (%test-runner-run-list! r (reverse! run-list))
+		     (%test-runner-run-list! r (reverse run-list))
 		     (first)) ;; actually apply procedure thunk
 		    (else
 		     (%test-runner-run-list!

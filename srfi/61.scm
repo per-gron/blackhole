@@ -3,6 +3,8 @@
 ;; 
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 
+(compile-options no-global-state: #t)
+
 (define-syntax cond
   (syntax-rules (=> else)
 

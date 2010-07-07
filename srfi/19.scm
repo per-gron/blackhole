@@ -3,6 +3,7 @@
 ;; that I renamed current-time to current-time-tc to avoid name clash
 ;; with the built-in gambit function with the same name.
 
+(compile-options no-global-state: #t)
 (declare
  (separate)) ; This library cannot be compiled with (block). Should be
              ; fixable, though let's do that sometime else.
@@ -650,7 +651,8 @@
 ;; This should be written to be OS specific.
 
 (define (tm:local-tz-offset)
-  (date-time-zone-offset ;(seconds->date 
+  (error "Not implemented")
+  #;(date-time-zone-offset ;(seconds->date 
                           (current-seconds)
                          ; )
                          ))

@@ -5,6 +5,8 @@
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 ;; (no changes needed from reference implementation)
 
+(compile-options no-global-state: #t)
+
 (define-syntax let-values
   (syntax-rules ()
     ((let-values (?binding ...) ?body0 ?body1 ...)

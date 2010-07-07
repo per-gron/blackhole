@@ -9,7 +9,7 @@
 ;; From SRFI-61 document
 (define (port->char-list-r5rs port)
   (cond
-    ((read-char port) char?
+    ((read-char port) ;; char? Why is this there? I commented it out
      => (lambda (c) (cons c (port->char-list-r5rs port))))
     (else '())))
 
@@ -21,7 +21,7 @@
 
 (define (port->char-list-srfi port)
   (cond
-    ((read-char port) char?
+    ((read-char port) ;; char? Why is this there? I commented it out
      => (lambda (c) (cons c (port->char-list-srfi port))))
     (else '())))
 

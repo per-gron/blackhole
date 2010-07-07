@@ -67,6 +67,8 @@
 ;;; See the end of the file for porting and performance-tuning notes.
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(compile-options no-global-state: #t)
+
 ;cj:
 (define check-arg   (lambda (pred val caller) (if (not (pred val)) (error val caller))))
 

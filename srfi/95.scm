@@ -22,6 +22,8 @@
 ;;;	(not (less? (list-ref list i) (list-ref list (- i 1)))).
 ;@
 
+(compile-options no-global-state: #t)
+
 (export sort
         sort!
         merge!

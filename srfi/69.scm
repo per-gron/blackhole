@@ -2,6 +2,8 @@
 ;; 
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 
+(compile-options no-global-state: #t)
+
 (export make-hash-table hash-table? alist->hash-table 
         hash-table-equivalence-function hash-table-hash-function 
         hash-table-ref hash-table-ref/default hash-table-set!

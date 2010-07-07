@@ -1,3 +1,4 @@
+(compile-options no-global-state: #t)
 (import |14|
         ../misc/optionals)
 
@@ -122,6 +123,16 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; This macro parses optional start/end arguments from arg lists, defaulting
 ;;; them to 0/(string-length s), and checks them for correctness.
+
+(define (char-cased? chr)
+  ;; This is a quick and dirty implementation
+  (not
+   (and (eq? chr (char-upcase chr))
+        (eq? chr (char-downcase chr)))))
+
+(define (char-titlecase chr)
+  ;; This is only correct in ASCII
+  (char-upcase chr))
 
 (define-syntax let-string-start+end
   (syntax-rules ()
