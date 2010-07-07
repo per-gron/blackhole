@@ -18,6 +18,18 @@
                 ,@(cdr code)))
         expr)))
 
+(define (append-map fun lst rest)
+  (cond
+   ((pair? lst)
+    (cons (fun (car lst))
+          (append-map fun
+                      (cdr lst)
+                      rest)))
+   ((null? lst)
+    rest)
+   (else
+    (error "Improper list"))))
+
 ;; If lst is an improper list, the return value will be an improper list
 (define (dotted-map fun lst)
   (cond
@@ -935,12 +947,12 @@
                                   defined-params
                                   (environment-add-defines
                                    env
-                                   (reverse! accum-ids))))
+                                   accum-ids)))
                              (values new-env
-                                     (append
-                                      (map (lambda (dp)
-                                             (cons dp new-env))
-                                        defined-params)
+                                     (append-map
+                                      (lambda (dp)
+                                        (cons dp new-env))
+                                      defined-params
                                       accum-result))))))
                     (action
                      (lambda (x rest)
