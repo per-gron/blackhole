@@ -170,6 +170,14 @@
 
 ;;;; ---------- Loader implementations ----------
 
+(define (local-loader-get-stamp path)
+  (let ((lof (last-object-file path))
+        (p-lc (file-last-changed-seconds path)))
+    (if lof
+        (max (file-last-changed-seconds (last-object-file path))
+             p-lc)
+        p-lc)))
+
 (define local-loader
   (make-loader
    name:
@@ -205,12 +213,12 @@
             invoke-compiletime: invoke-compiletime
             visit: visit
             info: (make-module-info-from-alist ref info-alist)
-            stamp: (file-last-changed-seconds path)
+            stamp: (local-loader-get-stamp path)
             reference: ref)))))
 
    compare-stamp:
    (lambda (path stamp)
-     (= (file-last-changed-seconds path)
+     (= (local-loader-get-stamp path)
         stamp))
 
    module-name:
