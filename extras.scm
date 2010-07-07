@@ -18,38 +18,39 @@
                          continue-on-error
                          to-c
                          (port (current-output-port)))
-  (let ((mod (resolve-one-module mod)))
-    (with-exception-catcher
-     (lambda (e)
-       (if continue-on-error
-           (begin
-             (display "Warning: Compilation failed: " port)
-             (display-exception e port)
-             #f)
-           (raise e)))
-     (lambda ()
-       (let ((info (loaded-module-info
-                    (module-reference-ref mod)))
-             (path (module-reference-path mod)))
-         (let ((result (module-compile-bunch
-                        'dyn
-                        (string-append
-                         (path-strip-extension path)
-                         ".o"
-                         (number->string
-                          (+ 1 (let ((lo (last-object-file path)))
-                                 (if lo
-                                     (object-file-extract-number lo)
-                                     0)))))
-                        (list path)
-                        options: (module-info-options info)
-                        cc-options: (module-info-cc-options info)
-                        ld-options-prelude: (module-info-ld-options-prelude
-                                             info)
-                        ld-options: (module-info-ld-options info)
-                        port: port)))
-           (if (not result)
-               (error "Compilation failed"))))))))
+  (let* ((mod (resolve-one-module mod))
+         (perform-compile!
+          (lambda ()
+            (let ((info (loaded-module-info
+                         (module-reference-ref mod)))
+                  (path (module-reference-path mod)))
+              (let ((result (module-compile-bunch
+                             'dyn
+                             (string-append
+                              (path-strip-extension path)
+                              ".o"
+                              (number->string
+                               (+ 1 (let ((lo (last-object-file path)))
+                                      (if lo
+                                          (object-file-extract-number lo)
+                                          0)))))
+                             (list path)
+                             options: (module-info-options info)
+                             cc-options: (module-info-cc-options info)
+                             ld-options-prelude: (module-info-ld-options-prelude
+                                                  info)
+                             ld-options: (module-info-ld-options info)
+                             port: port)))
+                (if (not result)
+                    (error "Compilation failed")))))))
+    (if continue-on-error
+        (with-exception-catcher
+         (lambda (e)
+           (display "Warning: Compilation failed: " port)
+           (display-exception e port)
+           #f)
+         perform-compile!)
+        (perform-compile!))))
 
 
 (define (modules-compile! mods #!optional continue-on-error port)

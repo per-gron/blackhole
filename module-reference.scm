@@ -20,6 +20,14 @@
       (error "Invalid parameters"))
   (make-module-reference/internal loader path))
 
+(define (module-reference<? a b)
+  (let ((la (module-reference-loader a))
+        (lb (module-reference-loader b)))
+  (or (loader<? la lb)
+      (and (equal? la lb)
+           (string<? (module-reference-path a)
+                     (module-reference-path b))))))
+
 (define (current-loader)
   (let ((cm (current-module-reference)))
     (if cm

@@ -315,12 +315,16 @@
                 (else
                  accum))))
 
+            (deps-tree empty-tree)
+
             (standalone #f)
+            (save-depfile #t)
             (save-links #f))
 
        (case mode
          ((exe)
-          (set! standalone #t))
+          (set! standalone #t)
+          (set! save-depfile #f))
          ((dyn)
           #!void) ;; Nothing to be done
          ((link)
@@ -351,6 +355,19 @@
                    visit-code
                    info-code
                    (module-macroexpand mod (file-read-as-expr file))))
+              (let ((add-deps!
+                     (lambda (deps)
+                       (for-each
+                           (lambda (dep)
+                             (set! deps-tree
+                                   (tree-add deps-tree
+                                             dep
+                                             module-reference<?)))
+                         deps)))
+                    (info (loaded-module-info
+                           (module-reference-ref mod))))
+                (add-deps! (module-info-runtime-dependencies info))
+                (add-deps! (module-info-compiletime-dependencies info)))
               (compile-sexp-to-o runtime-code
                                  (string-append c-file "-rt.c"))
               (compile-sexp-to-o compiletime-code
@@ -379,15 +396,12 @@
                         try))))))
          
          (display "Creating link file..\n" port)
-         (parameterize
-             ;; Suppress warning messages from link-flat
-             ((current-output-port
-               (open-output-u8vector)))
-           ((if standalone
-                link-incremental
-                link-flat)
-            (map path-strip-extension c-files)
-            output: link-c-file))
+         ((if standalone
+              link-incremental
+              link-flat)
+          (map path-strip-extension c-files)
+          output: link-c-file
+          warnings?: #f)
          
          (display "Compiling link file..\n" port)
          (compile-c-to-o link-c-file
@@ -406,6 +420,23 @@
           verbose: verbose
           ld-options-prelude: ld-options-prelude
           ld-options: ld-options))
+
+       (if save-depfile
+           (let ((dep-list
+                  (tree->list
+                   (tree-difference deps-tree
+                                    (list->tree mods module-reference<?)
+                                    module-reference<?))))
+             (if (pair? dep-list)
+                 (begin
+                   (display "Writing dependencies file..\n" port)
+                   (with-output-to-file
+                       (string-append to-file ".deps")
+                     (lambda ()
+                       (let ((u8v (module-reference->u8vector dep-list)))
+                         (write-subu8vector u8v
+                                            0
+                                            (u8vector-length u8v)))))))))
        
        (if save-links
            (for-each (lambda (file)

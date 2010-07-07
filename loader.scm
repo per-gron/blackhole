@@ -25,6 +25,10 @@
   ;; Takes a path and returns a string for the name of the module
   (module-name-fn unprintable: equality-skip: read-only:))
 
+(define (loader<? a b)
+  (string<? (symbol->string (loader-name a))
+            (symbol->string (loader-name b))))
+
 (define (loader-path-absolute? loader path)
   ((loader-path-absolute?-fn loader) path))
 
