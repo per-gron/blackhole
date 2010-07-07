@@ -17,13 +17,15 @@
                          #!key
                          continue-on-error
                          to-c
-                         (port (current-output-port)))
+                         (port (current-output-port))
+                         (options '())
+                         (cc-options "")
+                         (ld-options-prelude "")
+                         (ld-options ""))
   (let* ((mod (resolve-one-module mod))
          (perform-compile!
           (lambda ()
-            (let ((info (loaded-module-info
-                         (module-reference-ref mod)))
-                  (path (module-reference-path mod)))
+            (let ((path (module-reference-path mod)))
               (let ((result (module-compile-bunch
                              'dyn
                              (string-append
@@ -35,11 +37,10 @@
                                           (object-file-extract-number lo)
                                           0)))))
                              (list path)
-                             options: (module-info-options info)
-                             cc-options: (module-info-cc-options info)
-                             ld-options-prelude: (module-info-ld-options-prelude
-                                                  info)
-                             ld-options: (module-info-ld-options info)
+                             options: options
+                             cc-options: cc-options
+                             ld-options-prelude: ld-options-prelude
+                             ld-options: ld-options
                              port: port)))
                 (if (not result)
                     (error "Compilation failed")))))))

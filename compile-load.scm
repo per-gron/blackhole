@@ -343,6 +343,8 @@
                  accum))))
 
             (deps-tree empty-tree)
+            (ld-options-prelude-accum "")
+            (ld-options-accum "")
 
             (standalone #f)
             (save-depfile #t)
@@ -364,46 +366,64 @@
        (display " files...\n" port)
        
        (for-each
-        (lambda (mod c-file file)
-          (display file port)
-          (display " ." port)
-          (let ((compile-sexp-to-o
-                 (lambda (sexp fn)
-                   (compile-sexp-to-c (expr:deep-fixup sexp) fn
-                                      options: options)
-                   (display "." port)
-                   (compile-c-to-o fn
-                                   verbose: verbose
-                                   cc-options: cc-options
-                                   shared: (not (eq? mode 'exe)))
-                   (display "." port))))
-            (let ((runtime-code
-                   compiletime-code
-                   visit-code
-                   info-code
-                   (module-macroexpand mod (file-read-as-expr file))))
-              (let ((add-deps!
-                     (lambda (deps)
-                       (for-each
-                           (lambda (dep)
-                             (set! deps-tree
-                                   (tree-add deps-tree
-                                             dep
-                                             module-reference<?)))
-                         deps)))
-                    (info (loaded-module-info
-                           (module-reference-ref mod))))
-                (add-deps! (module-info-runtime-dependencies info))
-                (add-deps! (module-info-compiletime-dependencies info)))
-              (compile-sexp-to-o runtime-code
-                                 (string-append c-file "-rt.c"))
-              (compile-sexp-to-o compiletime-code
-                                 (string-append c-file "-ct.c"))
-              (compile-sexp-to-o visit-code
-                                 (string-append c-file "-vt.c"))
-              (compile-sexp-to-o info-code
-                                 (string-append c-file "-mi.c"))))
-          (newline))
+           (lambda (mod c-file file)
+             (display file port)
+             (display " ." port)
+             (let ((runtime-code
+                    compiletime-code
+                    visit-code
+                    info-code
+                    (module-macroexpand mod (file-read-as-expr file))))
+               (let* ((info-tbl
+                       (list->table
+                        (u8vector->module-reference (eval-no-hook info-code))))
+                      
+                      (compile-sexp-to-o
+                       (lambda (sexp fn)
+                         (compile-sexp-to-c
+                          (expr:deep-fixup sexp)
+                          fn
+                          options:
+                          (append (table-ref info-tbl 'options)
+                                  options))
+                         (display "." port)
+                         (compile-c-to-o
+                          fn
+                          verbose: verbose
+                          cc-options: cc-options
+                          shared: (not (eq? mode 'exe)))
+                         (display "." port))))
+
+                 (set! ld-options-prelude-accum
+                       (string-append ld-options-prelude-accum
+                                      " "
+                                      (table-ref info-tbl 'ld-options-prelude)))
+                 (set! ld-options-accum
+                       (string-append ld-options-accum
+                                      " "
+                                      (table-ref info-tbl 'ld-options)))
+                 
+                 (let ((add-deps!
+                        (lambda (deps)
+                          (for-each
+                              (lambda (dep)
+                                (set! deps-tree
+                                      (tree-add deps-tree
+                                                dep
+                                                module-reference<?)))
+                            deps))))
+                   (add-deps! (table-ref info-tbl 'runtime-dependencies))
+                   (add-deps! (table-ref info-tbl 'compiletime-dependencies)))
+                 
+                 (compile-sexp-to-o runtime-code
+                                    (string-append c-file "-rt.c"))
+                 (compile-sexp-to-o compiletime-code
+                                    (string-append c-file "-ct.c"))
+                 (compile-sexp-to-o visit-code
+                                    (string-append c-file "-vt.c"))
+                 (compile-sexp-to-o info-code
+                                    (string-append c-file "-mi.c"))))
+             (newline))
         mods c-files-no-ext files)
        
        (let ((link-c-file
@@ -445,8 +465,12 @@
           (path-expand to-file (current-directory))
           standalone: standalone
           verbose: verbose
-          ld-options-prelude: ld-options-prelude
-          ld-options: ld-options))
+          ld-options-prelude: (string-append ld-options-prelude
+                                             " "
+                                             ld-options-prelude-accum)
+          ld-options: (string-append ld-options
+                                     " "
+                                     ld-options-accum)))
 
        (if save-depfile
            (let ((dep-list
