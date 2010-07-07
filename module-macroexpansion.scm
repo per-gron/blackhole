@@ -502,6 +502,6 @@
                             (ld-options-prelude ,@ld-options-prelude-)
                             (ld-options ,@ld-options-)
                             (force-compile ,@force-compile-)
-                            (no-global-state ,@no-global-state-))
+                            (no-global-state ,@no-global-state-)))
                          (vec (module-reference->u8vector info)))
                     `',vec)))))))
