@@ -21,14 +21,17 @@
   (make-module-reference/internal loader path))
 
 (define (module-reference<? a b)
+  (if (not (and (module-reference-absolute? a)
+                (module-reference-absolute? b)))
+      (error "Module references must be absolute" a b))
   (let ((la (module-reference-loader a))
         (lb (module-reference-loader b)))
-  (or (loader<? la lb)
-      (and (equal? la lb)
-           ;; It's really dirty to assume that module-reference-path
-           ;; is a string...
-           (string<? (module-reference-path a)
-                     (module-reference-path b))))))
+    (or (loader<? la lb)
+        (and (equal? la lb)
+             ;; It's really dirty to assume that module-reference-path
+             ;; is a string...
+             (string<? (module-reference-path a)
+                       (module-reference-path b))))))
 
 (define (current-loader)
   (let ((cm (current-module-reference)))

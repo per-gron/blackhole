@@ -409,7 +409,9 @@
                               (lambda (dep)
                                 (set! deps-tree
                                       (tree-add deps-tree
-                                                dep
+                                                (module-reference-absolutize
+                                                 dep
+                                                 mod)
                                                 module-reference<?)))
                             deps))))
                    (add-deps! (table-ref info-tbl 'runtime-dependencies))
