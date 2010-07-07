@@ -176,7 +176,6 @@
 
          (force-compile
           (lambda ()
-            (print file-with-extension " is being compiled...\n")
             (module-compile! module-ref)
             (load-module-from-file module-ref file-with-extension))))
     
