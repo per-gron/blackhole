@@ -18,6 +18,7 @@
                          continue-on-error
                          to-c
                          (port (current-output-port))
+                         verbose
                          (options '())
                          (cc-options "")
                          (ld-options-prelude "")
@@ -41,6 +42,7 @@
                              cc-options: cc-options
                              ld-options-prelude: ld-options-prelude
                              ld-options: ld-options
+                             verbose: verbose
                              port: port)))
                 (if (not result)
                     (error "Compilation failed")))))))
