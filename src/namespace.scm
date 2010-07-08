@@ -4,11 +4,6 @@
 ;;;                                                                  ;;;
 ;;;  --------------------------------------------------------------  ;;;
 
-
-(##define-syntax get-path
-  (lambda (a)
-    (vector-ref a 2)))
-
 (define ns-file (path-expand "../work/ns.dat"
                              (path-expand
                               (path-directory

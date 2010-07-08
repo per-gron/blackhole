@@ -41,11 +41,16 @@
 (define *compiler-ld-options* "")
 
 (set! *module-resolvers*
-      `((here . ,current-module-resolver)
-        (module . ,(make-singleton-module-resolver
-                    module-module-loader))
-        (lib . ,lib-module-resolver)
-        (std . ,(package-module-resolver "~~lib/modules/std"))))
+      `((here ,@current-module-resolver)
+        (module ,@(make-singleton-module-resolver
+                   module-module-loader))
+        (lib ,@lib-module-resolver)
+        (std ,@(package-module-resolver "~~lib/modules/std"))
+        (srfi ,@(package-module-resolver
+                 (path-expand "../srfi"
+                              (path-expand
+                               (path-directory
+                                (get-path))))))))
 
 
 ;; ---------- Add the hooks =) ----------

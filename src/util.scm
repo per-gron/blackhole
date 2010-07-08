@@ -1,5 +1,9 @@
 ;; Utilities
 
+(##define-syntax get-path
+  (lambda (a)
+    (vector-ref a 2)))
+
 (define (string-contains haystack chr)
   (call/cc
    (lambda (ret)
