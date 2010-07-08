@@ -71,7 +71,7 @@
        (define (runner? obj)
          (and (vector? obj)
               (> (vector-length obj) 1)
-              (eq (vector-ref obj 0) %test-runner-cookie)))
+              (eq? (vector-ref obj 0) %test-runner-cookie)))
        (define (alloc)
          (let ((runner (make-vector 23)))
            (vector-set! runner 0 %test-runner-cookie)
@@ -614,6 +614,15 @@
       ; In the original version an additional assert was here to ensure it signals
       ; an error, however, that was executing 2 tests instead of 1
 
+(define-syntax test-with-runner
+  (syntax-rules ()
+    ((test-with-runner runner form ...)
+     (let ((saved-runner (test-runner-current)))
+       (dynamic-wind
+           (lambda () (test-runner-current runner))
+           (lambda () form ...)
+           (lambda () (test-runner-current saved-runner)))))))
+
 (define (test-apply first . rest)
   (if (test-runner? first)
       (test-with-runner first (apply test-apply rest))
@@ -632,15 +641,6 @@
 	    (let ((r (test-runner-create)))
 	      (test-with-runner r (apply test-apply first rest))
 	      ((test-runner-on-final r) r))))))
-
-(define-syntax test-with-runner
-  (syntax-rules ()
-    ((test-with-runner runner form ...)
-     (let ((saved-runner (test-runner-current)))
-       (dynamic-wind
-           (lambda () (test-runner-current runner))
-           (lambda () form ...)
-           (lambda () (test-runner-current saved-runner)))))))
 
 ;;; Predicates
 

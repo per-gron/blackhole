@@ -34,7 +34,6 @@
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 
 (compile-options no-global-state: #t)
-
 (export cut cute)
 
 ; (srfi-26-internal-cut slot-names combination . se)
@@ -42,6 +41,8 @@
 ;     slot-names  : the internal names of the slots
 ;     combination : procedure being specialized, followed by its arguments
 ;     se          : slots-or-exprs, the qualifiers of the macro
+
+(compile-options no-global-state: #t)
 
 (define-syntax srfi-26-internal-cut
   (syntax-rules (<> <...>)

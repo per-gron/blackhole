@@ -1,5 +1,4 @@
-(import ../64)
-(import ../11)
+(import (srfi tests let-values))
 
 (test-begin "srfi-11" 3)
 

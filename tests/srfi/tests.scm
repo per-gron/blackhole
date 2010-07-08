@@ -1,4 +1,4 @@
-(import ../64)
+(import (srfi tests))
 
 (define my-simple-runner (test-runner-simple))
 (test-runner-factory

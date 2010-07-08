@@ -137,7 +137,6 @@
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 
 (export and-let*)
-
 (compile-options no-global-state: #t)
 
 (define-macro (and-let* claws . body)

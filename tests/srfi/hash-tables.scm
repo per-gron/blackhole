@@ -1,4 +1,4 @@
-(import ../64)
+(import (srfi tests hash-tables))
 (import ../69)
 
 (test-begin "srfi-69" 5)

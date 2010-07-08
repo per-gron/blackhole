@@ -3,8 +3,8 @@
 ;; Adapted to Blackhole for Gambit by Álvaro Castro-Castilla
 ;; Uses srfi-64 for testing
 
-(import ../64)
-(import ../26)
+(import (srfi tests))
+(import (srfi specialize-procedures))
 
 (test-begin "srfi-26" 25)
 
