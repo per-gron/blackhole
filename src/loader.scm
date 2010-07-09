@@ -240,7 +240,9 @@
    (lambda (path) #t)
    
    path-absolutize:
-   (lambda (path #!optional ref) #f)
+   (lambda (path #!optional ref)
+     (if path
+         (error "Module does not exist in this loader:" path)))
 
    load-module:
    (lambda (path)
