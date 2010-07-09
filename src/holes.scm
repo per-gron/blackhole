@@ -4,6 +4,20 @@
 (define-macro (push! list obj)
   `(set! ,list (cons ,obj ,list)))
 
+(define (find-one? pred? lst)
+    (let loop ((lst lst))
+      (cond
+       ((null? lst)
+        #f)
+
+       ((pair? lst)
+        (if (pred? (car lst))
+            #t
+            (loop (cdr lst))))
+
+       (else
+        (error "Improper list" lst)))))
+
 (define (string-for-each fn str)
   (let ((len (string-length str)))
     (let loop ((i 0))
@@ -164,6 +178,48 @@
 (define version~<=? (version-comparison <=))
 (define version~>? (version-comparison >))
 (define version~>=? (version-comparison >=))
+
+(define version-match?
+  (let ((tests
+         `((< ,@version~<?)
+           (<= ,@version~<=?)
+           (> ,@version~>?)
+           (>= ,@version~>=?)
+           (= ,@version~=?))))
+    (lambda (v original-exp)
+      (let loop ((exp original-exp))
+        (cond
+         ((eq? exp #t) #t)
+         
+         ((eq? exp #f) #f)
+         
+         ((pair? exp)
+          (let ((test (car exp)))
+            (cond
+             ((eq? 'or test)
+              (find-one? loop
+                         (cdr exp)))
+             
+             ((eq? 'and test)
+              (not
+               (find-one? (lambda (x)
+                            (not (loop x)))
+                          (cdr exp))))
+             
+             ((assq test tests) =>
+              (lambda (test-pair)
+                (if (not (and (pair? (cdr exp))
+                              (null? (cddr exp))))
+                    (error "Invalid expression" original-exp))
+                ((cdr test-pair)
+                 (symbol->version (cadr exp))
+                 v)))
+             
+             (else
+              (error "Unknown expression" original-exp)))))
+          
+          (else
+           (error "Unknown expression" original-exp)))))))
   
 
 
@@ -185,20 +241,6 @@
   (module-directory read-only:))
 
 (define (parse-package-metadata form)
-  (define (find-one? pred? lst)
-    (let loop ((lst lst))
-      (cond
-       ((null? lst)
-        #f)
-
-       ((pair? lst)
-        (if (pred? (car lst))
-            #t
-            (loop (cdr lst))))
-
-       (else
-        (error "Improper list" lst)))))
-  
   (if (or (not (list? form))
           (not (eq? 'package (car form))))
       (error "Invalid package metadata" form))
@@ -331,7 +373,7 @@
           (installed-package-metadata-set! ip md)
           md))))
 
-(define (installed-packages #!optional
+(define (load-installed-packages #!optional
                             (pkgs-dir local-packages-dir))
   (let ((pkg-dirs
          (filter (lambda (x)
@@ -363,17 +405,43 @@
        pkg-dirs)
      installed-package<?)))
 
+(define *installed-packages* #f)
+
+(define (get-installed-packages)
+  (or *installed-packages*
+      (let ((ip (installed-packages)))
+        (set! *installed-packages* ip)
+        ip)))
+
 
 ;;; Module loader and resolver
 
-(define (package-module-resolver _ path relative . ids)
-  (map (lambda (id)
-         (make-module-reference
-          loader
-          (if relative
-              id
-              (loader-path-absolutize loader id path))))
-    ids))
+(define *loaded-packages* (make-table))
+
+(define (package-module-resolver loader path relative pkg-name-sym
+                                 #!rest
+                                 ids
+                                 #!key
+                                 (version #t))
+  (if (not (eq? loader package-loader))
+      (error "Internal error"))
+  
+  (let* ((pkg-name (symbol->string pkg-name-sym))
+         (loaded-package (table-ref *loaded-packages* pkg-name #f))
+         (package
+          (if loaded-package
+              (if (version-match? (installed-package-version loaded-package)
+                                  version)
+                  loaded-package
+                  (error "A package is already loaded, with incompatible version:"
+                         (installed-package-version loaded-package)
+                         version))
+              'TODO-implement-tree-search-and-iterate)))
+    (map (lambda (id)
+           (make-module-reference
+            package-loader
+            (cons package id)))
+      ids)))
 
 (define package-loader
   (make-loader
@@ -381,7 +449,7 @@
    'local
 
    path-absolute?:
-   path-absolute?
+   (lambda (p) #t)
    
    path-absolutize:
    (lambda (path #!optional ref)
