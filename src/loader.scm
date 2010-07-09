@@ -86,13 +86,13 @@
    (list 'syntax-rules
          'mac
          (lambda (code env mac-env)
-           `(apply module#syntax-rules-proc
+           `(apply bh#syntax-rules-proc
                    ',(expr*:cdr code)))
          builtin-environment)
    (map (lambda (x)
           (list x
                 'def
-                (gen-symbol "module#" x)
+                (gen-symbol "bh#" x)
                 ;; #f because this doesn't belong to a real module
                 ;; (this is usually a module reference)
                 #f))
@@ -256,19 +256,19 @@
         (values (lambda (name value)
                   (error "You can't side-effect the internals of Black Hole"))
                 (lambda (name)
-                  (eval (gen-symbol "module#" name)))))
+                  (eval (gen-symbol "bh#" name)))))
       
       visit:
       (lambda (loaded-module phase)
         `((syntax-rules .
             ,(lambda (code env mac-env)
-               `(apply module#syntax-rules-proc
+               `(apply bh#syntax-rules-proc
                        ',(expr*:cdr code))))))
       
       info:
       (make-module-info
        namespace-string:
-       "module#"
+       "bh#"
 
        exports:
        module-exports-list)

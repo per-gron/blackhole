@@ -279,7 +279,7 @@
                           (if (eq? (caaddr x)
                                    '##define-type-expand)
                               `(,(cadr x)
-                                (module#expand
+                                (bh#expand
                                  ,@(cdaddr x)))
                               (cdr x)))
                     x))

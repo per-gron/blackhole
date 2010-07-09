@@ -28,7 +28,7 @@ merely for convenience:
           (and (equal? (path-strip-directory (car (command-line))) "bsc")
                (load (path-expand "build" blackhole-path))
                (begin 
-                 (set! module#ns-file (path-expand "ns.dat" blackhole-path))
+                 (set! bh#ns-file (path-expand "ns.dat" blackhole-path))
                  (println "Loaded Black Hole."))))
 
 * You can now run Black Hole with the command `bsc`

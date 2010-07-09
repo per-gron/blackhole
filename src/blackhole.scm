@@ -1,4 +1,4 @@
-(##namespace ("module#"))
+(##namespace ("bh#"))
 
 (##include "~~/lib/gambit#.scm")
 

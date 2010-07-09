@@ -680,7 +680,7 @@
     (lambda (env macro-name)
       (set! counter (+ 1 counter))
       (gen-symbol (string-append (environment-namespace env)
-                                 "module#macro#"
+                                 "bh#macro#"
                                  (number->string
                                   counter)
                                  "-")
@@ -1395,7 +1395,7 @@
   ;; However, even if the symbols are the same, they could be
   ;; different identifiers. This can only happen if the symbols are of
   ;; the form [number]#name. If it is an absolute namespace like
-  ;; module#, then the symbols must be the same.  This is an example:
+  ;; bh#, then the symbols must be the same.  This is an example:
   ;;
   ;; (let ()
   ;;   (let (x) x)
