@@ -17,9 +17,9 @@
   (reference read-only:)
   
   (runtime-invoked init: #f)
-  ;; A list of the currently loaded loaded-module objects that
-  ;; directly depend on this loaded-module
-  (dependent-modules init: '()))
+  ;; A weak hashtable of the currently loaded loaded-module objects
+  ;; that directly depend on this loaded-module
+  dependent-modules)
 
 (define (make-loaded-module #!key
                             invoke-runtime
@@ -40,7 +40,8 @@
                                visit
                                info
                                stamp
-                               reference))
+                               reference
+                               (make-table weak-keys: #t)))
 
 (define (loaded-module-loader mod)
   (module-reference-loader (loaded-module-reference mod)))
@@ -63,10 +64,23 @@
         (loaded-module
          (loader-load-module (module-reference-loader ref)
                              (module-reference-path ref))))
+
+    ;; Update the relevant dependent-modules fields
     (if previously-loaded-module
         (loaded-module-dependent-modules-set!
          loaded-module
          (loaded-module-dependent-modules previously-loaded-module)))
+    (let ((action
+           (lambda (dependency)
+             (table-set!
+              (loaded-module-dependent-modules
+               (module-reference-ref dependency))
+              loaded-module
+              #t)))
+          (info (loaded-module-info loaded-module)))
+      (for-each action (module-info-runtime-dependencies info))
+      (for-each action (module-info-compiletime-dependencies info)))
+    
     (table-set! *loaded-module-registry* ref loaded-module)
     loaded-module))
 
@@ -74,8 +88,9 @@
 (define (loaded-module-unload! lm) ;; This function isn't used or tested
   ;; First, de-instantiate the modules that depend on this module.
   (let rec ((lm lm))
-    (for-each rec
-      (loaded-module-dependent-modules lm))
+    (table-for-each (lambda (k v)
+                      (rec k))
+                    (loaded-module-dependent-modules lm))
 
     (let ((ref (loaded-module-reference lm)))
       (vector-for-each
@@ -170,7 +185,9 @@
 ;; loaded-modules-reinvoke.
 (define (loaded-module-invoke! lm phase)
   (if (zero? (expansion-phase-number phase))
-      ((loaded-module-invoke-runtime lm))
+      (begin
+        ((loaded-module-invoke-runtime lm))
+        (loaded-module-runtime-invoked-set! lm #t))
       (let ((invoke-compiletime
              (loaded-module-invoke-compiletime lm)))
         (if invoke-compiletime
@@ -287,12 +304,6 @@
       (lambda (dep-ref)
         (let ((dependency
                (module-reference-ref dep-ref)))
-          ;; Update the dependent-modules field
-          (loaded-module-dependent-modules-set!
-           dependency
-           (cons lm
-                 (loaded-module-dependent-modules
-                  dependency)))
           ;; Recurse
           (invoke dependency)))
     (info->dependencies
@@ -384,32 +395,12 @@
                                           visit-memo: visit-memo))
       lms)))
 
-(define (loaded-modules-reinvoke lms phase)
-  (letrec
-      (;; Table of module-reference objects to #t
-       (invoke-table (make-table))
-       (rec (lambda (lm)
-              (cond
-               ((and (not (table-ref invoke-table
-                                     (loaded-module-reference lm)
-                                     #f))
-                     (not (loaded-module-invoked? lm phase)))
-                ;; Flag that this module is to be invoked, to
-                ;; avoid double-instantiations.
-                (table-set! invoke-table
-                            (loaded-module-reference lm)
-                            #t)
-                
-                ;; Re-invoke and re-visit the module
-                (loaded-module-invoke! lm phase)
-                (loaded-module-visit! lm phase)
-                
-                ;; Re-invoke the dependent modules
-                (for-each rec
-                  (loaded-module-dependent-modules lm)))))))
-    (for-each rec lms)))
-
-(define (module-import modules env phase)
+;; Returns #t if any module was reloaded
+(define (module-load module-references
+                     #!key
+                     (phase (*expansion-phase*))
+                     ;; One of #t, #f, 'force
+                     (reload? 'force))
   (define (module-loaded-but-not-fresh? ref)
     ;; This function is not a closure. It is here because
     ;; it's only used here.
@@ -417,43 +408,67 @@
       (and lm
            (not (loaded-module-stamp-is-fresh? lm)))))
 
+  (define (loaded-modules-reinvoke lms phase)
+    (letrec
+        (;; Table of module-reference objects to #t
+         (invoke-table (make-table))
+         (rec (lambda (lm #!optional force?)
+                (cond
+                 ((and (not (table-ref invoke-table
+                                       (loaded-module-reference lm)
+                                       #f))
+                       (or force?
+                           (not (loaded-module-invoked? lm phase))))
+                  ;; Flag that this module is to be invoked, to
+                  ;; avoid double-instantiations.
+                  (table-set! invoke-table
+                              (loaded-module-reference lm)
+                              #t)
+                  
+                  ;; Re-invoke and re-visit the module
+                  (loaded-module-invoke! lm phase)
+                  (loaded-module-visit! lm phase)
+                  
+                  ;; Re-invoke the dependent modules
+                  (table-for-each
+                   (lambda (k v)
+                     (rec k #t))
+                   (loaded-module-dependent-modules lm)))))))
+      (for-each rec lms)))
+
+  (let ((loaded-modules '())
+        (reloaded-modules '()))
+    
+    (for-each
+        (lambda (ref)
+          (if (or (eq? 'force reload?)
+                  (and reload?
+                       (module-loaded-but-not-fresh? ref)))
+              (push! reloaded-modules
+                     (module-reference-load! ref))
+              (push! loaded-modules
+                     (module-reference-ref ref))))
+      module-references)
+
+    (loaded-modules-reinvoke reloaded-modules phase)
+    (loaded-modules-invoke/deps loaded-modules phase)
+    (loaded-modules-visit/deps loaded-modules phase)
+    (pair? reloaded-modules)))
+
+(define (module-import modules env phase)
   (let loop ()
     (let ((defs
            module-references
-           (resolve-imports modules))
-          
-          ;; Modules with a non-fresh stamp (that is, modules that have
-          ;; changed since they were last loaded) will be reloaded if
-          ;; they are imported from the REPL. And when a module is
-          ;; reloaded all modules that depend on it must be
-          ;; reinvoked.
-          (loaded-modules '())
-          (reloaded-modules '()))
-      
-      (cond
-       ((repl-environment? env)
-        (for-each (lambda (ref)
-                    (if (module-loaded-but-not-fresh? ref)
-                        (set! reloaded-modules
-                              (cons (module-reference-load! ref)
-                                    reloaded-modules))
-                        (set! loaded-modules
-                              (cons (module-reference-ref ref)
-                                    loaded-modules))))
-          module-references))
-       
-       (else
-        (set! loaded-modules
-              (map module-reference-ref
-                module-references))))
-      
-      (loaded-modules-invoke/deps loaded-modules phase)
-      (loaded-modules-visit/deps loaded-modules phase)
-      (if (null? reloaded-modules)
-          (module-add-defs-to-env defs env
-                                  phase: phase)
-          (begin
-            (loaded-modules-reinvoke reloaded-modules phase)
+           (resolve-imports modules)))
+
+      (let ((a-module-was-reloaded?
+             (module-load module-references
+                          phase: phase
+                          reload?: (repl-environment? env))))
+        
+        (if (not a-module-was-reloaded?)
+            (module-add-defs-to-env defs env
+                                    phase: phase)
             ;; We need to re-resolve the imports, because the
             ;; reloads might have caused definitions to change.
             (loop))))))
