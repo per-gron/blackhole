@@ -49,7 +49,9 @@
     (string-for-each (lambda (c)
                        (cond
                         ((eq? c chr)
-                         (if (or (not sparse) (not (null? curr-str))) (new-str)))
+                         (if (or (not sparse)
+                                 (not (null? curr-str)))
+                             (new-str)))
                         (else
                          (add-char c))))
                      str)
@@ -291,9 +293,9 @@
       (parse-package-metadata (read)))))
      
 
-;;; Package list
+;;; Remote packages
 
-(define (load-package-list)
+(define (load-remote-package-list)
   ;; TODO
   '((sack
      ("http://...."
@@ -316,7 +318,7 @@
         (sack (>= v1))
         pregexp))))))
 
-(define (parse-package-list package-list)
+(define (parse-remote-package-list package-list)
   (list->table
    (map (lambda (package)
           (cons
@@ -336,6 +338,7 @@
 
 
 (define local-packages-dir
+  ;; TODO
   "/Users/per/prog/gambit/blackhole/work/pkgs")
 
 (define pkgfile-name
@@ -409,7 +412,7 @@
 
 (define (get-installed-packages)
   (or *installed-packages*
-      (let ((ip (installed-packages)))
+      (let ((ip (load-installed-packages)))
         (set! *installed-packages* ip)
         ip)))
 
@@ -418,25 +421,55 @@
 
 (define *loaded-packages* (make-table))
 
-(define (package-module-resolver loader path relative pkg-name-sym
+(define (find-suitable-package pkg-name
+                               #!optional
+                               (version-exp #t)
+                               (throw-error? #t))
+  (let ((loaded-package (table-ref *loaded-packages* pkg-name #f)))
+    (if loaded-package
+        (if (version-match? (installed-package-version loaded-package)
+                            version)
+            loaded-package
+            (and throw-error?
+                 (error "A package is already loaded, with incompatible version:"
+                        (installed-package-version loaded-package)
+                        version)))
+        'TODO-implement-tree-search-and-iterate)))
+
+(define (load-package! pkg)
+  (let ((name (installed-package-name pkg))
+        (version (installed-package-version pkg)))
+    (let* ((other-pkg (table-ref *loaded-packages* name #f))
+           (other-version (installed-package-version other-pkg)))
+      (if other-pkg
+          (and other-pkg
+               (not (equal? other-version version))))
+        (error "Another incompatible package version is already loaded:"
+               name
+               version
+               other-version))
+    
+    (for-each (lambda (dep)
+                (load-package!
+                 (if (symbol? dep)
+                     (find-suitable-package dep)
+                     (find-suitable-package (car dep)
+                                            `(and
+                                              ,@(cdr dep))))))
+      (package-metadata-dependencies
+       (installed-package-metadata pkg)))
+    
+    (table-set! *loaded-packages* name pkg)))
+               
+
+(define (package-module-resolver loader path relative pkg-name
                                  #!rest
                                  ids
                                  #!key
                                  (version #t))
   (if (not (eq? loader package-loader))
       (error "Internal error"))
-  
-  (let* ((pkg-name (symbol->string pkg-name-sym))
-         (loaded-package (table-ref *loaded-packages* pkg-name #f))
-         (package
-          (if loaded-package
-              (if (version-match? (installed-package-version loaded-package)
-                                  version)
-                  loaded-package
-                  (error "A package is already loaded, with incompatible version:"
-                         (installed-package-version loaded-package)
-                         version))
-              'TODO-implement-tree-search-and-iterate)))
+  (let ((package (find-suitable-package pkg-name version)))
     (map (lambda (id)
            (make-module-reference
             package-loader
