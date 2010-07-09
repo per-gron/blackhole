@@ -42,11 +42,11 @@
 
 (set! *module-resolvers*
       `((here ,@current-module-resolver)
-        (module ,@(make-singleton-module-resolver
-                   module-module-loader))
+        (black-hole ,@(make-singleton-module-resolver
+                   black-hole-module-loader))
         (lib ,@lib-module-resolver)
-        (std ,@(package-module-resolver "~~lib/modules/std"))
-        (srfi ,@(package-module-resolver
+        (std ,@(directory-module-resolver "~~lib/modules/std"))
+        (srfi ,@(directory-module-resolver
                  (path-expand "../srfi"
                               (path-expand
                                (path-directory

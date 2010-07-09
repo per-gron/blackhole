@@ -163,7 +163,7 @@
           module-files-in-dir
           
           loader
-          module-module-loader))))
+          black-hole-module-loader))))
 
 
 
@@ -231,7 +231,7 @@
            (else
             (error "Invalid path" path))))))
 
-(define module-module-loader
+(define black-hole-module-loader
   (make-loader
    name:
    'module
@@ -274,10 +274,10 @@
        module-exports-list)
 
       reference:
-      (make-module-reference module-module-loader #f)))
+      (make-module-reference black-hole-module-loader #f)))
 
    compare-stamp:
    (lambda (path stamp) #t)
 
    module-name:
-   (lambda (path) "module")))
+   (lambda (path) "bh")))

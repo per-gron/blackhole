@@ -1,6 +1,6 @@
 ;;; Utilities
 
-;; TODO This one is already defined in util.scm
+;; TODO This is already defined in util.scm
 (define-macro (push! list obj)
   `(set! ,list (cons ,obj ,list)))
 
@@ -14,13 +14,14 @@
         (loop (+ i 1)))))))
 
 (define (reverse-list->string list)
-  (let ((str (make-string (length list))))
-    (let loop ((i 0)
+  (let* ((len (length list))
+         (str (make-string len)))
+    (let loop ((i (- len 1))
                (list list))
       (cond
        ((pair? list)
         (string-set! str i (car list))
-        (loop (+ 1 i) (cdr list)))))
+        (loop (- i 1) (cdr list)))))
     str))
 
 (define (string-split chr str #!optional (sparse #f))
@@ -71,52 +72,80 @@
   (minor read-only:)
   (build read-only:))
 
-(define (symbol->version sym)
-  (if (not (symbol? sym))
-      (error "Expected symbol" sym))
-  (let* ((str (symbol->string sym))
-         (str-len (string-length str))
+(define version-complete? version-build)
+
+(define (version<? a b)
+  (if (not (and (version-complete? a)
+                (version-complete? b)))
+      (error "Can't compare incomplete versions" a b))
+  (let ((a-maj (version-major a))
+        (b-maj (version-major b))
+        (a-min (version-minor a))
+        (b-min (version-major b))
+        (a-b (version-build a))
+        (b-b (version-build b)))
+    (or (< a-maj b-maj)
+        (and (= a-maj b-maj)
+             (or (< a-min b-min)
+                 (and (= a-min b-min)
+                      (< a-b b-b)))))))
+
+(define (string->version str #!key force-complete?)
+  (if (not (string? str))
+      (error "Expected string" str))
+  (let* ((str-len (string-length str))
          (str-no-v
           (if (> str-len 1)
               (substring str 1 str-len)
-              (error "Invalid format" sym)))
+              (error "Invalid format" str)))
          (split-string (string-split #\. str-no-v))
          (split-string-len (length split-string)))
     (if (not (<= 0 split-string-len 3))
-        (error "Invalid format" sym))
+        (error "Invalid format" str))
     (let ((s->i
            (lambda (str)
              (let ((res (string->number str)))
                (if (or (not (integer? res))
                        (< res 0))
-                   (error "Invalid format" res sym))
+                   (error "Invalid format" res str))
                res))))
-      (make-version (and (>= split-string-len 1)
-                         (s->i (car split-string)))
-                    (and (>= split-string-len 2)
-                         (s->i (cadr split-string)))
-                    (and (= split-string-len 3)
-                         (s->i (caddr split-string)))))))
+      (let ((res
+             (make-version (and (>= split-string-len 1)
+                                (s->i (car split-string)))
+                           (and (>= split-string-len 2)
+                                (s->i (cadr split-string)))
+                           (and (= split-string-len 3)
+                                (s->i (caddr split-string))))))
+        (if (and force-complete?
+                 (not (version-complete? res)))
+            (error "Version is not complete" str))
+        res))))
+
+(define (symbol->version str #!key force-complete?)
+  (string->version (symbol->string str)
+                   force-complete?: force-complete?))
+
+(define (version->string v)
+  (apply
+   string-append
+   `("v"
+     ,@(if (version-major v)
+           `(,(number->string
+               (version-major v))
+             ,@(if (version-minor v)
+                   `("."
+                     ,(number->string
+                       (version-minor v))
+                     ,@(if (version-build v)
+                           `("."
+                             ,(number->string
+                               (version-build v)))
+                           '()))
+                   '()))
+           '()))))
 
 (define (version->symbol v)
-  (string->symbol
-   (apply
-    string-append
-    `("v"
-      ,@(if (version-major v)
-            `(,(number->string
-                (version-major v))
-              ,@(if (version-minor v)
-                    `("."
-                      ,(number->string
-                        (version-minor v))
-                      ,@(if (version-build v)
-                            `("."
-                              ,(number->string
-                                (version-build v)))
-                            '()))
-                    '()))
-            '())))))
+  (string->symbol (version->string v)))
 
 (define (version-comparison pred?)
   (lambda (v ref)
@@ -155,7 +184,7 @@
   (default-module read-only:)
   (module-directory read-only:))
 
-(define (parse-package-data form)
+(define (parse-package-metadata form)
   (define (find-one? pred? lst)
     (let loop ((lst lst))
       (cond
@@ -211,8 +240,190 @@
      
      (list 'exported-modules symbol?)
      (one 'default-module symbol?)
-     (one 'module-directory string?))))
+     (or (one 'module-directory string?)
+         ""))))
+
+(define (load-package-metadata fn)
+  (with-input-from-file fn
+    (lambda ()
+      (parse-package-metadata (read)))))
      
 
 ;;; Package list
 
+(define (load-package-list)
+  ;; TODO
+  '((sack
+     ("http://...."
+      (package
+       (version v0.1.1)
+       (maintainer "Per Eckerdal <per dot eckerdal at gmail dot com>")
+       (author "Per Eckerdal <per dot eckerdal at gmail dot com>")
+       (homepage "http://example.com")
+       (description "An example package")
+       (keywords example i/o)
+       (license lgpl/v2.1 mit)
+
+       (exported-modules server
+                         lala
+                         hello/duh)
+       (default-module lala)
+       (module-directory "src")
+       
+       (depends
+        (sack (>= v1))
+        pregexp))))))
+
+(define (parse-package-list package-list)
+  (list->table
+   (map (lambda (package)
+          (cons
+           (car package)
+           (map (lambda (package-version-desc)
+                  (if (not (= 2 (length package-version-desc)))
+                      (error "Invalid package version descriptor"
+                             package-version-desc))
+                  (cons (car package-version-desc)
+                        (parse-package-metadata
+                         (cadr package-version-desc))))
+             (cdr package))))
+     package-list)))
+
+
+;;; Local packages
+
+
+(define local-packages-dir
+  "/Users/per/prog/gambit/blackhole/work/pkgs")
+
+(define pkgfile-name
+  "pkgfile")
+
+(define-type installed-package
+  id: EC2E4078-EDCA-4BE4-B81E-2B60468F042D
+  
+  (name read-only:)
+  (version read-only:)
+  (dir read-only:)
+  (metadata installed-package-metadata/internal
+            installed-package-metadata-set!
+            init: #f))
+
+(define (installed-package<? a b)
+  (let ((a-name (installed-package-name a))
+        (b-name (installed-package-name b)))
+    (or (string<? a-name b-name)
+        (and (string=? a-name b-name)
+             (version<? (installed-package-version a)
+                        (installed-package-version b))))))
+
+(define (installed-package-metadata ip)
+  (let ((md (installed-package-metadata/internal ip)))
+    (or md
+        (let* ((pkg-filename (path-expand
+                              "pkgfile"
+                              (installed-package-dir ip)))
+               (md (if (file-exists? pkg-filename)
+                       (load-package-metadata
+                        pkg-filename)
+                       (error "Pkgfile does not exist:"
+                              pkg-filename))))
+          (installed-package-metadata-set! ip md)
+          md))))
+
+(define (installed-packages #!optional
+                            (pkgs-dir local-packages-dir))
+  (let ((pkg-dirs
+         (filter (lambda (x)
+                   (is-directory? (path-expand x pkgs-dir)))
+                 (if (file-exists? pkgs-dir)
+                     (directory-files pkgs-dir)
+                     '()))))
+    (list->tree
+     (map (lambda (pkg-dir)
+            (let ((version-str
+                   (last (string-split #\- pkg-dir))))
+              (if (= (string-length version-str)
+                     (string-length pkg-dir))
+                  (error "Invalid package directory name" pkg-dir))
+              (let ((version
+                     (string->version
+                      (last (string-split #\- pkg-dir))
+                      force-complete?: #t))
+                    (pkg-name
+                     (substring pkg-dir
+                                0
+                                (- (string-length pkg-dir)
+                                   (string-length version-str)
+                                   1))))
+                (make-installed-package
+                 pkg-name
+                 version
+                 (path-expand pkg-dir pkgs-dir)))))
+       pkg-dirs)
+     installed-package<?)))
+
+
+;;; Module loader and resolver
+
+(define (package-module-resolver _ path relative . ids)
+  (map (lambda (id)
+         (make-module-reference
+          loader
+          (if relative
+              id
+              (loader-path-absolutize loader id path))))
+    ids))
+
+(define package-loader
+  (make-loader
+   name:
+   'local
+
+   path-absolute?:
+   path-absolute?
+   
+   path-absolutize:
+   (lambda (path #!optional ref)
+     (path-normalize (string-append (symbol->string path) ".scm")
+                     #f ;; Don't allow relative paths
+                     (if ref
+                         (path-normalize
+                          ;; This ensures that (path-directory ref)
+                          ;; actually exists. Otherwise path-normalize
+                          ;; might segfault.
+                          (path-directory ref))
+                         (current-directory))))
+   
+   load-module:
+   (lambda (path)
+     (let ((ref (make-module-reference local-loader path)))
+       (call-with-values
+           (lambda ()
+             (load-module-from-file ref path))
+         (lambda (invoke-runtime
+                  invoke-compiletime
+                  visit
+                  info-alist)
+           (make-loaded-module
+            invoke-runtime: invoke-runtime
+            invoke-compiletime: invoke-compiletime
+            visit: visit
+            info: (make-module-info-from-alist ref info-alist)
+            stamp: (local-loader-get-stamp path)
+            reference: ref)))))
+
+   compare-stamp:
+   (lambda (path stamp)
+     (= (local-loader-get-stamp path)
+        stamp))
+
+   module-name:
+   (lambda (path)
+     (cond ((symbol? path)
+            (symbol->string path))
+           ((string? path)
+            (path-strip-directory
+             (path-strip-extension path)))
+           (else
+            (error "Invalid path" path))))))

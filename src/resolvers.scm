@@ -21,7 +21,7 @@
               (loader-path-absolutize loader id path))))
     ids))
 
-(define (package-module-resolver path)
+(define (directory-module-resolver path)
   (let ((path
          (string-append
           (path-strip-trailing-directory-separator path) "/")))

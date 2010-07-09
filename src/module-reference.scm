@@ -71,8 +71,8 @@
              (string-append
               (let ((loader (module-reference-loader mod))
                     (path (module-reference-path mod)))
-                (if (eq? loader module-module-loader)
-                    "module"
+                (if (eq? loader black-hole-module-loader)
+                    "bh"
                     (namespace-choose-unique
                      (loader-module-name loader path)
                      path)))
