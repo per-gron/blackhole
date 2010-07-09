@@ -41,7 +41,7 @@
              (make-environment #f ns: -ns-))))))
 
 (define-env inside-letrec-environment
-  "module#inside-letrec-env-"
+  "bh#inside-letrec-env-"
   ((define
      (lambda (code env mac-env)
        (let ((src (expr*:transform-to-lambda
@@ -132,7 +132,7 @@
                            (lambda _ (void))))
 
 (define-env builtin-environment
-  "module#"
+  "bh#"
   ((import
     (lambda (source env mac-env)
       (if (not (environment-top? env))
@@ -369,7 +369,7 @@
                  '()
                  'define-syntax)
                ,(car src)
-               (module#nh-macro-transformer ,(cadr src))))
+               (bh#nh-macro-transformer ,(cadr src))))
             env)))))
 
    (declare

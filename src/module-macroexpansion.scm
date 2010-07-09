@@ -120,16 +120,16 @@
           (else
            code)))))))
 
-(define loaded-module-sym 'module#sym#loaded-module)
-(define expansion-phase-sym 'module#sym#expansion-phase)
-(define name-sym 'module#sym#name)
-(define val-sym 'module#sym#val)
+(define loaded-module-sym 'bh#sym#loaded-module)
+(define expansion-phase-sym 'bh#sym#expansion-phase)
+(define name-sym 'bh#sym#name)
+(define val-sym 'bh#sym#val)
 
 (define (generate-module-instance-symbol dep #!optional (extra ""))
   (string->symbol
    (string-append (module-reference-namespace
                    dep)
-                  "module#dep#"
+                  "bh#dep#"
                   extra)))
 
 (define (generate-runtime-code namespace-string
@@ -159,19 +159,19 @@
           (table-set! table dep (cons get-sym
                                       set-sym))
           `((,sym
-             (let ((tmp (module#module-instance-ref
+             (let ((tmp (bh#module-instance-ref
                          ,expansion-phase-sym
-                         (module#module-reference-absolutize
-                          (module#u8vector->module-reference
+                         (bh#module-reference-absolutize
+                          (bh#u8vector->module-reference
                            ',(module-reference->u8vector dep))
-                          (module#loaded-module-reference
+                          (bh#loaded-module-reference
                            ,loaded-module-sym)))))
                (or tmp (error "Internal error"))))
             (,get-sym
-             (let ((tmp (module#module-instance-getter ,sym)))
+             (let ((tmp (bh#module-instance-getter ,sym)))
                (or tmp (error "Internal error"))))
             (,set-sym
-             (let ((tmp (module#module-instance-setter ,sym)))
+             (let ((tmp (bh#module-instance-setter ,sym)))
                (or tmp (error "Internal error")))))))))
 
 (define (clone-sexp/sym-table sexp ref->sym-table)
