@@ -58,12 +58,37 @@
     (new-str)
     (reverse result)))
 
-(define (read-url url)
+(define (with-input-from-url url thunk)
   (with-input-from-process
    (list path: "curl"
-         arguments: '("-s" "www.google.com"))
+         arguments: '("-s" url))
+   thunk))
+
+(define (read-url url)
+  (with-input-from-url url
+                       read))
+
+(define (port-passthru in out)
+  (let* ((buf-size 1000)
+         (buf (make-u8vector buf-size)))
+    (let loop ()
+      (write-subu8vector
+       buf
+       0
+       (read-subu8vector buf 0 buf-size in)
+       out)
+      (let ((byte (read-u8 in)))
+        (if (not (eq? #!eof byte))
+            (begin
+              (write-u8 byte out)
+              (loop)))))))
+
+(define (untar port)
+  (with-output-to-process
+   (list path: "tar"
+         arguments: '("xz"))
    (lambda ()
-     (read))))
+     (port-passthru port (current-output-port)))))
 
 ;;; Version numbers
 
@@ -306,9 +331,9 @@
   (name read-only:)
   (version read-only:)
   (dir read-only:)
+  (url read-only:)
   (metadata package-metadata/internal
-            package-metadata-set!
-            init: #f))
+            package-metadata-set!))
 
 (define (package<? a b)
   (let ((a-name (package-name a))
@@ -333,13 +358,31 @@
           md))))
 
 (define (package-installed? p)
-  (and (package-dir p) #t))
+  (and (package? p) (package-dir p) #t))
 
-(define (make-noninstalled-package name metadata)
-  (let ((pkg (make-package name
-                           (package-metadata-version metadata)
-                           #f)))
-    (package-metadata-set! pkg metadata)))
+(define (package-noninstalled? p)
+  (and (package? p) (package-url p) #t))
+
+(define (make-installed-package name version dir)
+  (make-package name
+                version
+                dir
+                #f
+                #f))
+
+(define (make-noninstalled-package name url metadata)
+  (make-package name
+                (package-metadata-version metadata)
+                #f
+                url
+                metadata))
+
+(define (make-dummy-package name version)
+  (make-package name
+                version
+                #f
+                #f
+                #f))
 
 
 ;;; Remote packages
@@ -368,19 +411,21 @@
         pregexp))))))
 
 (define (parse-remote-package-list package-list)
-  (list->table
-   (map (lambda (package)
-          (cons
-           (car package)
+  (list->tree
+   (apply
+    append
+    (map (lambda (package)
            (map (lambda (package-version-desc)
                   (if (not (= 2 (length package-version-desc)))
                       (error "Invalid package version descriptor"
                              package-version-desc))
-                  (cons (car package-version-desc)
-                        (parse-package-metadata
-                         (cadr package-version-desc))))
-             (cdr package))))
-     package-list)))
+                  (make-noninstalled-package
+                   (car package)
+                   (car package-version-desc)
+                   (parse-package-metadata
+                    (cadr package-version-desc))))
+             (cdr package)))
+      package-list))))
 
 (define get-remote-packages
   (let ((*remote-packages* #f))
@@ -390,8 +435,8 @@
             (set! *remote-packages* rp)
             rp)))))
 
-;;; Local packages
 
+;;; Local packages
 
 (define local-packages-dir
   ;; TODO
@@ -422,60 +467,74 @@
                                 (- (string-length pkg-dir)
                                    (string-length version-str)
                                    1))))
-                (make-package
+                (make-installed-package
                  pkg-name
                  version
                  (path-expand pkg-dir pkgs-dir)))))
        pkg-dirs)
      package<?)))
 
-(define get-installed-packages
-  (let ((*installed-packages* #f))
-    (lambda ()
-      (or *installed-packages*
-          (let ((ip (load-installed-packages)))
-            (set! *installed-packages* ip)
-            ip)))))
+(define *installed-packages* #f)
+
+(define (reset-installed-packages!)
+  (set! *installed-packages* #f))
+
+(define (get-installed-packages)
+  (or *installed-packages*
+      (let ((ip (load-installed-packages)))
+        (set! *installed-packages* ip)
+        ip)))
 
 
 ;;; Module loader and resolver
 
 (define *loaded-packages* (make-table))
 
-(define (find-suitable-package pkg-name
-                               #!optional
-                               (version-exp #t)
+(define (find-suitable-package pkgs
+                               pkg-name
+                               #!key
+                               (version #t)
                                (throw-error? #t))
+  (or (tree-backwards-fold-from
+       pkgs
+       (make-dummy-package pkg-name
+                           (make-version 'max))
+       package<?
+       #f
+       (lambda (p accum k)
+         (cond
+          ((not (equal? (package-name p)
+                        pkg-name))
+           #f)
+          
+          ((version-match? (package-version p)
+                           version)
+           p)
+
+          (else
+           (k #f)))))
+      (and throw-error?
+           (error "No package with matching version is installed:"
+                  pkg-name
+                  version))))
+
+(define (find-suitable-loaded-package pkg-name
+                                      #!key
+                                      (version #t)
+                                      (throw-error? #t))
   (let ((loaded-package (table-ref *loaded-packages* pkg-name #f)))
     (if loaded-package
         (if (version-match? (package-version loaded-package)
-                            version-exp)
+                            version)
             loaded-package
             (and throw-error?
                  (error "A package is already loaded, with incompatible version:"
                         (package-version loaded-package)
-                        version-exp)))
-        (or (tree-backwards-fold-from
-             (get-installed-packages)
-             (make-package pkg-name
-                                     (make-version 'max))
-             package<?
-             #f
-             (lambda (p accum k)
-               (cond
-                ((not (equal? (package-name p)
-                              pkg-name))
-                 #f)
-                
-                ((version-match? (package-version p)
-                                 version-exp)
-                 p)
-
-                (else
-                 (k #f)))))
-            (error "No package with matching version is installed:"
-                   pkg-name
-                   version-exp)))))
+                        version)))
+        (find-suitable-package (get-installed-packages)
+                               pkg-name
+                               version: version
+                               throw-error?: throw-error?))))
 
 (define (load-package! pkg)
   (let ((currently-loading (make-table))
@@ -502,10 +561,12 @@
           (for-each (lambda (dep)
                       (loop
                        (if (symbol? dep)
-                           (find-suitable-package dep)
-                           (find-suitable-package (car dep)
-                                                  `(and
-                                                    ,@(cdr dep))))))
+                           (find-suitable-loaded-package dep)
+                           (find-suitable-loaded-package
+                            (car dep)
+                            version:
+                            `(and
+                              ,@(cdr dep))))))
             (package-metadata-dependencies
              (package-metadata pkg)))
           
@@ -541,7 +602,7 @@
   (if (not (eq? loader package-loader))
       (error "Internal error"))
   
-  (let ((package (find-suitable-package pkg-name version)))
+  (let ((package (find-suitable-loaded-package pkg-name version: version)))
     (map (lambda (id)
            (make-module-reference
             package-loader
@@ -604,3 +665,40 @@
 
 ;;; Package installation and uninstallation
 
+(define (package-install! pkg-name
+                          #!optional
+                          (version #t))
+  (package-install-from-url!
+   (package-url
+    (find-suitable-package (get-remote-packages)
+                           pkg-name
+                           version: version))))
+
+(define (package-install-from-url! url)
+  (with-input-from-url
+   url
+   (lambda ()
+     (package-install-from-port! (current-input-port)))))
+
+(define (package-install-from-port! port)
+  ;; Create temporary directory
+  (generate-tmp-dir
+   'TODO
+   (lambda (dir)
+     (parameterize
+         ((current-directory dir))
+       ;; Untar
+       (untar port)
+
+       ;; Extract metadata
+       ;; Compile
+       ;; Move to installed package directory
+       ;; Update *installed-packages*
+       ...))))
+
+(define (package-uninstall! pkg)
+  (if (not (package-installed? pkg))
+      (error "Invalid parameter" pkg))
+  (recursively-delete-file
+   (package-dir pkg))
+  (set! *installed-packages* #f))

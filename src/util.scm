@@ -90,7 +90,9 @@
         (for-each (lambda (fn)
                     (recursively-delete-file
                      (path-expand fn dir)))
-                  (directory-files dir))
+                  (directory-files
+                   (list path: dir
+                         ignore-hidden: 'dot-and-dot-dot)))
         (delete-directory dir))
       (delete-file dir)))
 
@@ -367,6 +369,25 @@
           (path-strip-trailing-directory-separator dir)))
         (create-directory dir))))
 
+(define (generate-tmp-dir base-dir thunk)
+  (create-dir-unless-exists base-dir)
+  (let ((fn (let loop ((i 0))
+              (let ((fn (path-expand (number->string i)
+                                     compile-tmp-dir)))
+                (if (file-exists? fn)
+                    (loop (+ i 1))
+                    fn)))))
+    (dynamic-wind
+        (lambda ()
+          (if (not fn)
+              (error "generate-tmp-dir: Can't re-enter"))
+          (create-directory fn))
+        (lambda ()
+          (thunk fn))
+        (lambda ()
+          (recursively-delete-file fn)
+          (set! fn #f)))))
+
 ;; Let with multiple values support
 (##define-syntax let
   (lambda (source)
@@ -506,3 +527,5 @@
                       (loop (+ 1 i) (+ 1 j) segs)))))))
       (let ((idx (loop 0 0 '(0))))
         (substring res 0 idx)))))
+
+

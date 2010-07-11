@@ -59,30 +59,6 @@
               (delete-file fn))
             (object-files path)))
 
-(define (generate-tmp-dir thunk)
-  (let ((compile-tmp-dir "~~/lib/modules/work/compile-tmp/"))
-    (create-dir-unless-exists compile-tmp-dir)
-    (let ((fn (let loop ((i 0))
-                (let ((fn (path-expand (number->string i)
-                                       compile-tmp-dir)))
-                  (if (file-exists? fn)
-                      (loop (+ i 1))
-                      fn)))))
-      (dynamic-wind
-          (lambda ()
-            (if (not fn)
-                (error "generate-tmp-dir: Can't re-enter"))
-            (create-directory fn))
-          (lambda ()
-            (thunk fn))
-          (lambda ()
-            (map (lambda (f)
-                   (delete-file (path-expand f fn)))
-                 (directory-files (list path: fn
-                                        ignore-hidden: 'dot-and-dot-dot)))
-            (delete-directory fn)
-            (set! fn #f))))))
-
 ;;;; ---------- Loading ----------
 
 (define (load-module-scm-file module-ref file)
@@ -306,6 +282,7 @@
                               (ld-options "")
                               verbose)
   (generate-tmp-dir
+   "~~/lib/modules/work/compile-tmp/"
    (lambda (dir)
      (let* ((mods (map module-reference-from-file files))
             (c-files-no-ext
