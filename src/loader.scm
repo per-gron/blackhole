@@ -13,10 +13,14 @@
   ;; A unique symbol identifying this loader
   (name read-only:)
   (path-absolute?-fn unprintable: equality-skip: read-only:)
-  ;; Takes a possibly relative path and an origin path to which the
-  ;; path should be interpreted relative to, and returns an absolute
-  ;; path object.
+  ;; Takes a relative path and an origin path to which the path should
+  ;; be interpreted relative to, and returns an absolute path object.
   (path-absolutize-fn unprintable: equality-skip: read-only:)
+  ;; Takes a path (absolute or relative) as it would have been entered
+  ;; in an import form and returns it in a form that is appropriate
+  ;; for storage in a module-reference object. This function must not
+  ;; change the absolute-ness of the path.
+  (path-internalize-fn unprintable: equality-skip: read-only:)
   ;; Takes an absolute path and returns the invoke-runtime
   ;; procedure, the invoke-compiletime procedure, the module-info
   ;; structure and a stamp object.
@@ -35,6 +39,9 @@
 (define (loader-path-absolutize loader path ref)
   ((loader-path-absolutize-fn loader) path ref))
 
+(define (loader-path-internalize loader path)
+  ((loader-path-internalize-fn loader) path))
+
 (define (loader-load-module loader path)
   ((loader-load-module-fn loader) path))
 
@@ -50,12 +57,14 @@
                      name
                      path-absolute?
                      path-absolutize
+                     (path-internalize (lambda (x) x))
                      load-module
                      compare-stamp
                      module-name)
   (if (not (and (symbol? name)
                 (procedure? path-absolute?)
                 (procedure? path-absolutize)
+                (procedure? path-internalize)
                 (procedure? load-module)
                 (procedure? compare-stamp)
                 (procedure? module-name)))
@@ -64,14 +73,25 @@
          (make-loader/internal name
                                path-absolute?
                                path-absolutize
+                               path-internalize
                                load-module
                                compare-stamp
                                module-name)))
     (table-set! loader-registry name result)
     result))
 
+;; Utility function for loaders
+(define (path->stamp path)
+  (let ((lof (last-object-file path))
+        (p-lc (file-last-changed-seconds path)))
+    (if lof
+        (max (file-last-changed-seconds (last-object-file path))
+             p-lc)
+        p-lc)))
+
 (define (loader->skeleton loader)
   (make-loader/internal (loader-name loader)
+                        #f
                         #f
                         #f
                         #f
@@ -170,13 +190,20 @@
 
 ;;;; ---------- Loader implementations ----------
 
-(define (local-loader-get-stamp path)
-  (let ((lof (last-object-file path))
-        (p-lc (file-last-changed-seconds path)))
-    (if lof
-        (max (file-last-changed-seconds (last-object-file path))
-             p-lc)
-        p-lc)))
+(define (module-reference-from-file file)
+  (make-module-reference local-loader
+                         (path-normalize file)))
+
+(define (directory-module-resolver path)
+  (let ((path
+         (string-append
+          (path-strip-trailing-directory-separator path) "/")))
+    (lambda (_ __ ___ . ids)
+      (map (lambda (id)
+             (make-module-reference
+              local-loader
+              (loader-path-absolutize local-loader id path)))
+        ids))))
 
 (define local-loader
   (make-loader
@@ -197,7 +224,7 @@
                           ;; might segfault.
                           (path-directory ref))
                          (current-directory))))
-   
+
    load-module:
    (lambda (path)
      (let ((ref (make-module-reference local-loader path)))
@@ -213,23 +240,23 @@
             invoke-compiletime: invoke-compiletime
             visit: visit
             info: (make-module-info-from-alist ref info-alist)
-            stamp: (local-loader-get-stamp path)
+            stamp: (path->stamp path)
             reference: ref)))))
 
    compare-stamp:
    (lambda (path stamp)
-     (= (local-loader-get-stamp path)
+     (= (path->stamp path)
         stamp))
 
    module-name:
    (lambda (path)
-     (cond ((symbol? path)
-            (symbol->string path))
-           ((string? path)
-            (path-strip-directory
-             (path-strip-extension path)))
-           (else
-            (error "Invalid path" path))))))
+     (path-strip-directory
+      (cond ((symbol? path)
+             (symbol->string path))
+            ((string? path)
+             (path-strip-extension path))
+            (else
+             (error "Invalid path" path)))))))
 
 (define black-hole-module-loader
   (make-loader
@@ -243,6 +270,10 @@
    (lambda (path #!optional ref)
      (if path
          (error "Module does not exist in this loader:" path)))
+
+   path-internalize:
+   (lambda (x)
+     (error "Internal error. This procedure shouldn't be called."))
 
    load-module:
    (lambda (path)
@@ -281,3 +312,7 @@
 
    module-name:
    (lambda (path) "bh")))
+
+(define (black-hole-module-resolver _ __ ___)
+  (list (make-module-reference black-hole-module-loader
+                               #f)))

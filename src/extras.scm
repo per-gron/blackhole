@@ -125,10 +125,6 @@
        files))
     mod-list))
 
-(define (module-reference-from-file file)
-  (make-module-reference local-loader
-                         (path-normalize file)))
-
 (define (modules-in-dir top-dir)
   (map module-reference-from-file
        (module-files-in-dir top-dir)))

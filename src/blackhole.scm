@@ -42,8 +42,7 @@
 
 (set! *module-resolvers*
       `((here ,@current-module-resolver)
-        (black-hole ,@(make-singleton-module-resolver
-                   black-hole-module-loader))
+        (black-hole ,@black-hole-module-resolver)
         (lib ,@lib-module-resolver)
         (std ,@(directory-module-resolver "~~lib/modules/std"))
         (srfi ,@(directory-module-resolver

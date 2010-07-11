@@ -480,8 +480,6 @@
                     (loop base right))
                 left)))))
 
-
-
 (define (tree-fold-from tree elm <? base fn)
   (check-tree tree)
   

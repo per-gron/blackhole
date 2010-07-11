@@ -17,25 +17,9 @@
          (make-module-reference
           loader
           (if relative
-              id
+              (loader-path-internalize id)
               (loader-path-absolutize loader id path))))
     ids))
-
-(define (directory-module-resolver path)
-  (let ((path
-         (string-append
-          (path-strip-trailing-directory-separator path) "/")))
-    (lambda (_ __ ___ . ids)
-      (map (lambda (id)
-             (make-module-reference
-              local-loader
-              (loader-path-absolutize local-loader id path)))
-        ids))))
-
-;; This is a helper function for singleton loaders, for instance 'module
-(define (make-singleton-module-resolver pkg)
-  (lambda (_ __ ___)
-    (list (make-module-reference pkg #f))))
 
 (define *module-resolvers* '())
 

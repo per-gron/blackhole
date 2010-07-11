@@ -58,20 +58,6 @@
     (new-str)
     (reverse result)))
 
-;; TODO This isn't used
-(define (read-all-string #!optional (port (current-input-port)))
-  (let* ((buf-len 100)
-         (buf (make-u8vector buf-len)))
-    (with-output-to-string
-      ""
-      (lambda ()
-        (let loop ()
-          (let ((chr (read-char port)))
-            (cond
-             ((not (eq? chr #!eof))
-              (write-char chr)
-              (loop)))))))))
-
 (define (read-url url)
   (with-input-from-process
    (list path: "curl"
@@ -83,10 +69,17 @@
 
 (define-type version
   id: 31B8EF4A-9244-450F-8FA3-A5E914448B3A
-
+  constructor: make-version/internal
+  
   (major read-only:)
   (minor read-only:)
   (build read-only:))
+
+(define (make-version #!optional
+                      major
+                      minor
+                      build)
+  (make-version/internal major minor build))
 
 (define version-complete? version-build)
 
@@ -99,12 +92,21 @@
         (a-min (version-minor a))
         (b-min (version-major b))
         (a-b (version-build a))
-        (b-b (version-build b)))
-    (or (< a-maj b-maj)
+        (b-b (version-build b))
+
+        (v< (lambda (a b)
+              (cond
+               ((eq? 'max a)
+                #f)
+               ((eq? 'max b)
+                #t)
+               (else
+                (< a b))))))
+    (or (v< a-maj b-maj)
         (and (= a-maj b-maj)
-             (or (< a-min b-min)
+             (or (v< a-min b-min)
                  (and (= a-min b-min)
-                      (< a-b b-b)))))))
+                      (v< a-b b-b)))))))
 
 (define (string->version str #!key force-complete?)
   (if (not (string? str))
@@ -291,13 +293,60 @@
   (with-input-from-file fn
     (lambda ()
       (parse-package-metadata (read)))))
-     
+
+
+;;; Packages
+
+(define pkgfile-name
+  "pkgfile")
+
+(define-type package
+  id: EC2E4078-EDCA-4BE4-B81E-2B60468F042D
+  
+  (name read-only:)
+  (version read-only:)
+  (dir read-only:)
+  (metadata package-metadata/internal
+            package-metadata-set!
+            init: #f))
+
+(define (package<? a b)
+  (let ((a-name (package-name a))
+        (b-name (package-name b)))
+    (or (string<? a-name b-name)
+        (and (string=? a-name b-name)
+             (version<? (package-version a)
+                        (package-version b))))))
+
+(define (package-metadata ip)
+  (let ((md (package-metadata/internal ip)))
+    (or md
+        (let* ((pkg-filename (path-expand
+                              "pkgfile"
+                              (package-dir ip)))
+               (md (if (file-exists? pkg-filename)
+                       (load-package-metadata
+                        pkg-filename)
+                       (error "Pkgfile does not exist:"
+                              pkg-filename))))
+          (package-metadata-set! ip md)
+          md))))
+
+(define (package-installed? p)
+  (and (package-dir p) #t))
+
+(define (make-noninstalled-package name metadata)
+  (let ((pkg (make-package name
+                           (package-metadata-version metadata)
+                           #f)))
+    (package-metadata-set! pkg metadata)))
+
 
 ;;; Remote packages
 
-(define (load-remote-package-list)
+(define (load-remote-packages)
   ;; TODO
-  '((sack
+  '(("sack"
      ("http://...."
       (package
        (version v0.1.1)
@@ -333,6 +382,13 @@
              (cdr package))))
      package-list)))
 
+(define get-remote-packages
+  (let ((*remote-packages* #f))
+    (lambda ()
+      (or *remote-packages*
+          (let ((rp (load-remote-packages)))
+            (set! *remote-packages* rp)
+            rp)))))
 
 ;;; Local packages
 
@@ -341,43 +397,8 @@
   ;; TODO
   "/Users/per/prog/gambit/blackhole/work/pkgs")
 
-(define pkgfile-name
-  "pkgfile")
-
-(define-type installed-package
-  id: EC2E4078-EDCA-4BE4-B81E-2B60468F042D
-  
-  (name read-only:)
-  (version read-only:)
-  (dir read-only:)
-  (metadata installed-package-metadata/internal
-            installed-package-metadata-set!
-            init: #f))
-
-(define (installed-package<? a b)
-  (let ((a-name (installed-package-name a))
-        (b-name (installed-package-name b)))
-    (or (string<? a-name b-name)
-        (and (string=? a-name b-name)
-             (version<? (installed-package-version a)
-                        (installed-package-version b))))))
-
-(define (installed-package-metadata ip)
-  (let ((md (installed-package-metadata/internal ip)))
-    (or md
-        (let* ((pkg-filename (path-expand
-                              "pkgfile"
-                              (installed-package-dir ip)))
-               (md (if (file-exists? pkg-filename)
-                       (load-package-metadata
-                        pkg-filename)
-                       (error "Pkgfile does not exist:"
-                              pkg-filename))))
-          (installed-package-metadata-set! ip md)
-          md))))
-
 (define (load-installed-packages #!optional
-                            (pkgs-dir local-packages-dir))
+                                 (pkgs-dir local-packages-dir))
   (let ((pkg-dirs
          (filter (lambda (x)
                    (is-directory? (path-expand x pkgs-dir)))
@@ -401,20 +422,20 @@
                                 (- (string-length pkg-dir)
                                    (string-length version-str)
                                    1))))
-                (make-installed-package
+                (make-package
                  pkg-name
                  version
                  (path-expand pkg-dir pkgs-dir)))))
        pkg-dirs)
-     installed-package<?)))
+     package<?)))
 
-(define *installed-packages* #f)
-
-(define (get-installed-packages)
-  (or *installed-packages*
-      (let ((ip (load-installed-packages)))
-        (set! *installed-packages* ip)
-        ip)))
+(define get-installed-packages
+  (let ((*installed-packages* #f))
+    (lambda ()
+      (or *installed-packages*
+          (let ((ip (load-installed-packages)))
+            (set! *installed-packages* ip)
+            ip)))))
 
 
 ;;; Module loader and resolver
@@ -427,40 +448,90 @@
                                (throw-error? #t))
   (let ((loaded-package (table-ref *loaded-packages* pkg-name #f)))
     (if loaded-package
-        (if (version-match? (installed-package-version loaded-package)
-                            version)
+        (if (version-match? (package-version loaded-package)
+                            version-exp)
             loaded-package
             (and throw-error?
                  (error "A package is already loaded, with incompatible version:"
-                        (installed-package-version loaded-package)
-                        version)))
-        'TODO-implement-tree-search-and-iterate)))
+                        (package-version loaded-package)
+                        version-exp)))
+        (or (tree-backwards-fold-from
+             (get-installed-packages)
+             (make-package pkg-name
+                                     (make-version 'max))
+             package<?
+             #f
+             (lambda (p accum k)
+               (cond
+                ((not (equal? (package-name p)
+                              pkg-name))
+                 #f)
+                
+                ((version-match? (package-version p)
+                                 version-exp)
+                 p)
+
+                (else
+                 (k #f)))))
+            (error "No package with matching version is installed:"
+                   pkg-name
+                   version-exp)))))
 
 (define (load-package! pkg)
-  (let ((name (installed-package-name pkg))
-        (version (installed-package-version pkg)))
-    (let* ((other-pkg (table-ref *loaded-packages* name #f))
-           (other-version (installed-package-version other-pkg)))
-      (if other-pkg
-          (and other-pkg
-               (not (equal? other-version version))))
-        (error "Another incompatible package version is already loaded:"
-               name
-               version
-               other-version))
-    
-    (for-each (lambda (dep)
-                (load-package!
-                 (if (symbol? dep)
-                     (find-suitable-package dep)
-                     (find-suitable-package (car dep)
-                                            `(and
-                                              ,@(cdr dep))))))
-      (package-metadata-dependencies
-       (installed-package-metadata pkg)))
-    
-    (table-set! *loaded-packages* name pkg)))
-               
+  (let ((currently-loading (make-table))
+        (name (package-name pkg))
+        (version (package-version pkg)))
+    (let loop ((pkg pkg))
+      (cond
+       ((table-ref *loaded-packages* name #f)
+        'already-loaded)
+       ((eq? 'loading (table-ref currently-loading name #f))
+        (error "Circular package dependency" pkg))
+       (else
+        (table-set! currently-loading name 'loading)
+        (let* ((other-pkg (table-ref *loaded-packages* name #f))
+               (other-version (package-version other-pkg)))
+          (if other-pkg
+              (and other-pkg
+                   (not (equal? other-version version)))
+              (error "Another incompatible package version is already loaded:"
+                     name
+                     version
+                     other-version))
+          
+          (for-each (lambda (dep)
+                      (loop
+                       (if (symbol? dep)
+                           (find-suitable-package dep)
+                           (find-suitable-package (car dep)
+                                                  `(and
+                                                    ,@(cdr dep))))))
+            (package-metadata-dependencies
+             (package-metadata pkg)))
+          
+          (table-set! *loaded-packages* name pkg))
+        (table-set! currently-loading name 'loaded))))))
+
+(define-type package-module-path
+  id: FBE06A79-BD70-43BD-982E-F8F8606FBC22
+
+  package
+  id)
+
+(define (package-module-path-path path)
+  (path-normalize (string-append (symbol->string
+                                  (package-module-path-id path))
+                                 ".scm")
+                  #f ;; Don't allow relative paths
+                  (path-normalize
+                   ;; This call to path-normalize ensures that the
+                   ;; directory actually exists. Otherwise
+                   ;; path-normalize might segfault.
+                   (path-expand
+                    (symbol->string
+                     (package-module-path-id path))
+                    (package-dir
+                     (package-module-path-package path))))))
 
 (define (package-module-resolver loader path relative pkg-name
                                  #!rest
@@ -469,62 +540,67 @@
                                  (version #t))
   (if (not (eq? loader package-loader))
       (error "Internal error"))
+  
   (let ((package (find-suitable-package pkg-name version)))
     (map (lambda (id)
            (make-module-reference
             package-loader
-            (cons package id)))
+            (make-package-module-path package id)))
       ids)))
 
 (define package-loader
   (make-loader
    name:
-   'local
+   'package
 
    path-absolute?:
    (lambda (p) #t)
    
    path-absolutize:
    (lambda (path #!optional ref)
-     (path-normalize (string-append (symbol->string path) ".scm")
-                     #f ;; Don't allow relative paths
-                     (if ref
-                         (path-normalize
-                          ;; This ensures that (path-directory ref)
-                          ;; actually exists. Otherwise path-normalize
-                          ;; might segfault.
-                          (path-directory ref))
-                         (current-directory))))
+     (if (not (package-module-path? ref))
+         (error "Invalid parameters" ref))
+     (make-package-module-path
+      (string->symbol
+       (remove-dot-segments
+        (string-append (symbol->string (package-module-path-id ref))
+                       "/"
+                       (symbol->string path))))
+      (package-module-path-package ref)))
    
    load-module:
    (lambda (path)
-     (let ((ref (make-module-reference local-loader path)))
-       (call-with-values
-           (lambda ()
-             (load-module-from-file ref path))
-         (lambda (invoke-runtime
-                  invoke-compiletime
-                  visit
-                  info-alist)
-           (make-loaded-module
-            invoke-runtime: invoke-runtime
-            invoke-compiletime: invoke-compiletime
-            visit: visit
-            info: (make-module-info-from-alist ref info-alist)
-            stamp: (local-loader-get-stamp path)
-            reference: ref)))))
+     (let* ((ref (make-module-reference package-loader path))
+            (actual-path (package-module-path-path path)))
+       (let ((invoke-runtime
+              invoke-compiletime
+              visit
+              info-alist
+              (load-module-from-file ref
+                                     actual-path)))
+         (make-loaded-module
+          invoke-runtime: invoke-runtime
+          invoke-compiletime: invoke-compiletime
+          visit: visit
+          info: (make-module-info-from-alist ref info-alist)
+          stamp: (path->stamp actual-path)
+          reference: ref))))
 
    compare-stamp:
    (lambda (path stamp)
-     (= (local-loader-get-stamp path)
+     (= (path->stamp (package-module-path-path path))
         stamp))
 
    module-name:
    (lambda (path)
-     (cond ((symbol? path)
-            (symbol->string path))
-           ((string? path)
-            (path-strip-directory
-             (path-strip-extension path)))
-           (else
-            (error "Invalid path" path))))))
+     (path-strip-directory
+      (cond ((symbol? path)
+             (symbol->string path))
+            ((package-module-path? path)
+             (package-module-path-path path))
+            (else
+             (error "Invalid path" path)))))))
+
+
+;;; Package installation and uninstallation
+

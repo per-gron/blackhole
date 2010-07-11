@@ -447,3 +447,62 @@
          (cons '##let
                (cdr (source-code source))))))
      source)))
+
+
+
+;; Removes extraneous "./" and "../" in a URI path. Copied from the
+;; uri module
+(define (remove-dot-segments str)
+  (let* ((in-len (string-length str))
+         (res (make-string in-len)))
+    ;; i is where we are in the source string,
+    ;; j is where we are in the result string,
+    ;; segs is a list, used as a stack, of the indices of the
+    ;; previously encountered path segments in the result string.
+    (letrec
+        ((new-segment
+          (lambda (i j segs)
+            (let* ((segment-start (car segs))
+                   (segment-length (- j segment-start 1)))
+              (cond
+               ;; Check for .
+               ((and (= 1 segment-length)
+                     (char=? #\. (string-ref res segment-start)))
+                (loop (+ 1 i) segment-start segs))
+ 
+               ;; Check for ..
+               ((and (= 2 segment-length)
+                     (char=? #\. (string-ref res segment-start))
+                     (char=? #\. (string-ref res (+ 1 segment-start))))
+                (cond
+                 ;; Take care of the "/../something" special case; it
+                 ;; should return "/something" and not "something".
+                 ((and (= 1 segment-start)
+                       (char=? #\/ (string-ref res 0)))
+                  (loop (+ 1 i) 1 '(1)))
+                 
+                 ;; This is needed because the code in the else clause
+                 ;; assumes that segs is a list of length >= 2
+                 ((zero? segment-start)
+                  (loop (+ 1 i) 0 segs))
+ 
+                 (else
+                  (loop (+ 1 i) (cadr segs) (cdr segs)))))
+               
+               ;; Check for the end of the string
+               ((>= (+ 1 i) in-len)
+                j)
+ 
+               (else
+                (loop (+ 1 i) j (cons j segs)))))))
+         (loop
+          (lambda (i j segs)
+            (if (>= i in-len)
+                (new-segment i j segs)
+                (let ((chr (string-ref str i)))
+                  (string-set! res j chr)
+                  (if (char=? chr #\/)
+                      (new-segment i (+ 1 j) segs)
+                      (loop (+ 1 i) (+ 1 j) segs)))))))
+      (let ((idx (loop 0 0 '(0))))
+        (substring res 0 idx)))))
