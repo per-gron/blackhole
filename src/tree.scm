@@ -42,6 +42,8 @@
           tree-min
           tree-max
           tree-fold
+          tree-fold-from
+          tree-backwards-fold-from
           
           tree-search
           tree-member?
@@ -478,6 +480,76 @@
                     (loop base right))
                 left)))))
 
+
+
+(define (tree-fold-from tree elm <? base fn)
+  (check-tree tree)
+  
+  (let loop ((base base)
+             (tree tree)
+             (k (lambda (x) x)))
+    (if (eq? tree empty-tree)
+        (k base)
+        (let ((tree-elm (%%tree-element tree))
+              (left (%%tree-left-subtree tree))
+              (right (%%tree-right-subtree tree)))
+          (cond
+           ((<? elm tree-elm)
+            (loop base
+                  left
+                  (lambda (new-base)
+                    (fn tree-elm
+                        new-base
+                        (lambda (res)
+                          (loop res
+                                right
+                                k))))))
+           
+           ((<? tree-elm elm)
+            (loop base right k))
+           
+           (else
+            (fn tree-elm
+                base
+                (lambda (res)
+                  (loop res
+                        right
+                        k)))))))))
+
+(define (tree-backwards-fold-from tree elm <? base fn)
+  (check-tree tree)
+  
+  (let loop ((base base)
+             (tree tree)
+             (k (lambda (x) x)))
+    (if (eq? tree empty-tree)
+        (k base)
+        (let ((tree-elm (%%tree-element tree))
+              (left (%%tree-left-subtree tree))
+              (right (%%tree-right-subtree tree)))
+          (cond
+           ((<? tree-elm elm)
+            (loop base
+                  right
+                  (lambda (new-base)
+                    (fn tree-elm
+                        new-base
+                        (lambda (res)
+                          (loop res
+                                left
+                                k))))))
+           
+           ((<? elm tree-elm)
+            (loop base left k))
+           
+           (else
+            (fn tree-elm
+                base
+                (lambda (res)
+                  (loop res
+                        left
+                        k)))))))))
+
 (define (tree-split< tree elm <?)
   (check-tree tree)
   (let loop ((tree tree))
@@ -491,9 +563,9 @@
             (loop tree-left))
            ((<? tree-elm elm)
             (%%tree-join tree-elm
-                       tree-left
-                       (loop tree-right)
-                       <?))
+                         tree-left
+                         (loop tree-right)
+                         <?))
            (else
             tree-left))))))
 
@@ -509,9 +581,9 @@
           (cond
            ((<? elm tree-elm)
             (%%tree-join tree-elm
-                       (loop tree-left)
-                       tree-right
-                       <?))
+                         (loop tree-left)
+                         tree-right
+                         <?))
            ((<? tree-elm elm)
             (loop tree-right))
            (else
