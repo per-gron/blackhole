@@ -405,26 +405,28 @@
    (number->string (scope-level))
    "#"))
 
-(define (environment-namespace env)
+(define (environment-namespace env
+                               #!key
+                               (phase-number
+                                (expansion-phase-number
+                                 (*expansion-phase*))))
   (let ((ens (or (env-ns-string env)
                  (let ((ns-string
                         (module-reference-namespace
                          (environment-module-reference env))))
                    (env-ns-string-set! env ns-string)
                    ns-string))))
-    (let ((phase-number (expansion-phase-number
-                         (*expansion-phase*))))
-      (if (zero? phase-number)
-          ens
-          (string-append
-           (substring ens
-                      0
-                      (max 0 (- (string-length ens) 1)))
-           "~"
-           (if (> phase-number 1)
-               (number->string phase-number)
-               "")
-           "#")))))
+    (if (zero? phase-number)
+        ens
+        (string-append
+         (substring ens
+                    0
+                    (max 0 (- (string-length ens) 1)))
+         "~"
+         (if (> phase-number 1)
+             (number->string phase-number)
+             "")
+         "#"))))
 
 (define (ns-add! env phase-number name val)
   (let loop ((ns (env-ns env)))

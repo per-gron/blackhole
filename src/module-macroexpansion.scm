@@ -496,7 +496,9 @@
                                        import-module-refs))
                             (compiletime-dependencies
                              ,@import-for-syntax-module-refs)
-                            (namespace-string ,@(environment-namespace env))
+                            (namespace-string ,@(environment-namespace
+                                                 env
+                                                 phase-number: 0))
                             (options ,@options-)
                             (cc-options ,@cc-options-)
                             (ld-options-prelude ,@ld-options-prelude-)
