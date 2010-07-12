@@ -28,7 +28,7 @@
                                         ;; module-compile/deps!
 (##include "lib.scm")                   ;; The lib (fetching remote
                                         ;; modules) implementation
-(##include "holes.scm")                 ;; The packages implementation
+(##include "packages.scm")              ;; The packages implementation
 
 
 
