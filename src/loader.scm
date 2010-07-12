@@ -21,6 +21,7 @@
   ;; for storage in a module-reference object. This function must not
   ;; change the absolute-ness of the path.
   (path-internalize-fn unprintable: equality-skip: read-only:)
+  (path-externalize-fn unprintable: equality-skip: read-only:)
   ;; Takes an absolute path and returns the invoke-runtime
   ;; procedure, the invoke-compiletime procedure, the module-info
   ;; structure and a stamp object.
@@ -42,6 +43,9 @@
 (define (loader-path-internalize loader path)
   ((loader-path-internalize-fn loader) path))
 
+(define (loader-path-externalize loader path)
+  ((loader-path-externalize-fn loader) path))
+
 (define (loader-load-module loader path)
   ((loader-load-module-fn loader) path))
 
@@ -58,6 +62,7 @@
                      path-absolute?
                      path-absolutize
                      (path-internalize (lambda (x) x))
+                     (path-externalize (lambda (x) x))
                      load-module
                      compare-stamp
                      module-name)
@@ -65,6 +70,7 @@
                 (procedure? path-absolute?)
                 (procedure? path-absolutize)
                 (procedure? path-internalize)
+                (procedure? path-externalize)
                 (procedure? load-module)
                 (procedure? compare-stamp)
                 (procedure? module-name)))
@@ -74,6 +80,7 @@
                                path-absolute?
                                path-absolutize
                                path-internalize
+                               path-externalize
                                load-module
                                compare-stamp
                                module-name)))

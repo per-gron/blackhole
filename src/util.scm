@@ -90,9 +90,9 @@
         (for-each (lambda (fn)
                     (recursively-delete-file
                      (path-expand fn dir)))
-                  (directory-files
-                   (list path: dir
-                         ignore-hidden: 'dot-and-dot-dot)))
+          (directory-files
+           (list path: dir
+                 ignore-hidden: 'dot-and-dot-dot)))
         (delete-directory dir))
       (delete-file dir)))
 
@@ -373,7 +373,7 @@
   (create-dir-unless-exists base-dir)
   (let ((fn (let loop ((i 0))
               (let ((fn (path-expand (number->string i)
-                                     compile-tmp-dir)))
+                                     base-dir)))
                 (if (file-exists? fn)
                     (loop (+ i 1))
                     fn)))))

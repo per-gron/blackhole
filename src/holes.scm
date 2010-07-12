@@ -61,12 +61,11 @@
 (define (with-input-from-url url thunk)
   (with-input-from-process
    (list path: "curl"
-         arguments: '("-s" url))
+         arguments: `("-sL" ,url))
    thunk))
 
 (define (read-url url)
-  (with-input-from-url url
-                       read))
+  (with-input-from-url url read))
 
 (define (port-passthru in out)
   (let* ((buf-size 1000)
@@ -109,29 +108,32 @@
 (define version-complete? version-build)
 
 (define (version<? a b)
-  (if (not (and (version-complete? a)
-                (version-complete? b)))
-      (error "Can't compare incomplete versions" a b))
-  (let ((a-maj (version-major a))
-        (b-maj (version-major b))
-        (a-min (version-minor a))
-        (b-min (version-major b))
-        (a-b (version-build a))
-        (b-b (version-build b))
+  (cond
+   ((not (and (version-complete? a)
+              (version-complete? b)))
+    (error "Can't compare incomplete versions" a b))
+   
+   (else
+    (let ((a-maj (version-major a))
+          (b-maj (version-major b))
+          (a-min (version-minor a))
+          (b-min (version-major b))
+          (a-b (version-build a))
+          (b-b (version-build b))
 
-        (v< (lambda (a b)
-              (cond
-               ((eq? 'max a)
-                #f)
-               ((eq? 'max b)
-                #t)
-               (else
-                (< a b))))))
-    (or (v< a-maj b-maj)
-        (and (= a-maj b-maj)
-             (or (v< a-min b-min)
-                 (and (= a-min b-min)
-                      (v< a-b b-b)))))))
+          (v< (lambda (a b)
+                (cond
+                 ((eq? 'max a)
+                  #f)
+                 ((eq? 'max b)
+                  #t)
+                 (else
+                  (< a b))))))
+      (or (v< a-maj b-maj)
+          (and (= a-maj b-maj)
+               (or (v< a-min b-min)
+                   (and (= a-min b-min)
+                        (v< a-b b-b)))))))))
 
 (define (string->version str #!key force-complete?)
   (if (not (string? str))
@@ -264,10 +266,11 @@
   (description read-only:)
   (keywords read-only:)
   (license read-only:)
+  (dependencies read-only:)
 
   (exported-modules read-only:)
   (default-module read-only:)
-  (module-directory read-only:))
+  (source-directory read-only:))
 
 (define (parse-package-metadata form)
   (if (or (not (list? form))
@@ -308,10 +311,16 @@
      (one 'description string?)
      (list 'keywords symbol?)
      (list 'license symbol?)
+     (map (lambda (dep)
+            (if (symbol? dep)
+                (cons dep '())
+                dep))
+       (or (list 'dependencies (lambda (x) #t))
+           '()))
      
      (list 'exported-modules symbol?)
      (one 'default-module symbol?)
-     (or (one 'module-directory string?)
+     (or (one 'source-directory string?)
          ""))))
 
 (define (load-package-metadata fn)
@@ -390,25 +399,17 @@
 (define (load-remote-packages)
   ;; TODO
   '(("sack"
-     ("http://...."
+     ("http://github.com/pereckerdal/sack/tarball/master"
       (package
-       (version v0.1.1)
+       (version v0.0.1)
        (maintainer "Per Eckerdal <per dot eckerdal at gmail dot com>")
        (author "Per Eckerdal <per dot eckerdal at gmail dot com>")
        (homepage "http://example.com")
        (description "An example package")
-       (keywords example i/o)
-       (license lgpl/v2.1 mit)
+       (keywords http web i/o)
+       (license mit)
 
-       (exported-modules server
-                         lala
-                         hello/duh)
-       (default-module lala)
-       (module-directory "src")
-       
-       (depends
-        (sack (>= v1))
-        pregexp))))))
+       (source-directory "src"))))))
 
 (define (parse-remote-package-list package-list)
   (list->tree
@@ -425,25 +426,31 @@
                    (parse-package-metadata
                     (cadr package-version-desc))))
              (cdr package)))
-      package-list))))
+      package-list))
+   package<?))
 
 (define get-remote-packages
   (let ((*remote-packages* #f))
     (lambda ()
       (or *remote-packages*
-          (let ((rp (load-remote-packages)))
+          (let ((rp (parse-remote-package-list
+                     (load-remote-packages))))
             (set! *remote-packages* rp)
             rp)))))
 
 
 ;;; Local packages
 
-(define local-packages-dir
+(define *work-dir*
   ;; TODO
-  "/Users/per/prog/gambit/blackhole/work/pkgs")
+  "/Users/per/prog/gambit/blackhole/work")
+
+(define *local-packages-dir*
+  (path-expand "pkgs"
+               *work-dir*))
 
 (define (load-installed-packages #!optional
-                                 (pkgs-dir local-packages-dir))
+                                 (pkgs-dir *local-packages-dir*))
   (let ((pkg-dirs
          (filter (lambda (x)
                    (is-directory? (path-expand x pkgs-dir)))
@@ -498,7 +505,7 @@
   (or (tree-backwards-fold-from
        pkgs
        (make-dummy-package pkg-name
-                           (make-version 'max))
+                           (make-version 'max 'max 'max))
        package<?
        #f
        (lambda (p accum k)
@@ -588,21 +595,19 @@
                    ;; This call to path-normalize ensures that the
                    ;; directory actually exists. Otherwise
                    ;; path-normalize might segfault.
-                   (path-expand
-                    (symbol->string
-                     (package-module-path-id path))
-                    (package-dir
-                     (package-module-path-package path))))))
+                   (let ((pkg (package-module-path-package path)))
+                     (path-expand
+                      (package-metadata-source-directory
+                       (package-metadata pkg))
+                      (package-dir pkg))))))
 
 (define (package-module-resolver loader path relative pkg-name
                                  #!rest
                                  ids
                                  #!key
                                  (version #t))
-  (if (not (eq? loader package-loader))
-      (error "Internal error"))
-  
-  (let ((package (find-suitable-loaded-package pkg-name version: version)))
+  (let ((package (find-suitable-loaded-package (symbol->string pkg-name)
+                                               version: version)))
     (map (lambda (id)
            (make-module-reference
             package-loader
@@ -658,47 +663,126 @@
       (cond ((symbol? path)
              (symbol->string path))
             ((package-module-path? path)
-             (package-module-path-path path))
+             (path-strip-extension
+              (package-module-path-path path)))
             (else
              (error "Invalid path" path)))))))
 
 
 ;;; Package installation and uninstallation
 
-(define (package-install! pkg-name
-                          #!optional
-                          (version #t))
-  (package-install-from-url!
-   (package-url
-    (find-suitable-package (get-remote-packages)
-                           pkg-name
-                           version: version))))
+(define (package-install! pkg-name-sym
+                          #!key
+                          (version #t)
+                          ignore-dependencies)
+  (let* ((pkg-name (symbol->string pkg-name-sym))
+         (pkg
+          (find-suitable-package (get-remote-packages)
+                                 pkg-name
+                                 version: version))
+         (pkg-md
+          (package-metadata pkg))
+         (pkgs-to-be-installed (list pkg)))
+    (if (not ignore-dependencies)
+        (let loop ((deps (package-metadata-dependencies pkg-md)))
+          (cond
+           ((pair? deps)
+            (let* ((dep-pkg-name
+                    (symbol->string (caar deps)))
+                   (dep-pkg-v `(and ,@(cdar deps)))
+                   (installed-pkg
+                    (find-suitable-package (get-installed-packages)
+                                           dep-pkg-name
+                                           version: dep-pkg-v
+                                           throw-error?: #f)))
+              (if (not installed-pkg)
+                  (let ((install-pkg
+                         (find-suitable-package (get-remote-packages)
+                                                dep-pkg-name
+                                                version: dep-pkg-v
+                                                throw-error?: #f)))
+                    (if (not install-pkg)
+                        (error "Can't install dependency"
+                               dep-pkg-name
+                               dep-pkg-v)
+                        (begin
+                          (loop (package-metadata-dependencies
+                                 (package-metadata install-pkg)))
+                          (push! pkgs-to-be-installed install-pkg))))))
+            (loop (cdr deps))))))
+    
+    (for-each (lambda (pkg)
+                (package-install-from-url!
+                 (package-name pkg)
+                 (package-url pkg)))
+      pkgs-to-be-installed)))
 
-(define (package-install-from-url! url)
+(define (package-install-from-url! name url)
   (with-input-from-url
    url
    (lambda ()
-     (package-install-from-port! (current-input-port)))))
+     (package-install-from-port! name (current-input-port)))))
 
-(define (package-install-from-port! port)
-  ;; Create temporary directory
+(define (package-install-from-port! name
+                                    port
+                                    #!optional
+                                    (pkgs-dir *local-packages-dir*))
+  ;;; Create temporary directory
   (generate-tmp-dir
-   'TODO
+   (path-expand "pkgs-tmp"
+                *work-dir*)
    (lambda (dir)
      (parameterize
          ((current-directory dir))
-       ;; Untar
+       ;;; Untar
        (untar port)
 
-       ;; Extract metadata
-       ;; Compile
-       ;; Move to installed package directory
-       ;; Update *installed-packages*
-       ...))))
+       ;;; Extract metadata
+       (let ((dir
+              metadata
+              (let* ((files
+                      (directory-files
+                       (list path: dir
+                             ignore-hidden: 'dot-and-dot-dot)))
+                     (dir
+                      (path-expand
+                       (if (= (length files) 1)
+                           (car files)
+                           (error "Invalid package contents (un-nice tarball)"
+                                  files))
+                       dir))
+                     (metadata-file
+                      (path-expand pkgfile-name
+                                   dir)))
+                (if (or (not (file-exists? metadata-file))
+                        (is-directory? metadata-file))
+                    (error "Invalid package contents (no metadata file)"))
+                (values dir
+                        (load-package-metadata metadata-file)))))
+         ;;; Compile
+         'TODO
+         
+         ;;; Move to installed package directory
+         (let ((target-dir
+                (path-expand
+                 (string-append name
+                                "-"
+                                (version->string
+                                 (package-metadata-version
+                                  metadata)))
+                 pkgs-dir)))
+           (if (file-exists? target-dir)
+               (error "Package is already installed" target-dir))
+           (rename-file dir target-dir)))
+                      
+       ;;; Update *installed-packages*
+       (reset-installed-packages!)
+       
+       #!void))))
 
 (define (package-uninstall! pkg)
   (if (not (package-installed? pkg))
       (error "Invalid parameter" pkg))
   (recursively-delete-file
    (package-dir pkg))
-  (set! *installed-packages* #f))
+  (reset-installed-packages!))

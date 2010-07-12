@@ -27,6 +27,7 @@
                                         ;; module-compile/deps!
 (##include "lib.scm")                   ;; The lib (fetching remote
                                         ;; modules) implementation
+(##include "holes.scm")                 ;; The packages implementation
 
 
 
@@ -49,7 +50,8 @@
                  (path-expand "../srfi"
                               (path-expand
                                (path-directory
-                                (get-path))))))))
+                                (get-path))))))
+        (pkg ,@package-module-resolver)))
 
 
 ;; ---------- Add the hooks =) ----------
