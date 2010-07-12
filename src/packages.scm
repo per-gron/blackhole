@@ -54,6 +54,11 @@
     (new-str)
     (reverse result)))
 
+(define (join between args)
+  (cond ((null? args) '())
+        ((null? (cdr args)) (list (car args)))
+        (else `(,(car args) ,between ,@(join between (cdr args))))))
+
 (define (with-input-from-url url thunk)
   (with-input-from-process
    (list path: "curl"
@@ -61,6 +66,8 @@
    thunk))
 
 (define (read-url url)
+  ;; TODO This is probably a security hole, because read can execute
+  ;; arbitrary code unless proper settings are used.
   (with-input-from-url url read))
 
 (define (port-passthru in out)
@@ -91,47 +98,59 @@
   id: 31B8EF4A-9244-450F-8FA3-A5E914448B3A
   constructor: make-version/internal
   
-  (major read-only:)
-  (minor read-only:)
-  (build read-only:))
+  numbers)
 
-(define (make-version #!optional
-                      major
-                      minor
-                      build)
-  (make-version/internal major minor build))
+(define (make-version . numbers)
+  (make-version/internal numbers))
 
-(define version-complete? version-build)
+(define (version-major v)
+  (let ((n (version-numbers v)))
+    (and (pair? n)
+         (car n))))
+
+(define (version-minor v)
+  (let ((n (version-numbers v)))
+    (and (pair? n)
+         (pair? (cdr n))
+         (cadr n))))
+
+(define (version-build v)
+  (let ((n (version-numbers v)))
+    (and (pair? n)
+         (pair? (cdr n))
+         (pair? (cddr n))
+         (caddr n))))
 
 (define (version<? a b)
-  (cond
-   ((not (and (version-complete? a)
-              (version-complete? b)))
-    (error "Can't compare incomplete versions" a b))
-   
-   (else
-    (let ((a-maj (version-major a))
-          (b-maj (version-major b))
-          (a-min (version-minor a))
-          (b-min (version-major b))
-          (a-b (version-build a))
-          (b-b (version-build b))
+  (let ((a-ns (version-numbers a))
+        (b-ns (version-numbers b))
+        
+        (v< (lambda (a b)
+              (cond
+               ((eq? 'max a)
+                #f)
+               ((eq? 'max b)
+                #t)
+               (else
+                (< a b))))))
+    (let loop ((a-ns a-ns) (b-ns b-ns))
+      (cond
+       ((null? a-ns)
+        #t)
+       ((null? b-ns)
+        #f)
+       (else
+        (let ((a-v (car a-ns))
+              (b-v (car b-ns)))
+          (or (v< a-v b-v)
+              (and (= a-v b-v)
+                   (loop (cdr a-ns) (cdr b-ns))))))))))
 
-          (v< (lambda (a b)
-                (cond
-                 ((eq? 'max a)
-                  #f)
-                 ((eq? 'max b)
-                  #t)
-                 (else
-                  (< a b))))))
-      (or (v< a-maj b-maj)
-          (and (= a-maj b-maj)
-               (or (v< a-min b-min)
-                   (and (= a-min b-min)
-                        (v< a-b b-b)))))))))
+(define (version=? a b)
+  (not (or (version<? a b)
+           (version<? b a))))
 
-(define (string->version str #!key force-complete?)
+(define (string->version str)
   (if (not (string? str))
       (error "Expected string" str))
   (let* ((str-len (string-length str))
@@ -141,8 +160,6 @@
               (error "Invalid format" str)))
          (split-string (string-split #\. str-no-v))
          (split-string-len (length split-string)))
-    (if (not (<= 0 split-string-len 3))
-        (error "Invalid format" str))
     (let ((s->i
            (lambda (str)
              (let ((res (string->number str)))
@@ -150,56 +167,41 @@
                        (< res 0))
                    (error "Invalid format" res str))
                res))))
-      (let ((res
-             (make-version (and (>= split-string-len 1)
-                                (s->i (car split-string)))
-                           (and (>= split-string-len 2)
-                                (s->i (cadr split-string)))
-                           (and (= split-string-len 3)
-                                (s->i (caddr split-string))))))
-        (if (and force-complete?
-                 (not (version-complete? res)))
-            (error "Version is not complete" str))
-        res))))
+      (apply
+       make-version
+       (map s->i split-string)))))
 
-(define (symbol->version str #!key force-complete?)
-  (string->version (symbol->string str)
-                   force-complete?: force-complete?))
+(define (symbol->version str)
+  (string->version (symbol->string str)))
 
 (define (version->string v)
   (apply
    string-append
    `("v"
-     ,@(if (version-major v)
-           `(,(number->string
-               (version-major v))
-             ,@(if (version-minor v)
-                   `("."
-                     ,(number->string
-                       (version-minor v))
-                     ,@(if (version-build v)
-                           `("."
-                             ,(number->string
-                               (version-build v)))
-                           '()))
-                   '()))
-           '()))))
+     ,@(join "." (map number->string
+                   (version-numbers v))))))
 
 (define (version->symbol v)
   (string->symbol (version->string v)))
 
 (define (version-comparison pred?)
   (lambda (v ref)
-    (or (not (version-major v))
-        (and (pred? (version-major v)
-                    (version-major ref))
-             (or (not (version-minor v))
-                 (and (pred? (version-minor v)
-                             (version-minor ref))
-                      (or (not (version-build v))
-                          (pred? (version-build v)
-                                 (version-build ref)))))))))
-  
+    (let loop ((v-n (version-numbers v))
+               (ref-n (version-numbers ref)))
+    (cond
+     ((and (null? v-n)
+           (null? ref-n))
+      #t)
+     ((null? v-n)
+      #t)
+     ((null? ref-n)
+      #f)
+     (else
+      (let ((v-v (car v-n))
+            (ref-v (car ref-n)))
+        (and (pred? v-v ref-v)
+             (loop (cdr v-n) (cdr ref-n)))))))))
+
 (define version~=? (version-comparison =))
 (define version~<? (version-comparison <))
 (define version~<=? (version-comparison <=))
@@ -298,7 +300,7 @@
                        lst))))))
     (make-package-metadata
      (let ((v (symbol->version (one 'version symbol? require?: #t))))
-       (if (not (version-build v))
+       (if (not (version-major v))
            (error "Complete version required" (version->symbol v)))
        v)
      (one 'maintainer string?)
@@ -446,8 +448,7 @@
                   (error "Invalid package directory name" pkg-dir))
               (let ((version
                      (string->version
-                      (last (string-split #\- pkg-dir))
-                      force-complete?: #t))
+                      (last (string-split #\- pkg-dir))))
                     (pkg-name
                      (substring pkg-dir
                                 0
