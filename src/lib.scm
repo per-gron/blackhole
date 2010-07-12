@@ -26,7 +26,8 @@
   "wget -nv -x -N")
 
 (define lib-cache-dir
-  "~~/lib/modules/work/lib-cache")
+  (path-expand "lib-cache"
+               *blackhole-work-dir*))
 
 (define (generate-lib-cache-dir)
   (let loop ((i 0))
