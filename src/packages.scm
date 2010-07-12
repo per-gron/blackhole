@@ -1,9 +1,5 @@
 ;;; Utilities
 
-;; TODO This is already defined in util.scm
-(define-macro (push! list obj)
-  `(set! ,list (cons ,obj ,list)))
-
 (define (find-one? pred? lst)
     (let loop ((lst lst))
       (cond
@@ -397,19 +393,7 @@
 ;;; Remote packages
 
 (define (load-remote-packages)
-  ;; TODO
-  '(("sack"
-     ("http://github.com/pereckerdal/sack/tarball/master"
-      (package
-       (version v0.0.1)
-       (maintainer "Per Eckerdal <per dot eckerdal at gmail dot com>")
-       (author "Per Eckerdal <per dot eckerdal at gmail dot com>")
-       (homepage "http://example.com")
-       (description "An example package")
-       (keywords http web i/o)
-       (license mit)
-
-       (source-directory "src"))))))
+  (read-url "http://github.com/pereckerdal/bh-packages/raw/master/pkglist"))
 
 (define (parse-remote-package-list package-list)
   (list->tree
