@@ -587,6 +587,14 @@
       (lambda args
         (expand 'define-type #f #f args))))
 
+   (define-record-type
+     (nh-macro-transformer
+      (lambda (name constructor predicate . fields)
+        `(define-type ,name
+           constructor: ,constructor
+           predicate: ,predicate
+           ,@fields))))
+
    (define-structure
      (nh-macro-transformer
       (lambda args
