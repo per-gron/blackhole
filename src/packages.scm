@@ -313,7 +313,19 @@
             (if (symbol? dep)
                 (cons dep '())
                 dep))
-       (or (list 'dependencies (lambda (x) #t))
+       (or (list 'dependencies
+                 (lambda (x)
+                   (or (symbol? x)
+                       (let loop ((x x))
+                         (cond
+                          ((or (null? x)
+                               (symbol? x))
+                           #t)
+                          ((pair? x)
+                           (and (loop (car x))
+                                (loop (cdr x))))
+                          (else
+                           #f))))))
            '()))
      
      (list 'exported-modules symbol?)
