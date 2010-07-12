@@ -75,7 +75,7 @@
                     "bh"
                     (namespace-choose-unique
                      (loader-module-name loader path)
-                     path)))
+                     (loader-real-path loader path))))
               "#")))))
     (lambda (mod)
       ;; This function might be called with #f as argument

@@ -17,7 +17,7 @@
          (make-module-reference
           loader
           (if relative
-              (loader-path-internalize loader id)
+              id
               (loader-path-absolutize loader id path))))
     ids))
 

@@ -623,7 +623,15 @@
            (make-module-reference
             package-loader
             (make-package-module-path package id)))
-      ids)))
+      (if (null? ids)
+          (let ((def (package-metadata-default-module
+                      (package-metadata package))))
+            (if def
+                (list def)
+                (error "Package has no default module"
+                       (package-name package)
+                       (package-version package))))
+          ids))))
 
 (define package-loader
   (make-loader
@@ -644,6 +652,9 @@
                        "/"
                        (symbol->string path))))
       (package-module-path-package ref)))
+
+   real-path:
+   package-module-path-path
    
    load-module:
    (lambda (path)
@@ -793,28 +804,8 @@
                     (error "Invalid package contents (no metadata file)"))
                 (values dir
                         (load-package-metadata metadata-file)))))
-         ;;; Compile
-         (if compile?
-             (module-compile-bunch
-              'link
-              (let loop ((n 0))
-                (let ((fn
-                       (path-expand (string-append name
-                                                   "-"
-                                                   (number->string n)
-                                                   ".o1")
-                                    dir)))
-                  (if (file-exists? fn)
-                      (loop (+ n 1))
-                      fn)))
-              (module-files-in-dir
-               (path-expand (package-metadata-source-directory metadata)
-                            dir))
-              port: port
-              verbose: verbose))
-         
          ;;; Move to installed package directory
-         (display "Installing package..\n" port)
+         (display "Move package..\n" port)
          (let ((target-dir
                 (path-expand
                  (string-append name
@@ -825,8 +816,28 @@
                  to-dir)))
            (if (file-exists? target-dir)
                (error "Package is already installed" target-dir))
-           (rename-file dir target-dir)))
-                      
+           (rename-file dir target-dir)
+
+           ;;; Compile
+           (if compile?
+               (module-compile-bunch
+                'link
+                (let loop ((n 0))
+                  (let ((fn
+                         (path-expand (string-append name
+                                                     "-"
+                                                     (number->string n)
+                                                     ".o1")
+                                      target-dir)))
+                    (if (file-exists? fn)
+                        (loop (+ n 1))
+                        fn)))
+                (module-files-in-dir
+                 (path-expand (package-metadata-source-directory metadata)
+                              target-dir))
+                port: port
+                verbose: verbose))))
+       
        ;;; Update *installed-packages*
        (reset-installed-packages!)
        

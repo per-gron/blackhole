@@ -16,12 +16,8 @@
   ;; Takes a relative path and an origin path to which the path should
   ;; be interpreted relative to, and returns an absolute path object.
   (path-absolutize-fn unprintable: equality-skip: read-only:)
-  ;; Takes a path (absolute or relative) as it would have been entered
-  ;; in an import form and returns it in a form that is appropriate
-  ;; for storage in a module-reference object. This function must not
-  ;; change the absolute-ness of the path.
-  (path-internalize-fn unprintable: equality-skip: read-only:)
-  (path-externalize-fn unprintable: equality-skip: read-only:)
+  ;; Takes an absolute path and returns an absolute filename
+  (real-path-fn unprintable: equality-skip: read-only:)
   ;; Takes an absolute path and returns the invoke-runtime
   ;; procedure, the invoke-compiletime procedure, the module-info
   ;; structure and a stamp object.
@@ -40,11 +36,8 @@
 (define (loader-path-absolutize loader path ref)
   ((loader-path-absolutize-fn loader) path ref))
 
-(define (loader-path-internalize loader path)
-  ((loader-path-internalize-fn loader) path))
-
-(define (loader-path-externalize loader path)
-  ((loader-path-externalize-fn loader) path))
+(define (loader-real-path loader path)
+  ((loader-real-path-fn loader) path))
 
 (define (loader-load-module loader path)
   ((loader-load-module-fn loader) path))
@@ -61,16 +54,14 @@
                      name
                      path-absolute?
                      path-absolutize
-                     (path-internalize (lambda (x) x))
-                     (path-externalize (lambda (x) x))
+                     (real-path (lambda (x) x))
                      load-module
                      compare-stamp
                      module-name)
   (if (not (and (symbol? name)
                 (procedure? path-absolute?)
                 (procedure? path-absolutize)
-                (procedure? path-internalize)
-                (procedure? path-externalize)
+                (procedure? real-path)
                 (procedure? load-module)
                 (procedure? compare-stamp)
                 (procedure? module-name)))
@@ -79,8 +70,7 @@
          (make-loader/internal name
                                path-absolute?
                                path-absolutize
-                               path-internalize
-                               path-externalize
+                               real-path
                                load-module
                                compare-stamp
                                module-name)))
@@ -98,7 +88,6 @@
 
 (define (loader->skeleton loader)
   (make-loader/internal (loader-name loader)
-                        #f
                         #f
                         #f
                         #f
@@ -278,10 +267,6 @@
    (lambda (path #!optional ref)
      (if path
          (error "Module does not exist in this loader:" path)))
-
-   path-internalize:
-   (lambda (x)
-     (error "Internal error. This procedure shouldn't be called."))
 
    load-module:
    (lambda (path)

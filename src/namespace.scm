@@ -49,8 +49,7 @@
   (let ((updated #f))
     (table-for-each
      (lambda (k v)
-       (if (and (string? k)
-                (not (file-exists? k)))
+       (if (not (file-exists? k))
            (begin
              (table-set! tbl k)
              (set! updated #t))))
@@ -101,16 +100,16 @@
   (cond
    ((or (string->number str)
         (string-contains str #\~)
-        (equal? str "module")
+        (equal? str "bh")
         (equal? str "c"))
     (string-append str "_"))
 
    (else
     str)))
 
-(define (namespace-choose-unique module-name absolute-path)
+(define (namespace-choose-unique module-name real-path)
   (get-ns-table)
-  (or (table-ref ns-table absolute-path #f)
+  (or (table-ref ns-table real-path #f)
       (let ((ns-no-reserved
              (namespace-rename-reserved module-name)))
         (let loop ((i 0))
@@ -132,5 +131,5 @@
             (if found
                 (loop (+ 1 i))
                 (begin
-                  (update-ns-table name absolute-path)
+                  (update-ns-table name real-path)
                   name)))))))
