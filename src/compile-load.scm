@@ -342,7 +342,10 @@
        
        (for-each
            (lambda (mod c-file file)
-             (display file port)
+             (display (if verbose
+                          file
+                          (path-strip-directory file))
+                      port)
              (display " ." port)
              (let ((runtime-code
                     compiletime-code

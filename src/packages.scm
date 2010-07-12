@@ -685,7 +685,11 @@
 (define (package-install! pkg-name-sym
                           #!key
                           (version #t)
-                          ignore-dependencies)
+                          ignore-dependencies
+                          (compile? #t)
+                          (to-dir *local-packages-dir*)
+                          (port (current-output-port))
+                          verbose)
   (let* ((pkg-name (symbol->string pkg-name-sym))
          (pkg
           (find-suitable-package (get-remote-packages)
@@ -725,20 +729,36 @@
     (for-each (lambda (pkg)
                 (package-install-from-url!
                  (package-name pkg)
-                 (package-url pkg)))
+                 (package-url pkg)
+                 compile?: compile?
+                 to-dir: to-dir
+                 port: port
+                 verbose: verbose))
       pkgs-to-be-installed)))
 
-(define (package-install-from-url! name url)
+(define (package-install-from-url! name url
+                                   #!key
+                                   (compile? #t)
+                                   (to-dir *local-packages-dir*)
+                                   (port (current-output-port))
+                                   verbose)
   (with-input-from-url
    url
    (lambda ()
-     (package-install-from-port! name (current-input-port)))))
+     (package-install-from-port! name
+                                 (current-input-port)
+                                 compile?: compile?
+                                 to-dir: to-dir
+                                 port: port
+                                 verbose: verbose))))
 
 (define (package-install-from-port! name
-                                    port
+                                    in-port
                                     #!key
                                     (compile? #t)
-                                    (to-dir *local-packages-dir*))
+                                    (to-dir *local-packages-dir*)
+                                    (port (current-output-port))
+                                    verbose)
   ;;; Create temporary directory
   (generate-tmp-dir
    (path-expand "pkgs-tmp"
@@ -747,9 +767,11 @@
      (parameterize
          ((current-directory dir))
        ;;; Untar
-       (untar port)
-
+       (display "Downloading package..\n" port)
+       (untar in-port)
+       
        ;;; Extract metadata
+       (display "Extracting metadata..\n" port)
        (let ((dir
               metadata
               (let* ((files
@@ -772,9 +794,27 @@
                 (values dir
                         (load-package-metadata metadata-file)))))
          ;;; Compile
-         'TODO
+         (if compile?
+             (module-compile-bunch
+              'link
+              (let loop ((n 0))
+                (let ((fn
+                       (path-expand (string-append name
+                                                   "-"
+                                                   (number->string n)
+                                                   ".o1")
+                                    dir)))
+                  (if (file-exists? fn)
+                      (loop (+ n 1))
+                      fn)))
+              (module-files-in-dir
+               (path-expand (package-metadata-source-directory metadata)
+                            dir))
+              port: port
+              verbose: verbose))
          
          ;;; Move to installed package directory
+         (display "Installing package..\n" port)
          (let ((target-dir
                 (path-expand
                  (string-append name
