@@ -51,7 +51,8 @@
   (let ((updated #f))
     (table-for-each
      (lambda (k v)
-       (if (not (file-exists? k))
+       (if (and (string? k)
+                (not (file-exists? k)))
            (begin
              (table-set! tbl k)
              (set! updated #t))))

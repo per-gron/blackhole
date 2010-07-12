@@ -40,6 +40,8 @@
                (values 'here (list name)))
               ((string? name)
                (values 'lib (list name)))
+              ((vector? name)
+               (values 'pkg (vector->list name)))
               ((pair? name)
                (values (car name) (cdr name)))
               (else

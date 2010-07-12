@@ -580,12 +580,6 @@
           (table-set! *loaded-packages* name pkg))
         (table-set! currently-loading name 'loaded))))))
 
-(define-type package-module-path
-  id: FBE06A79-BD70-43BD-982E-F8F8606FBC22
-
-  package
-  id)
-
 (define (package-module-path-path path)
   (path-normalize (string-append (symbol->string
                                   (package-module-path-id path))
@@ -600,6 +594,30 @@
                       (package-metadata-source-directory
                        (package-metadata pkg))
                       (package-dir pkg))))))
+
+(define (make-package-module-path pkg id)
+  (vector '56BBBA2B-66E5-49A7-A74A-D6992792526E
+          (version->symbol (package-version pkg))
+          (package-name pkg)
+          id))
+
+(define (package-module-path? pmp)
+  (and (vector? pmp)
+       (eq? '56BBBA2B-66E5-49A7-A74A-D6992792526E
+            (vector-ref pmp 0))))
+
+(define (package-module-path-package pmp)
+  (if (not (package-module-path? pmp))
+      (error "Expected package-module-path" pmp))
+  (find-suitable-package (get-installed-packages)
+                         (vector-ref pmp 2)
+                         version:
+                         `(= ,(vector-ref pmp 1))))
+
+(define (package-module-path-id pmp)
+  (if (not (package-module-path? pmp))
+      (error "Expected package-module-path" pmp))
+  (vector-ref pmp 3))
 
 (define (package-module-resolver loader path relative pkg-name
                                  #!rest
@@ -725,8 +743,9 @@
 
 (define (package-install-from-port! name
                                     port
-                                    #!optional
-                                    (pkgs-dir *local-packages-dir*))
+                                    #!key
+                                    (compile? #t)
+                                    (to-dir *local-packages-dir*))
   ;;; Create temporary directory
   (generate-tmp-dir
    (path-expand "pkgs-tmp"
@@ -770,7 +789,7 @@
                                 (version->string
                                  (package-metadata-version
                                   metadata)))
-                 pkgs-dir)))
+                 to-dir)))
            (if (file-exists? target-dir)
                (error "Package is already installed" target-dir))
            (rename-file dir target-dir)))
