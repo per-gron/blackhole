@@ -441,13 +441,9 @@
 
 ;;; Local packages
 
-(define *work-dir*
-  ;; TODO
-  "/Users/per/prog/gambit/blackhole/work")
-
 (define *local-packages-dir*
   (path-expand "pkgs"
-               *work-dir*))
+               *blackhole-work-dir*))
 
 (define (load-installed-packages #!optional
                                  (pkgs-dir *local-packages-dir*))
@@ -749,7 +745,7 @@
   ;;; Create temporary directory
   (generate-tmp-dir
    (path-expand "pkgs-tmp"
-                *work-dir*)
+                *blackhole-work-dir*)
    (lambda (dir)
      (parameterize
          ((current-directory dir))

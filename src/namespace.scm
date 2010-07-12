@@ -4,10 +4,8 @@
 ;;;                                                                  ;;;
 ;;;  --------------------------------------------------------------  ;;;
 
-(define ns-file (path-expand "../work/ns.dat"
-                             (path-expand
-                              (path-directory
-                               (get-path)))))
+(define ns-file (path-expand "ns.dat"
+                             *blackhole-work-dir*))
 (define ns-table #f)
 (define ns-table-timestamp #f)
 (define *ns-table-dont-read-file*

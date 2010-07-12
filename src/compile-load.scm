@@ -282,7 +282,8 @@
                               (ld-options "")
                               verbose)
   (generate-tmp-dir
-   "~~/lib/modules/work/compile-tmp/"
+   (path-expand "compile-tmp"
+                *blackhole-work-dir*)
    (lambda (dir)
      (let* ((mods (map module-reference-from-file files))
             (c-files-no-ext

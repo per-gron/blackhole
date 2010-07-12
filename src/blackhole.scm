@@ -6,6 +6,7 @@
 	 (extended-bindings)
 	 (block))
 
+(define *blackhole-work-dir* "~/.blackhole")
 
 (##include "tree.scm")                  ;; A functional weighted tree data structure
 (##include "util.scm")                  ;; Utility functions.
