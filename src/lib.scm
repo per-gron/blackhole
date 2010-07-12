@@ -19,7 +19,8 @@
                       p))))
 
 (define lib-files-dir
-  "~~/lib/modules/work/lib")
+  (path-expand "lib"
+               *blackhole-work-dir*))
 
 (define lib-get-shell-command
   "wget -nv -x -N")
