@@ -160,7 +160,8 @@
                    ;; strange errors will occur when the continuation
                    ;; that is within that closure gets invoked at the
                    ;; wrong time.
-                   (inside-letrec #f))
+                   (inside-letrec #f)
+                   (top-level #t))
                 (expand-macro
                  (expr*:value-set
                   code

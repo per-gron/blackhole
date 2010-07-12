@@ -412,13 +412,37 @@
                        (make-external-reference def phase)))))
                   (*external-reference-cleanup-hook*
                    (lambda (code)
-                     (clone-sexp
-                      code
-                      ;; TODO Do something with phase
-                      (lambda (def phase) (cadr def))
-                      ;; TODO Do something with phase
-                      (lambda (def phase val)
-                        `(set! ,(cadr def) ,val))))))
+                     (let ((instance-ref
+                            (lambda (phase def)
+                              `(bh#module-instance-ref
+                                ',phase
+                                ',(module-reference-absolutize
+                                   (caddr def)
+                                   (environment-module-reference
+                                    ;; Beware of ugly use of the
+                                    ;; dynamic environment
+                                    (*top-environment*)))))))
+                       (clone-sexp
+                        code
+                        (lambda (def phase)
+                          (if (or (zero? (expansion-phase-number phase))
+                                  ;; (caddr def) is #f when
+                                  ;; referencing built-in functions
+                                  (not (caddr def)))
+                              (cadr def)
+                              `((bh#module-instance-getter
+                                 ,(instance-ref phase def))
+                                ',(cadr def))))
+                        (lambda (def phase val)
+                          (if (or (zero? (expansion-phase-number phase))
+                                  ;; (caddr def) is #f when
+                                  ;; referencing built-in functions
+                                  (not (caddr def)))
+                              `(set! ,(cadr def) ,val)
+                              `((bh#module-instance-setter
+                                 ,(instance-ref phase def))
+                                ',(cadr def)
+                                val))))))))
                (values (expand-macro sexpr)
                        (*top-environment*))))
             (imports
@@ -470,14 +494,19 @@
                import-for-syntax-module-refs
                (resolve-imports imports-for-syntax
                                 module-reference
-                                relative: #t)))
-          (values (generate-runtime-code (environment-namespace env)
+                                relative: #t))
+
+              (ns-str
+               (environment-namespace
+                env
+                phase-number: 0)))
+          (values (generate-runtime-code ns-str
                                          module-reference
                                          expanded-code)
                   (and
                    (not no-global-state-)
                    (generate-compiletime-code module-reference
-                                              (environment-namespace env)
+                                              ns-str
                                               expanded-code
                                               definitions
                                               import-module-refs))
@@ -496,9 +525,7 @@
                                        import-module-refs))
                             (compiletime-dependencies
                              ,@import-for-syntax-module-refs)
-                            (namespace-string ,@(environment-namespace
-                                                 env
-                                                 phase-number: 0))
+                            (namespace-string ,@ns-str)
                             (options ,@options-)
                             (cc-options ,@cc-options-)
                             (ld-options-prelude ,@ld-options-prelude-)

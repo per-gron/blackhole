@@ -593,13 +593,12 @@
       (error "Name must be an identifier" name)))))
 
 (define (environment-add-define! env name)
-  (let* ((top (top-level))
-         (ns (cond
+  (let* ((ns (cond
               ((string-contains (symbol->string name)
                                 #\#)
                "")
               
-              (top
+              ((top-level)
                (environment-namespace env))
 
               (else
