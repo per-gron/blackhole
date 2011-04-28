@@ -1582,7 +1582,44 @@
     (lambda (source env mac-env)
       (extract-synclosure-crawler source)))
 
-   ;; TODO Add c-define
+   (c-define
+    (lambda (source env mac-env)
+      (let ([src (cdr (expand-syncapture (expr*:value source) env))])
+        (cond
+          [(< (length src) 6)
+           (error "Ill-formed c-define form"
+                  (expr*:strip-locationinfo source))]
+          [(top-level)
+           (let* ([src    (expr*:value src)]
+                  [var-fs (expr*:value (list-ref src 0))]
+                  [types  (list-ref src 1)]
+                  [result (list-ref src 2)]
+                  [c-name (list-ref src 3)]
+                  [scope  (list-ref src 4)]
+                  [body   (list-tail src 5)]
+                  [var-form (car var-fs)]
+                  [var      (expand-syncapture var-form env)]
+                  [formals  (cdr var-fs)]
+                  [ns (environment-add-define! env (expr*:value var))])
+             (expr*:value-set
+              source
+              `(c-define (,(expr*:value-set
+                            var
+                            (gen-symbol ns (expr*:value var)))
+                          ,@(map (lambda (f-form)
+                                   (let ([f (expand-syncapture f-form env)])
+                                     (expr*:value-set
+                                      f
+                                      (gen-symbol ns (expr*:value f)))))
+                                 formals))
+                   ,(extract-synclosure-crawler types)
+                   ,(extract-synclosure-crawler result)
+                   ,(extract-synclosure-crawler c-name)
+                   ,(extract-synclosure-crawler scope)
+                 ,@(expand-macro body env))))]
+          [else
+           (error "Incorrectly placed c-define:"
+                  (expr*:strip-locationinfo source))]))))
 
    (c-define-type
     (lambda (source env mac-env)
