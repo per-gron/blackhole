@@ -756,6 +756,10 @@
 ;; makes the entire macro expansion algorithm take exponential
 ;; time in respect to the nesting level of macros that use this
 ;; function (like lets, lambdas, syntax-rules macros)
+;;
+;; form should be a list, possibly with source location annotation
+;; information inside, but it shouldn't be a source location
+;; annotation object itself.
 (define (transform-forms-to-triple form parent-env)
   (let* ((exprs '())
          (defs '())
@@ -791,29 +795,31 @@
 
           (let* ((x (and (pair? form)
                          (expand-macro (car form) env)))
-                 (x-hd-sym (and (pair? x)
-                                (if (syntactic-closure? (car x))
-                                    (syntactic-closure-symbol (car x))
-                                    (car x)))))
+                 (x-code (expr*:value x))
+                 (x-hd-sym (and (pair? x-code)
+                                (let ((x-hd (car x-code)))
+                                  (if (syntactic-closure? x-hd)
+                                      (syntactic-closure-symbol x-hd)
+                                      x-hd)))))
             (cond
              ((null? form)
               #!void) ;; We're done
              
-             ((eq? #!void x)
+             ((eq? #!void x-code)
               (loop (cdr form) env))
              
-             ((not (pair? x))
+             ((not (pair? x-code))
               (push-exprs-expand x (cdr form) env))
              
              ((eq? x-hd-sym
                    transform-forms-to-triple-define-constant)
-              (let ((src (expr*:transform-to-lambda (cdr x))))
+              (let ((src (expr*:transform-to-lambda (cdr x-code))))
                 (set! defs
                       (cons (cons env src)
                             defs))
                 
                 (environment-add-defines define-env
-                                         (list (car src))
+                                         (list (expr*:value (car src)))
                                          mutate: #t)
                 
                 (loop (cdr form) env)))
@@ -821,15 +827,17 @@
              ((eq? x-hd-sym
                    transform-forms-to-triple-define-syntax-constant)
               (environment-add-macros define-env
-                                      (list (cdr x))
+                                      (list
+                                       (cons (expr*:value (cadr x-code))
+                                             (cddr x-code)))
                                       mutate: #t
                                       mac-env: env)
               
               (loop (cdr form) env))
              
-             ((or (ieq? 'begin (car x) env)
-                  (ieq? '##begin (car x) env))
-              (loop (append (cdr x) (cdr form)) env))
+             ((or (ieq? 'begin (car x-code) env)
+                  (ieq? '##begin (car x-code) env))
+              (loop (append (cdr x-code) (cdr form)) env))
              
              (else
               (push-exprs-expand x (cdr form) env))))))))
@@ -1052,8 +1060,9 @@
                                 (error "Invalid parameter list: "
                                        (expr*:strip-locationinfo params)))))))))
                       params))))
-              `(lambda ,hygparams
-                 ,@(transform-forms-to-letrec body lambda-env)))))))))
+              `(,(expr*:value-set (car code) 'lambda)
+                ,(expr*:value-set (cadr code) hygparams)
+                ,@(transform-forms-to-letrec body lambda-env)))))))))
 
 (define (let/letrec-syntax-helper rec form env thunk)
   ;; TODO This doesn't generate source code locations correctly
