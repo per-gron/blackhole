@@ -859,66 +859,70 @@
             ,@inner-exp)))))
 
 (define (let/letrec-helper rec code env)
-  ;; TODO This doesn't generate source code locations correctly
-  (let ((code (expr*:strip-locationinfo code)))
-    (parameterize
-        ((inside-letrec #f)
-         (scope-level (scope-level)))
-      (apply
-       (lambda (prefix params . body)
-         (let* (;; If this is not a letrec, do the expansion of the parameter
-                ;; initializer here. It has to be done before the call to
-                ;; environment-add-defines, otherwise the let will leak if
-                ;; it's given syntactic closures as parameter names and/or
-                ;; initializers.
-                (param-values
-                 (map (lambda (x)
-                        (let ((x (expand-syncapture x env)))
-                          (if (not
-                               (and (list? x)
-                                    (= 2 (length x))))
-                              (error "Invalid binding" code))
-                          (if rec
-                              (cadr x)
-                              (expand-macro (cadr x) env))))
-                   params)))
-           (let ((let-env
-                  defined-params
-                  (environment-add-defines
-                   env
-                   (let ((ps (map (lambda (pair)
+  (parameterize
+      ((inside-letrec #f)
+       (scope-level (scope-level)))
+    (apply
+     (lambda (prefix params-source . body)
+       (let* ((params (expr*:value params-source))
+              ;; If this is not a letrec, do the expansion of the parameter
+              ;; initializer here. It has to be done before the call to
+              ;; environment-add-defines, otherwise the let will leak if
+              ;; it's given syntactic closures as parameter names and/or
+              ;; initializers.
+              (param-values
+               (map (lambda (param)
+                      (let ((param (expand-syncapture (expr*:value param)
+                                                      env)))
+                        (if (not
+                             (and (list? param)
+                                  (= 2 (length param))))
+                            (error "Invalid binding"
+                                   (expr*:strip-locationinfo code)))
+                        (if rec
+                            (cadr param)
+                            (expand-macro (cadr param) env))))
+                 params)))
+         (let ((let-env
+                defined-params
+                (environment-add-defines
+                 env
+                 (let ((ps (map (lambda (pair)
+                                  (let ((pair (expr*:value pair)))
                                     (if (list? pair)
-                                        (car pair)
-                                        (error "Invalid form: " code)))
-                               params)))
-                     (if prefix
-                         (cons prefix ps)
-                         ps)))))
-             `(,(if rec
-                    'letrec
-                    'let)
-               ,@(if prefix
-                     `(,(expand-macro prefix let-env))
-                     '())
-               ,(map (lambda (p p-val dp)
-                       (cons (caddr dp)
-                             (list
-                              (if rec
-                                  (expand-macro p-val
-                                                let-env)
-                                  p-val))))
-                  params
-                  param-values
-                  (if prefix
-                      (cdr defined-params)
-                      defined-params))
-               ,@(transform-forms-to-letrec body let-env)))))
-       ;; Handle let loop
-       (let ((code (expand-syncapture code env)))
-         (if (and (not rec)
-                  (identifier? (cadr code)))
-             (cdr code)
-             (cons #f (cdr code))))))))
+                                        (expr*:value (car pair))
+                                        (error "Invalid form: "
+                                               (expr*:strip-locationinfo
+                                                code)))))
+                             params)))
+                   (if prefix
+                       (cons (expr*:value prefix)
+                             ps)
+                       ps)))))
+           `(,(if rec
+                  'letrec
+                  'let)
+             ,@(if prefix
+                   `(,(expand-macro prefix let-env))
+                   '())
+             ,(map (lambda (dp p-val)
+                     (cons (caddr dp)
+                           (list
+                            (if rec
+                                (expand-macro p-val
+                                              let-env)
+                                p-val))))
+                (if prefix
+                    (cdr defined-params)
+                    defined-params)
+                param-values)
+             ,@(transform-forms-to-letrec body let-env)))))
+     ;; Handle let loop
+     (let ((code (expand-syncapture (expr*:value code) env)))
+       (if (and (not rec)
+                (identifier? (expr*:value (cadr code))))
+           (cdr code)
+           (cons #f (cdr code)))))))
 
 (define (lambda-helper code env)
   (parameterize
