@@ -205,11 +205,13 @@
        code
        (cons 'quasiquote
              (list
-              (hyg-expand-macro-quasiquote
-               env
-               (cadr (expand-syncapture
-                      (expr*:value code)
-                      env))))))))
+              (parameterize
+                  ((inside-letrec #f))
+                (hyg-expand-macro-quasiquote
+                 env
+                 (cadr (expand-syncapture
+                        (expr*:value code)
+                        env)))))))))
    
    (define
      (lambda (code env mac-env)

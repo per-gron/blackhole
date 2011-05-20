@@ -192,7 +192,7 @@
             (expand-macro
              `(let ((ifa 3))
                 ,(make-syntactic-closure
-                  module#empty-environment
+                  bh#empty-environment
                   '()
                   'ifa)))))))
 
@@ -339,11 +339,11 @@
         2))
 
 ;; Basic test for identifier=?
-(let ((e module#empty-environment))
+(let ((e bh#empty-environment))
   (identifier=? e 'a e 'a))
 
 ;; Basic test for identifier=?
-(not (let ((e module#empty-environment))
+(not (let ((e bh#empty-environment))
        (identifier=? e 'a e 'b)))
 
 (equal? '(#t #f)
@@ -909,7 +909,7 @@
 (begin
   (expand-macro
    `(define-syntax
-      ,(make-syntactic-closure (module#*top-environment*)
+      ,(make-syntactic-closure (bh#*top-environment*)
                                '()
                                'xx)
       (syntax-rules ()
@@ -937,7 +937,7 @@
  (expand-macro
   `(let ((xx (lambda () #t)))
      (let-syntax
-         ((,(make-syntactic-closure (module#*top-environment*)
+         ((,(make-syntactic-closure (bh#*top-environment*)
                                     '()
                                     'xx)
            (syntax-rules ()
@@ -1216,14 +1216,6 @@
                (let-values ?b (?arg ... x) (?tmp ... (?a x)) ?body)))))
           (let-values (a b) () () (list a b))))
 
-;; This should produce an error
-(with-exception-catcher
- (lambda (e)
-   #t)
- (lambda ()
-  (expand-macro '(let ((a 5) (a 6)) a))
-  #f))
-
 ;; Test default values of DSSSL parameters whose expressions use other
 ;; values in the parameter list
 (let ((a #f))
@@ -1244,11 +1236,22 @@
        (test-fail else 'a))
      'a)
 
+;; Test that quasiquote interacts well with begin
+(equal? ((lambda (num) `(+ ,(begin num) 1)) 3)
+        `(+ 3 1))
 
 
 
 
 ;;; Problematic things:
+
+;; This should produce an error
+(with-exception-catcher
+ (lambda (e)
+   #t)
+ (lambda ()
+  (expand-macro '(let ((a 5) (a 6)) a))
+  #f))
 
 
 ;; calcing is never set back to #f. It probably should, at least in

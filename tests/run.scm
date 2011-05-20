@@ -52,20 +52,20 @@
        (let ((module
               (string->symbol
                (string-append directory "/test"))))
-         (eval '(define module#test-ran #f))
-         (module#module-import (list module))
+         (eval '(define bh#test-ran #f))
+         (expand-macro `(import ,module))
          
          (cond
-          ((not module#test-ran)
+          ((not bh#test-ran)
            ;; Test didn't run
            )
           
-          ((eq? module#test-result #t)
+          ((eq? bh#test-result #t)
            (set! success (+ 1 success)))
           
           (else
            (set! fail (+ 1 fail))
-           (print-fail module module#test-result)))))
+           (print-fail module bh#test-result)))))
      directories)
 
     (println "\nRan " (+ fail success) " tests. " fail " tests failed.")))
