@@ -79,8 +79,11 @@
 
 ;; Utility function for loaders
 (define (path->stamp path)
-  (let ((lof (last-object-file path))
-        (p-lc (file-last-changed-seconds path)))
+  (let* ((lof (last-object-file path))
+         (p-lc (file-last-changed-seconds
+                (if (file-exists? path)
+                    path
+                    lof))))
     (if lof
         (max (file-last-changed-seconds (last-object-file path))
              p-lc)

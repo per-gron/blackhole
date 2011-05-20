@@ -10,7 +10,8 @@
     (let* ((path (module-reference-path mod))
            (of (last-object-file path)))
       (if of
-          (not (file-newer? of path))
+          (and (file-exists? path)
+               (file-newer? path of))
           'not-compiled))))
 
 (define (module-compile! mod

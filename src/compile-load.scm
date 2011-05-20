@@ -164,7 +164,7 @@
               (force-compile)
               (values rt ct vt mi)))))
      
-     (else      
+     (else
       (let* ((module-object-table
               (let ((deps-fn (deps-file-name object-fn)))
                 (if (file-exists? deps-fn)
