@@ -807,7 +807,7 @@
              
              ((eq? x-hd-sym
                    transform-forms-to-triple-define-constant)
-              (let ((src (transform-to-lambda (cdr x))))
+              (let ((src (expr*:transform-to-lambda (cdr x))))
                 (set! defs
                       (cons (cons env src)
                             defs))

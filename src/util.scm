@@ -54,8 +54,16 @@
        (set! ,list (cdr ,list))
        ,tmp)))
 
-;; TODO As an optimization, implement this
-(define reverse! reverse)
+(define (reverse! lst)
+  (let loop ((lst lst) (accum '()))
+    (cond
+     ((pair? lst)
+      (let ((rest (cdr lst)))
+        (set-cdr! lst accum)
+        (loop rest lst)))
+
+     (else
+      accum))))
 
 (define (file-last-changed-seconds fn)
   (time->seconds
@@ -209,17 +217,6 @@
   (cond ((null? lst) #f)
         ((null? (cdr lst)) (car lst))
         (else (last (cdr lst)))))
-
-;; Takes an expression of the form ((mname . arglist) . funbody)
-;; and transforms it into (mname (lambda arglist funbody))
-;; (it does nothing if the input is already in the latter form)
-;;
-;; TODO This is obsoleted by expr*:transform-to-lambda.
-(define (transform-to-lambda expr #!optional (lmb 'lambda))
-  (if (pair? (car expr))
-      `(,(caar expr)
-        (,lmb ,(cdar expr) ,@(cdr expr)))
-      expr))
 
 ;; Takes a module name and a symbol. If symbol contains a #, just
 ;; the symbol is returned. Otherwise mod#sym is returned.

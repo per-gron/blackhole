@@ -1,3 +1,15 @@
+(begin ;; Helper functions. Enclosed in a begin to make it return #t
+       ;; and thus not result in a "failed test"
+  (define (expect-exception thunk)
+    (with-exception-catcher
+     (lambda (e)
+       #t)
+     (lambda ()
+       (thunk)
+       #f)))
+  
+  #t)
+
 ;; Basic tests
 (eq? (expand-macro 4) 4)
 
@@ -85,49 +97,6 @@
                     (fun (lambda () ,a)))
              (fun)))))))
 
-;; Test syntactic closures in lets. I seriously don't know what the
-;; result of this should be. The hot spot in this test is the
-;; syntactic closure that is most deeply nested; should it refer to
-;; the a that is 3, or should it refer to the a in the top that is #t?
-;;
-;; The code that decides which one it should be is expand-synclosure,
-;; the part of the cond that takes care of syntactic capture. If that
-;; function clones the environment, the answer is the top level a,
-;; otherwise the inner a.
-(or #t
-    (expand-macro
-     `(let ((a #t))
-        ,(capture-syntactic-environment
-          (lambda (e)
-            (capture-syntactic-environment
-             (lambda (env)
-               (let ((a (make-syntactic-closure env '() 'a)))
-                 `(begin
-                    ,a
-                    (let ((a 4)
-                          (,a 3))
-                      ,(make-syntactic-closure e '() 'a)
-                      a
-                      ,a)
-                    ,a)))))))))
-
-;; The same test, but for lambdas
-(or #t
-    (expand-macro
-     `(let ((a #f))
-        ,(capture-syntactic-environment
-          (lambda (e)
-            (capture-syntactic-environment
-             (lambda (env)
-               (let ((a (make-syntactic-closure env '() 'a)))
-                 `(begin
-                    ,a
-                    (lambda (a ,a)
-                      ,(make-syntactic-closure e '() 'a)
-                      a
-                      ,a)
-                    ,a)))))))))
-
 ;; Non-DSSSL rest parameters in lambda
 (equal? ((eval '(lambda x x)) 1 2 3)
         '(1 2 3))
@@ -186,24 +155,22 @@
  #f
  a: #t)
 
-(not (eq? '1#ifa
-          (car
-           (reverse
-            (expand-macro
-             `(let ((ifa 3))
-                ,(make-syntactic-closure
-                  bh#empty-environment
-                  '()
-                  'ifa)))))))
+(expect-exception
+ (lambda ()
+   (eval
+    `(let ((ifa 3))
+       ,(make-syntactic-closure
+         bh#empty-environment
+         '()
+         'ifa)))))
 
-(not (eq? '1#a
-          (car
-           (reverse
-            (expand-macro
-             (capture-syntactic-environment
-              (lambda (e)
-                `(let ((a 3))
-                   ,(make-syntactic-closure e '() 'a)))))))))
+(eq? 5
+     (eval
+      `(let ((a 5))
+         ,(capture-syntactic-environment
+           (lambda (e)
+             `(let ((a #f))
+                ,(make-syntactic-closure e '() 'a)))))))
 
 ;; Basic syntactic closure test
 (eval
@@ -419,6 +386,15 @@
                         ((test var hej ...)
                          (list (+ var hej) ... 'end)))))
           (test 1 2 3 4 5)))
+
+;; Test syntax-rules vector patterns
+(eq? 2
+     (letrec-syntax
+         ((test (syntax-rules ()
+                  ((test #(1 a)) (test a))
+                  ((test 2) 2)
+                  ((test _) #f))))
+       (test #(1 2))))
 
 ;; Test that syntax-rules ... rules can take empty parameters
 (let-syntax ((test
@@ -1241,17 +1217,81 @@
         `(+ 3 1))
 
 
+;; Test that let-syntax works with define-syntax, within a let
+(let ()
+  (let-syntax
+      ((test-mac
+        (syntax-rules ()
+          ((test-mac) #t))))
+    (define-syntax test
+      (syntax-rules ()
+        ((test) (test-mac)))))
+  (test))
+
+;; Test that let-syntax works with define-syntax, top level
+(begin
+  (let-syntax
+      ((test-mac
+        (syntax-rules ()
+          ((test-mac) #t))))
+    (define-syntax test
+      (syntax-rules ()
+        ((test) (test-mac)))))
+  (test))
+
 
 
 ;;; Problematic things:
 
 ;; This should produce an error
-(with-exception-catcher
- (lambda (e)
-   #t)
+(expect-exception
  (lambda ()
-  (expand-macro '(let ((a 5) (a 6)) a))
-  #f))
+   (expand-macro '(let ((a 5) (a 6)) a))))
+
+
+
+;; Test syntactic closures in lets. I seriously don't know what the
+;; result of this should be. The hot spot in this test is the
+;; syntactic closure that is most deeply nested; should it refer to
+;; the a that is 3, or should it refer to the a in the top that is #t?
+;;
+;; The code that decides which one it should be is expand-synclosure,
+;; the part of the cond that takes care of syntactic capture. If that
+;; function clones the environment, the answer is the top level a,
+;; otherwise the inner a.
+(or #t
+    (expand-macro
+     `(let ((a #t))
+        ,(capture-syntactic-environment
+          (lambda (e)
+            (capture-syntactic-environment
+             (lambda (env)
+               (let ((a (make-syntactic-closure env '() 'a)))
+                 `(begin
+                    ,a
+                    (let ((a 4)
+                          (,a 3))
+                      ,(make-syntactic-closure e '() 'a)
+                      a
+                      ,a)
+                    ,a)))))))))
+
+;; The same test, but for lambdas
+(or #t
+    (expand-macro
+     `(let ((a #f))
+        ,(capture-syntactic-environment
+          (lambda (e)
+            (capture-syntactic-environment
+             (lambda (env)
+               (let ((a (make-syntactic-closure env '() 'a)))
+                 `(begin
+                    ,a
+                    (lambda (a ,a)
+                      ,(make-syntactic-closure e '() 'a)
+                      a
+                      ,a)
+                    ,a)))))))))
 
 
 ;; calcing is never set back to #f. It probably should, at least in
@@ -1312,4 +1352,3 @@
 ;;             rest
 ;;             (mac-1 rest))))))
 ;;    (mac aa)))
-
