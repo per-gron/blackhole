@@ -321,27 +321,29 @@
 
    (let*
        (lambda (code env mac-env)
-         ;; TODO This doesn't generate source code locations correctly
-         (let ((code (expr*:strip-locationinfo code)))
+         (with-expr* code
            (apply
-            (lambda (params . body)
-              ;; Two null? checks are needed to avoid unneccesary
-              ;; (let () ...)s while still allowing (let* () ...)
-              (expand-macro
-               (if (null? params)
-                   `(let () ,@body)
-                   (let ((bindings (car params)))
-                     (if (not
-                          (and (list? bindings)
-                               (= 2 (length bindings))))
-                         (error "Invalid binding" code))
-                     `(let (,bindings)
-                        ,@(if (null? (cdr params))
-                              body
-                              `((let* ,(cdr params)
-                                  ,@body))))))
-               env))
-            (cdr (expand-syncapture code env))))))
+            (lambda (params-source . body)
+              (let ((params (expr*:value params-source)))
+                ;; Two null? checks are needed to avoid unneccesary
+                ;; (let () ...)s while still allowing (let* () ...)
+                (expand-macro
+                 (if (null? params)
+                     `(let () ,@body)
+                     (let* ((bindings-source (car params))
+                            (bindings (expr*:value bindings-source)))
+                       (if (not
+                            (and (list? bindings)
+                                 (= 2 (length bindings))))
+                           (error "Invalid binding"
+                                  (expr*:strip-locationinfo code)))
+                       `(let (,bindings-source)
+                          ,@(if (null? (cdr params))
+                                body
+                                `((let* ,(cdr params)
+                                    ,@body))))))
+                 env)))
+            (expand-syncapture (cdr code) env)))))
 
    (define-macro
      (lambda (source env mac-env)
