@@ -107,7 +107,7 @@
          'mac
          (lambda (code env mac-env)
            `(apply bh#syntax-rules-proc
-                   ',(expr*:cdr code)))
+                   ',(with-expr* code (cdr code))))
          builtin-environment)
    (map (lambda (x)
           (list x
@@ -290,7 +290,7 @@
         `((syntax-rules .
             ,(lambda (code env mac-env)
                `(apply bh#syntax-rules-proc
-                       ',(expr*:cdr code))))))
+                       ',(with-expr* code (cdr code)))))))
       
       info:
       (make-module-info

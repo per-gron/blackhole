@@ -13,7 +13,7 @@
   (let* ((code (expr*:value expr))
          (code-car (expr*:value (car code))))
     (if (pair? code-car)
-        `(,(expr*:car code-car)
+        `(,(with-expr* code-car (car code-car))
           (,lmb ,(cdr code-car)
                 ,@(cdr code)))
         expr)))
@@ -851,202 +851,207 @@
             ,@inner-exp)))))
 
 (define (let/letrec-helper rec code env)
-  (parameterize
-   ((inside-letrec #f)
-    (scope-level (scope-level)))
-   (apply
-    (lambda (prefix params . body)
-      (let* (;; If this is not a letrec, do the expansion of the parameter
-             ;; initializer here. It has to be done before the call to
-             ;; environment-add-defines, otherwise the let will leak if
-             ;; it's given syntactic closures as parameter names and/or
-             ;; initializers.
-             (param-values
-              (map (lambda (x)
-                     (let ((x (expand-syncapture x env)))
-                       (if (not
-                            (and (list? x)
-                                 (= 2 (length x))))
-                           (error "Invalid binding" code))
-                       (if rec
-                           (cadr x)
-                           (expand-macro (cadr x) env))))
+  ;; TODO This doesn't generate source code locations correctly
+  (let ((code (expr*:strip-locationinfo code)))
+    (parameterize
+        ((inside-letrec #f)
+         (scope-level (scope-level)))
+      (apply
+       (lambda (prefix params . body)
+         (let* (;; If this is not a letrec, do the expansion of the parameter
+                ;; initializer here. It has to be done before the call to
+                ;; environment-add-defines, otherwise the let will leak if
+                ;; it's given syntactic closures as parameter names and/or
+                ;; initializers.
+                (param-values
+                 (map (lambda (x)
+                        (let ((x (expand-syncapture x env)))
+                          (if (not
+                               (and (list? x)
+                                    (= 2 (length x))))
+                              (error "Invalid binding" code))
+                          (if rec
+                              (cadr x)
+                              (expand-macro (cadr x) env))))
                    params)))
-        (let ((let-env
-               defined-params
-               (environment-add-defines
-                env
-                (let ((ps (map (lambda (pair)
-                                 (if (list? pair)
-                                     (car pair)
-                                     (error "Invalid form: " code)))
-                            params)))
+           (let ((let-env
+                  defined-params
+                  (environment-add-defines
+                   env
+                   (let ((ps (map (lambda (pair)
+                                    (if (list? pair)
+                                        (car pair)
+                                        (error "Invalid form: " code)))
+                               params)))
+                     (if prefix
+                         (cons prefix ps)
+                         ps)))))
+             `(,(if rec
+                    'letrec
+                    'let)
+               ,@(if prefix
+                     `(,(expand-macro prefix let-env))
+                     '())
+               ,(map (lambda (p p-val dp)
+                       (cons (caddr dp)
+                             (list
+                              (if rec
+                                  (expand-macro p-val
+                                                let-env)
+                                  p-val))))
+                  params
+                  param-values
                   (if prefix
-                      (cons prefix ps)
-                      ps)))))
-          `(,(if rec
-                 'letrec
-                 'let)
-            ,@(if prefix
-                  `(,(expand-macro prefix let-env))
-                  '())
-            ,(map (lambda (p p-val dp)
-                    (cons (caddr dp)
-                          (list
-                           (if rec
-                               (expand-macro p-val
-                                             let-env)
-                               p-val))))
-               params
-               param-values
-               (if prefix
-                   (cdr defined-params)
-                   defined-params))
-            ,@(transform-forms-to-letrec body let-env)))))
-   ;; Handle let loop
-   (let ((code (expand-syncapture code env)))
-     (if (and (not rec)
-              (identifier? (cadr code)))
-         (cdr code)
-         (cons #f (cdr code)))))))
+                      (cdr defined-params)
+                      defined-params))
+               ,@(transform-forms-to-letrec body let-env)))))
+       ;; Handle let loop
+       (let ((code (expand-syncapture code env)))
+         (if (and (not rec)
+                  (identifier? (cadr code)))
+             (cdr code)
+             (cons #f (cdr code))))))))
 
 (define (lambda-helper code env)
   (parameterize
-   ((inside-letrec #f)
-    (scope-level (scope-level)))
-   (apply
-    (lambda (params . body)
-      (let ((lambda-env
-             defined-param+envs
-             (let loop ((params params)
-                        (env env)
-                        (accum-result '())
-                        (key #f)
-                        ;; accum-ids is there to reduce the number of
-                        ;; calls to environment-add-defines, and thus
-                        ;; reducing the number of allocated
-                        ;; environment objects. A new environment
-                        ;; object needs to be allocated for each
-                        ;; parameter with a default value initializer,
-                        ;; so a correct default would be to create a
-                        ;; new environment for each parameter, but for
-                        ;; lambdas with non-DSSSL parameter lists,
-                        ;; it's sufficient to create one environment
-                        ;; object. accum-ids is an accumulator that
-                        ;; contains the parameters without a default
-                        ;; value initializer, and is reset on each
-                        ;; occasion that a default value initializer
-                        ;; is found.
-                        (accum-ids '()))
-               (let*
-                   ((handle-accum-ids
-                     (lambda (env accum-result accum-ids)
-                       (if (null? accum-ids)
-                           (values env
-                                   accum-result)
-                           (let ((new-env
-                                  defined-params
-                                  (environment-add-defines
-                                   env
-                                   accum-ids)))
-                             (values new-env
-                                     (append-map
-                                      (lambda (dp)
-                                        (cons dp new-env))
-                                      defined-params
-                                      accum-result))))))
-                    (action
-                     (lambda (x rest)
-                       (let ((id? (identifier? x)))
-                         (cond
-                          ((eq? x '#!key)
-                           (loop rest env accum-result #t accum-ids))
-                          
-                          ((or (eq? x '#!rest)
-                               (eq? x '#!optional))
-                           (loop rest env accum-result #f accum-ids))
-                          
-                          ((identifier? x)
-                           (loop rest
-                                 env
-                                 accum-result
-                                 key
-                                 (cons (if key (cons x "") x)
-                                       accum-ids)))
+      ((inside-letrec #f)
+       (scope-level (scope-level)))
+    (apply
+     (lambda (params . body)
+       (let ((lambda-env
+              defined-param+envs
+              (let loop ((params params)
+                         (env env)
+                         (accum-result '())
+                         (key #f)
+                         ;; accum-ids is there to reduce the number of
+                         ;; calls to environment-add-defines, and thus
+                         ;; reducing the number of allocated
+                         ;; environment objects. A new environment
+                         ;; object needs to be allocated for each
+                         ;; parameter with a default value initializer,
+                         ;; so a correct default would be to create a
+                         ;; new environment for each parameter, but for
+                         ;; lambdas with non-DSSSL parameter lists,
+                         ;; it's sufficient to create one environment
+                         ;; object. accum-ids is an accumulator that
+                         ;; contains the parameters without a default
+                         ;; value initializer, and is reset on each
+                         ;; occasion that a default value initializer
+                         ;; is found.
+                         (accum-ids '()))
+                (let*
+                    ((handle-accum-ids
+                      (lambda (env accum-result accum-ids)
+                        (if (null? accum-ids)
+                            (values env
+                                    accum-result)
+                            (let ((new-env
+                                   defined-params
+                                   (environment-add-defines
+                                    env
+                                    accum-ids)))
+                              (values new-env
+                                      (append-map
+                                       (lambda (dp)
+                                         (cons dp new-env))
+                                       defined-params
+                                       accum-result))))))
+                     (action
+                      (lambda (x rest)
+                        (let ((id? (identifier? x)))
+                          (cond
+                           ((eq? x '#!key)
+                            (loop rest env accum-result #t accum-ids))
+                           
+                           ((or (eq? x '#!rest)
+                                (eq? x '#!optional))
+                            (loop rest env accum-result #f accum-ids))
+                           
+                           ((identifier? x)
+                            (loop rest
+                                  env
+                                  accum-result
+                                  key
+                                  (cons (if key (cons x "") x)
+                                        accum-ids)))
 
-                          ((pair? x)
-                           (let ((new-env
-                                  new-accum-result
-                                  (handle-accum-ids env
-                                                    accum-result
-                                                    accum-ids)))
-                             (let ((new-env
-                                    new-accum-result
-                                    (handle-accum-ids
-                                     new-env
+                           ((pair? x)
+                            (let ((new-env
+                                   new-accum-result
+                                   (handle-accum-ids env
+                                                     accum-result
+                                                     accum-ids)))
+                              (let ((new-env
                                      new-accum-result
-                                     (let ((s (car x)))
-                                       (list
-                                        (if key (cons s "") s))))))
-                               (loop rest
-                                     new-env
-                                     new-accum-result
-                                     key
-                                     '()))))
+                                     (handle-accum-ids
+                                      new-env
+                                      new-accum-result
+                                      (let ((s (car x)))
+                                        (list
+                                         (if key (cons s "") s))))))
+                                (loop rest
+                                      new-env
+                                      new-accum-result
+                                      key
+                                      '()))))
+                           
+                           (else
+                            (loop rest env accum-result key)))))))
+                  (cond
+                   ((null? params)
+                    (let ((new-env
+                           new-accum-result
+                           (handle-accum-ids env accum-result accum-ids)))
+                      (values new-env
+                              (reverse! new-accum-result))))
+                   ((pair? params)
+                    (action (car params)
+                            (cdr params)))
+                   (else
+                    (action params
+                            '())))))))
+         (let ((hygparams
+                (let ((key #f)
+                      (current-defined-param+envs defined-param+envs))
+                  (dotted-map
+                   (lambda (p)
+                     (cond
+                      ((eq? p '#!key)
+                       (set! key #t)
+                       p)
+                      
+                      ((or (eq? p '#!rest)
+                           (eq? p '#!optional))
+                       (set! key #f)
+                       p)
+                      
+                      (else
+                       (let ((dp
+                              dp-env
+                              (let ((dp+env (pop! current-defined-param+envs)))
+                                (values (car dp+env)
+                                        (cdr dp+env)))))
+                         (cond
+                          ((identifier? p)
+                           (caddr dp))
+                          
+                          ((pair? p)
+                           (cons (caddr dp)
+                                 (expand-macro (cdr p) dp-env)))
                           
                           (else
-                           (loop rest env accum-result key)))))))
-                 (cond
-                  ((null? params)
-                   (let ((new-env
-                          new-accum-result
-                          (handle-accum-ids env accum-result accum-ids)))
-                     (values new-env
-                             (reverse! new-accum-result))))
-                  ((pair? params)
-                   (action (car params)
-                           (cdr params)))
-                  (else
-                   (action params
-                           '())))))))
-        (let ((hygparams
-               (let ((key #f)
-                     (current-defined-param+envs defined-param+envs))
-                 (dotted-map
-                  (lambda (p)
-                    (cond
-                     ((eq? p '#!key)
-                      (set! key #t)
-                      p)
-                     
-                     ((or (eq? p '#!rest)
-                          (eq? p '#!optional))
-                      (set! key #f)
-                      p)
-                     
-                     (else
-                      (let ((dp
-                             dp-env
-                             (let ((dp+env (pop! current-defined-param+envs)))
-                               (values (car dp+env)
-                                       (cdr dp+env)))))
-                        (cond
-                         ((identifier? p)
-                          (caddr dp))
-                         
-                         ((pair? p)
-                          (cons (caddr dp)
-                                (expand-macro (cdr p) dp-env)))
-                         
-                         (else
-                          (error "Invalid parameter list: "
-                                 params)))))))
-                  params))))
-          `(lambda ,hygparams
-             ,@(transform-forms-to-letrec body lambda-env)))))
-   (cdr (expand-syncapture code env)))))
+                           (error "Invalid parameter list: "
+                                  params)))))))
+                   params))))
+           `(lambda ,hygparams
+              ,@(transform-forms-to-letrec body lambda-env)))))
+     ;; TODO This doesn't generate source code locations correctly
+     (let ((code (expr*:strip-locationinfo code)))
+       (cdr (expand-syncapture code env))))))
 
 (define (let/letrec-syntax-helper rec form env thunk)
+  ;; TODO This doesn't generate source code locations correctly
   (let ((form (expr*:strip-locationinfo form))
         (env (if rec (make-environment env) env)))
     (apply

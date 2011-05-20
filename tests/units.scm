@@ -1254,6 +1254,10 @@
         ((test) (test-mac)))))
   (test))
 
+;; Test receive form
+(equal? '(a b)
+        (receive (a b) (values 'a 'b) (list a b)))
+
 
 
 ;;; Problematic things:

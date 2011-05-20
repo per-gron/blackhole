@@ -178,7 +178,8 @@
 	(else
 	 (error syn))))
 
-;; ((hm wird die benamsung hier nun,  mit : wäre schlecht, inkonsistent?  with-expr:line/col ??))
+;; ((hm wird die benamsung hier nun, mit : wäre schlecht,
+;; inkonsistent?  with-expr:line/col ??))
 (define-unsafe/safe (with-expr-line/col expr
 					success
 					#!optional
@@ -219,12 +220,15 @@
           (vector-ref expr 1)
           (vector-ref expr 2)
           (vector-ref expr 3)))
-;; clone- vorher, weil gleich wie make-. es ist keine methode? doch an sich schon. aber keine daten abruf.
-;; (well, functional setters   es wäre ein functional setter ohne action ausser clone)(aber in functional setting gäbs kein Grund für clone)
 
-;; scheme/the module system should elicit the argument types from the ops, like ocaml,
-;; but I cannot use ##fixnum.+ etc. as long as it doesn't infer types and thus isn't safe.
-;; So I write those:
+;; clone- vorher, weil gleich wie make-. es ist keine methode? doch an
+;; sich schon. aber keine daten abruf.  (well, functional setters es
+;; wäre ein functional setter ohne action ausser clone)(aber in
+;; functional setting gäbs kein Grund für clone)
+
+;; scheme/the module system should elicit the argument types from the
+;; ops, like ocaml, but I cannot use ##fixnum.+ etc. as long as it
+;; doesn't infer types and thus isn't safe.  So I write those:
 (define (make-fixnum-op unsafe-op)
   (lambda (a b)
     (if (and (##fixnum? a)
@@ -244,17 +248,12 @@
 
 ;; quasi "overloaded" on the number of arguments:
 (define (make-expr val
-		   #!optional
-		   (file "(generated)")
-		   (pos-or-line 0)
-		   maybe-col)
+		   file
+		   pos)
   (vector '#(source1) ;; was ist das?
 	  val
 	  file
-	  (if maybe-col
-	      (make-pos pos-or-line
-			maybe-col)
-	      pos-or-line)))
+	  pos))
 
 ;;(alt:  "sollte ich es  syntax-value-replace   oder syntax-replace-value nennen ?")
 (define-unsafe/safe (expr:value-set expr val)
@@ -292,14 +291,6 @@
 ;; behält location info über das eval hinweg offenbar nicht; weil wohl [im eval optimiert wird oder nein eher] es dann versteckt ist?. stepper zeigt es nicht mehr richtig an.
 ;; also muss man auch da expr*:value-set verwenden.
 
-
-
-;; TODO This function does kindof the same thing as ##sourcify
-(define (expr:fixup expr) ;; without recursion
-  (if (expr? expr)
-      expr
-      (make-expr expr ; '(fixup)
-		 )))
 
 ;; TODO This function does the same thing as ##sourcify-deep. (Does
 ;; ##sourcify-deep share structure?) (Does ##sourcify-deep look inside
@@ -339,77 +330,11 @@
                     file
                     pos))))
 
-
-;; cj {Thu Jun 14 18:05:06 2007}
-;; for debugging/playing only:
-
-(define-type element
-  id: c6adce4d-d8c6-4713-8a47-45151f9be290
-  val
-  file
-  line
-  col)
-
-
-
-(define (make-sexprelement val file line col)
-  `(element val: ,val
-	    file: ,file
-	    line: ,line
-	    col: ,col))
-;;^-hm hat einfach auchwas für sich. zumindestjumpbar in emacs.  ah heh dotted end is aber strange dann hehe. Schad auch (auchhier!) dass pp keyword und value nicht nebeneinander sondern untereinander ausgibt, FEELEY sagen. (ok problem weil nicht garantiert dass keywords von nem value gefolgt sind? aber solangs nid ein keyword ist..? wel.)
-(define (make-vectorelement.1 val file line col)
-  `#(element val: ,val
-	    file: ,file
-	    line: ,line
-	    col: ,col))
-;; wowda hat man foifer und weggli. ausser dass still keyword+val nicht nebeneinander.
-(define (make-vectorelement val file line col)
-  (vector '<element> val file line col))
-;;heh das wohl am besten in diesem Fall.
-;;positional eben wieder.rein.  (leider keine serial numbers attached. aber ok, wenn functional, eh nicht so sehr gedacht)
-;; TJA.... aber wo isch denn das nun anders als das originalformat hehehehe. (ah ok line und col separiert)
-
-
-;; "expr" is still a bad name. "notatedexprelement" ?
-
-;; expr can be a single annotated element, a list of annotated
-;; elements, or anything at all. Only annotated elements are turned
-;; into elements. This is recursively, tree based processing.including
-;; dotted ends.
-
-(define (try-exprelement->element expr)	
-  (map* (lambda (obj)
-	  (if (expr? obj)
-	      (make-vectorelement (try-exprelement->element (@expr:value obj))
-			    (@expr:file obj)
-			    (@expr:line obj)
-			    (@expr:col obj))
-	      obj))
-	expr))
-;; (error "not an expr:" expr)
-
-; (define t (file-read-all-expr "../mod/_cj-expr-testinput.scm"; "test-load.scm"
-; 			      ))
-
-
-
 (define (expr*:make-fun fun)
   (lambda (expr)
     (expr*:value-set
      expr
      (fun (expr*:value expr)))))
-
-(define (expr*:make-fun* fun)
-  (lambda (expr)
-    (fun (expr*:value expr))))
-
-(define expr*:car (expr*:make-fun car))
-(define expr*:cdr (expr*:make-fun cdr))
-(define expr*:cadr (expr*:make-fun cadr))
-(define expr*:null? (expr*:make-fun* null?))
-(define expr*:pair? (expr*:make-fun* pair?))
-
 
 (define (expr*:map fn expr)
   (expr*:value-set
@@ -433,3 +358,16 @@
           ((vector? v)
            (vector-map expr*:strip-locationinfo v))
           (else v))))
+
+(define-macro (with-expr* name . body)
+  `(expr*:value-set
+    ,name
+    (let ((,name (expr*:value ,name)))
+      ,@body)))
+
+(define-macro (let-expr* spec . body)
+  (let ((spec (if (vector? spec)
+                  (vector-ref spec 1)
+                  spec)))
+    `(let ((,(car spec) ,(cadr spec)))
+       (with-expr* ,(car spec) ,@body))))

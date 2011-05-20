@@ -50,11 +50,10 @@
                                             env))
                     env))))
          `(,transform-forms-to-triple-define-constant
-           ,(expr*:value-set
-             (car src)
-             (make-syntactic-closure env
-                                     '()
-                                     (expr*:value (car src))))
+           ,(let-expr* (name (car src))
+              (make-syntactic-closure env
+                                      '()
+                                      name))
            ,(let ((src-cdr (cdr src)))
               (if (pair? src-cdr)
                   (car src-cdr)
@@ -62,16 +61,13 @@
 
    (define-syntax
      (lambda (source env mac-env)
-       (let ((code (expr*:value source)))
-         (expr*:value-set
-          source
-          (list transform-forms-to-triple-define-syntax-constant
-                (expr*:value-set
-                 (cadr code)
+       (with-expr* source
+         (list transform-forms-to-triple-define-syntax-constant
+               (let-expr* (expander (cadr source))
                  (make-syntactic-closure env
                                          '()
-                                         (expr*:value (cadr code))))
-                (caddr code))))))
+                                         expander))
+               (caddr source)))))
    
    (let-syntax
        (lambda (code env mac-env)
@@ -163,9 +159,8 @@
                    (inside-letrec #f)
                    (top-level #t))
                 (expand-macro
-                 (expr*:value-set
-                  code
-                  `(begin ,@(cdr (expr*:value code))))
+                 (with-expr* code
+                   `(begin ,@(cdr code)))
                  env))))
         ((*module-macroexpansion-syntax-begin*)
          next-phase
@@ -201,17 +196,16 @@
 
    (quasiquote
     (lambda (code env mac-env)
-      (expr*:value-set
-       code
-       (cons 'quasiquote
-             (list
-              (parameterize
-                  ((inside-letrec #f))
-                (hyg-expand-macro-quasiquote
-                 env
-                 (cadr (expand-syncapture
-                        (expr*:value code)
-                        env)))))))))
+      (with-expr* code
+        (list
+         'quasiquote
+         (parameterize
+             ((inside-letrec #f))
+           (hyg-expand-macro-quasiquote
+            env
+            (cadr (expand-syncapture
+                   code
+                   env))))))))
    
    (define
      (lambda (code env mac-env)
@@ -236,10 +230,8 @@
              
              (expr*:value-set
               code
-              `(define ,(expr*:value-set
-                         name
-                         (gen-symbol ns
-                                     (expr*:value name)))
+              `(define ,(with-expr* name
+                          (gen-symbol ns name))
                  ,(expand-macro (let ((src-v (expr*:value src)))
                                   (if (pair? src-v)
                                       (let ((src-v-cdr (cdr src-v)))
@@ -291,27 +283,21 @@
    
    (begin
      (lambda (code env mac-env)
-       (expr*:value-set
-        code
-        `(begin
-           ,@(map
-              (lambda (x)
-                (expr*:value-set x
-                                 (expand-macro (expr*:value x)
-                                               env)))
-              (cdr (expr*:value code)))))))
+       (with-expr* code
+         `(begin
+            ,@(map
+                  (lambda (x)
+                    (with-expr* x
+                      (expand-macro x env)))
+                (cdr code))))))
    
    (let
        (lambda (code env mac-env)
-         ;; TODO This doesn't generate source code locations correctly
-         (let ((code (expr*:strip-locationinfo code)))
-           (let/letrec-helper #f code env))))
+         (let/letrec-helper #f code env)))
 
    (letrec
        (lambda (code env mac-env)
-         ;; TODO This doesn't generate source code locations correctly
-         (let ((code (expr*:strip-locationinfo code)))
-           (let/letrec-helper #t code env))))
+         (let/letrec-helper #t code env)))
    
    (let-syntax
        (lambda (code env mac-env)
@@ -331,9 +317,7 @@
    
    (lambda
        (lambda (code env mac-env)
-         ;; TODO This doesn't generate source code locations correctly
-         (let ((code (expr*:strip-locationinfo code)))
-           (lambda-helper code env))))
+         (lambda-helper code env)))
 
    (let*
        (lambda (code env mac-env)
@@ -361,19 +345,17 @@
 
    (define-macro
      (lambda (source env mac-env)
-       (let ((code (expr*:value source)))
-         (let* ((src (expr*:value
-                      (expr*:transform-to-lambda (cdr code)))))
-           (expand-macro
-            (expr*:value-set
-             source
-             `(,(make-syntactic-closure
-                 empty-environment
-                 '()
-                 'define-syntax)
-               ,(car src)
-               (bh#nh-macro-transformer ,(cadr src))))
-            env)))))
+       (expand-macro
+        (with-expr* source
+          (let ((src (expr*:value
+                      (expr*:transform-to-lambda (cdr source)))))
+            `(,(make-syntactic-closure
+                empty-environment
+                '()
+                'define-syntax)
+              ,(car src)
+              (bh#nh-macro-transformer ,(cadr src)))))
+        env)))
 
    (declare
     (lambda (code env mac-env)
@@ -383,53 +365,47 @@
    
    (cond
     (lambda (source env mac-env)
-      (expr*:value-set
-       source
-       (let ((code (expr*:value source)))
-         (cons
-          (expr*:value-set (car code)
-                           'cond)
-          (map (lambda (inner-source)
-                 (let* ((inner-code
-                         (expr*:value inner-source))
-                        (hd-source
-                         (if (pair? inner-code)
-                             (car inner-code)
+      (with-expr* source
+        (cons
+         (expr*:value-set (car source)
+                          'cond)
+         (map (lambda (inner-source)
+                (with-expr* inner-source
+                 (let* ((hd-source
+                         (if (pair? inner-source)
+                             (car inner-source)
                              (error "Invalid cond form: "
                                     (expr*:strip-locationinfo
                                      source))))
                         (hd (expr*:value hd-source)))
-                   (expr*:value-set
-                    inner-source
-                    (cond
-                     ((and (identifier? hd)
-                           (identifier=? empty-environment
-                                         'else
-                                         env
-                                         hd))
-                      (cons (expr*:value-set hd-source
-                                             'else)
-                            (expand-macro (cdr inner-code)
-                                          env)))
+                   (cond
+                    ((and (identifier? hd)
+                          (identifier=? empty-environment
+                                        'else
+                                        env
+                                        hd))
+                     (cons (expr*:value-set hd-source
+                                            'else)
+                           (expand-macro (cdr inner-source)
+                                         env)))
 
-                     ((and (pair? (cdr inner-code))
-                           (identifier? (expr*:value (cadr inner-code)))
-                           (identifier=? empty-environment
-                                         '=>
-                                         env
-                                         (expr*:value
-                                          (cadr inner-code))))
-                      (cons (expand-macro hd-source env)
-                            (cons (expr*:value-set (cadr inner-code)
-                                                   '=>)
-                                  (expand-macro (cddr inner-code)
-                                                env))))
-                     
-                     (else
-                      (expand-macro inner-code
-                                    env))))))
-                      
-               (cdr code)))))))
+                    ((and (pair? (cdr inner-source))
+                          (identifier? (expr*:value (cadr inner-source)))
+                          (identifier=? empty-environment
+                                        '=>
+                                        env
+                                        (expr*:value
+                                         (cadr inner-source))))
+                     (cons (expand-macro hd-source env)
+                           (cons (expr*:value-set (cadr inner-source)
+                                                  '=>)
+                                 (expand-macro (cddr inner-source)
+                                               env))))
+                    
+                    (else
+                     (expand-macro inner-source env))))))
+           
+           (cdr source))))))
 
    (cond-expand
     (lambda (source env mac-env)
@@ -445,33 +421,29 @@
 
    (case
        (lambda (source env mac-env)
-         (expr*:value-set
-          source
-          (let ((code (expr*:value source)))
-            `(,(expr*:value-set (car code)
-                                'case)
-              ,(expand-macro (cadr code) env)
-              ,@(map (lambda (inner-source)
-                       (let ((inner-code (expr*:value inner-source)))
-                         `(,(extract-synclosure-crawler
-                             (car inner-code))
-                           ,@(map (lambda (f)
-                                    (expand-macro f env))
-                                  (cdr inner-code)))))
-                     (cddr code)))))))
+         (with-expr* source
+           `(,(expr*:value-set (car source)
+                               'case)
+             ,(expand-macro (cadr source) env)
+             ,@(map (lambda (inner-source)
+                      (let ((inner-code (expr*:value inner-source)))
+                        `(,(extract-synclosure-crawler
+                            (car inner-code))
+                          ,@(map (lambda (f)
+                                   (expand-macro f env))
+                              (cdr inner-code)))))
+                 (cddr source))))))
 
    (time
     (lambda (source env mac-env)
-      (expr*:value-set
-       source
-       (let ((code (expr*:value source)))
-         (if (not (= 2 (length code)))
-             (error "Ill-formed special form"
-                    (expr*:strip-locationinfo source)))
-         `(,(expr*:value-set (car code) '##time)
-           (lambda () ,@(expand-macro (cdr code)
-                                      env))
-           ',(cadr code))))))
+      (with-expr* source
+        (if (not (= 2 (length source)))
+            (error "Ill-formed special form"
+                   (expr*:strip-locationinfo source)))
+        `(,(expr*:value-set (car source) '##time)
+          (lambda () ,@(expand-macro (cdr source)
+                                     env))
+          ',(cadr source)))))
 
    (c-declare
     (lambda (source env mac-env)
@@ -509,73 +481,68 @@
        force-compile: #t
        no-global-state: #t)
       (extract-synclosure-crawler source)))
-   
+
    (receive
     (lambda (source env mac-env)
-      (let ((code (expr*:value source)))
-        (if (< (length code) 4)
+      (with-expr* source
+        (if (< (length source) 4)
             (error "Invalid receive form"
                    (expr*:strip-locationinfo source)))
         (apply
          (lambda (formals expression . body)
            (let ((lmb (make-syntactic-closure env '() 'lambda)))
              (expand-macro
-              (expr*:value-set
-               source
-               `(,(make-syntactic-closure env '() 'call-with-values)
-                 (,lmb () ,expression)
-                 (,lmb ,formals
-                       ,@body)))
+              `(,(make-syntactic-closure env '() 'call-with-values)
+                (,lmb () ,expression)
+                (,lmb ,formals
+                      ,@body))
               env)))
-         (cdr code)))))
+         (cdr source)))))
 
    (do
     (lambda (source env mac-env)
-      (let* ((assert
-              (lambda (x)
-                (if (not x)
-                    (error "Invalid do form"
-                           (expr*:strip-locationinfo source)))))
-             (c (lambda (x)
-                  (make-syntactic-closure builtin-environment '() x)))
-
-             (code (expr*:value source))
-             (do-loop (c 'do-loop)))
-        (assert (>= (length code) 3))
-        (let ((vars (expr*:value (cadr code)))
-              (test (expr*:value (caddr code)))
-              (exprs (expr*:value (cdddr code))))
-          (assert (and (list? vars)
-                       (list? test)
-                       (not (null? test))
-                       (list? exprs)))
-          (expand-macro
-           (expr*:value-set
-            source
-            `(,(c 'let)
-              ,do-loop
-              ,(map (lambda (var)
-                      (let ((var (expr*:value var)))
-                        (assert (and (list? var)
-                                     (<= 2 (length var) 3)))
-                        (list (car var)
-                              (cadr var))))
-                 vars)
-              (,(c 'cond)
-               (,(car test)
-                ,(if (null? (cdr test))
-                     #!void
-                     `(,(c 'begin) ,@(cdr test))))
-               (,(c 'else)
-                ,@exprs
-                (,do-loop
-                 ,@(map (lambda (var)
-                          (let ((var (expr*:value var)))
-                            (if (null? (cddr var))
-                                (car var)
-                                (caddr var))))
-                     vars))))))
-           env)))))
+      (with-expr* source
+        (let* ((assert
+                (lambda (x)
+                  (if (not x)
+                      (error "Invalid do form"
+                             (expr*:strip-locationinfo source)))))
+               (c (lambda (x)
+                    (make-syntactic-closure builtin-environment '() x)))
+               (do-loop (c 'do-loop)))
+          (assert (>= (length source) 3))
+          (let ((vars (expr*:value (cadr source)))
+                (test (expr*:value (caddr source)))
+                (exprs (expr*:value (cdddr source))))
+            (assert (and (list? vars)
+                         (list? test)
+                         (not (null? test))
+                         (list? exprs)))
+            (expand-macro
+             `(,(c 'let)
+               ,do-loop
+               ,(map (lambda (var)
+                       (let ((var (expr*:value var)))
+                         (assert (and (list? var)
+                                      (<= 2 (length var) 3)))
+                         (list (car var)
+                               (cadr var))))
+                  vars)
+               (,(c 'cond)
+                (,(car test)
+                 ,(if (null? (cdr test))
+                      #!void
+                      `(,(c 'begin) ,@(cdr test))))
+                (,(c 'else)
+                 ,@exprs
+                 (,do-loop
+                  ,@(map (lambda (var)
+                           (let ((var (expr*:value var)))
+                             (if (null? (cddr var))
+                                 (car var)
+                                 (caddr var))))
+                      vars)))))
+             env))))))
    
    (compile-options
     (nh-macro-transformer
