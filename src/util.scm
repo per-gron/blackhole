@@ -213,6 +213,32 @@
         (loop (+ 1 i)))))
     v))
 
+(define (vector-fold fn init vec)
+  (let ((len (vector-length vec)))
+    (let loop ((i 0) (accum init))
+      (cond
+       ((< i len)
+        (loop (+ 1 i)
+              (fn accum
+                  (vector-ref vec i))))
+       (else
+        accum)))))
+
+(define (vector-fold2 fn init vec1 vec2)
+  (let ((len (vector-length vec1)))
+    (if (not (eq? len (vector-length vec2)))
+        (error "Vectors not of equal length" vec1 vec2))
+    
+    (let loop ((i 0) (accum init))
+      (cond
+       ((< i len)
+        (loop (+ 1 i)
+              (fn accum
+                  (vector-ref vec1 i)
+                  (vector-ref vec2 i))))
+       (else
+        accum)))))
+
 (define (last lst)
   (cond ((null? lst) #f)
         ((null? (cdr lst)) (car lst))

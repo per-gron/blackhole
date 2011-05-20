@@ -68,6 +68,32 @@
             (sc-assq env id (cdr ids))))
       #f))
 
+(define (extract-pattern-vars env literals pattern)
+  (let loop ((pattern pattern))
+    (cond
+     ((eq? pattern '...)
+      '())
+     
+     ((identifier? pattern)
+      (if (sc-memq env pattern literals)
+          '()
+          (list pattern)))
+     
+     ((pair? pattern)
+      (append (loop (car pattern))
+              (loop (cdr pattern))))
+
+     ((vector? pattern)
+      (apply
+       append
+       (vector-fold (lambda (accum val)
+                      (cons (loop val)
+                            accum))
+                    '()
+                    pattern)))
+     
+     (else '()))))
+
 (define (pattern-match literals env pattern form)
   (let ((form (expand-syncapture form env)))
     (cond
@@ -142,12 +168,20 @@
                                    (cdr form))))
              (and a b (substitution-append a b)))))
      
-     ((vector? pattern) ;; TODO This isn't tested
+     ((vector? pattern)
       (and (vector? form)
-           (pattern-match literals
-                          env
-                          (vector->list pattern)
-                          (vector->list form))))
+           (= (vector-length pattern)
+              (vector-length form))
+           (vector-fold2 (lambda (accum pattern-elm form-elm)
+                           (substitution-append
+                            accum
+                            (pattern-match literals
+                                           env
+                                           pattern-elm
+                                           form-elm)))
+                         '()
+                         pattern
+                         form)))
      
      (else
       (and (equal? pattern form) '())))))
@@ -232,8 +266,11 @@
               (substitute mac-env env pattern-vars subs (cdr form))))))
         (cons (substitute mac-env env pattern-vars subs (car form))
               (substitute mac-env env pattern-vars subs (cdr form)))))
-   
-   ;; TODO Vectors?
+
+   ((vector? form)
+    (vector-map (lambda (x)
+                  (substitute mac-env env pattern-vars subs x))
+                form))
    
    (else form)))
 
@@ -261,21 +298,9 @@
             (lambda (rule pe)
               (let* ((pattern (cdar rule))
                      (pattern-vars
-                      (let loop ((pattern pattern))
-                        (cond
-                         ((eq? pattern '...)
-                          '())
-                         
-                         ((identifier? pattern)
-                          (if (sc-memq env pattern literals)
-                              '()
-                              (list pattern)))
-                         
-                         ((pair? pattern)
-                          (append (loop (car pattern))
-                                  (loop (cdr pattern))))
-                         
-                         (else '())))))
+                      (extract-pattern-vars env
+                                            literals
+                                            pattern)))
                 (cond
                  ((pattern-match
                    literals

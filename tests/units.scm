@@ -388,6 +388,21 @@
           (test 1 2 3 4 5)))
 
 ;; Test syntax-rules vector patterns
+(letrec-syntax
+    ((test (syntax-rules ()
+             ((test #(1 1)) #f)
+             ((test #(1 2)) #t)
+             ((test _) #f))))
+  (test #(1 2)))
+
+;; Test syntax-rules vector patterns
+(equal? '#(1 #(1 2))
+          (letrec-syntax
+              ((test (syntax-rules ()
+                       ((test a) '#(1 a)))))
+            (test #(1 2))))
+
+;; Test syntax-rules vector patterns
 (eq? 2
      (letrec-syntax
          ((test (syntax-rules ()
