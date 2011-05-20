@@ -230,17 +230,18 @@
              
              (expr*:value-set
               code
-              `(define ,(with-expr* name
-                          (gen-symbol ns name))
-                 ,(expand-macro (let ((src-v (expr*:value src)))
-                                  (if (pair? src-v)
-                                      (let ((src-v-cdr (cdr src-v)))
-                                        (if (pair? src-v-cdr)
-                                            (car src-v-cdr)
-                                            #!void))
-                                      (error "Ill-formed define form"
-                                             code)))
-                                env)))))
+              `(,(expr*:value-set (car code) 'define)
+                ,(with-expr* name
+                   (gen-symbol ns name))
+                ,(expand-macro (let ((src-v (expr*:value src)))
+                                 (if (pair? src-v)
+                                     (let ((src-v-cdr (cdr src-v)))
+                                       (if (pair? src-v-cdr)
+                                           (car src-v-cdr)
+                                           #!void))
+                                     (error "Ill-formed define form"
+                                            code)))
+                               env)))))
           
           (else
            (error "Incorrectly placed define:"

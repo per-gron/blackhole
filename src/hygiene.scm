@@ -14,8 +14,9 @@
          (code-car (expr*:value (car code))))
     (if (pair? code-car)
         `(,(with-expr* code-car (car code-car))
-          (,lmb ,(cdr code-car)
-                ,@(cdr code)))
+          (,(expr*:value-set (car code) lmb)
+           ,(expr*:value-set (car code) (cdr code-car))
+           ,@(cdr code)))
         expr)))
 
 (define (append-map fun lst rest)
@@ -851,12 +852,16 @@
          (transform-forms-to-triple form env)))
     (if (null? defs)
         inner-exp
-        `((letrec
-              ,(map (lambda (def)
-                      (expand-macro (cdr def)
-                                    (car def)))
-                 defs)
-            ,@inner-exp)))))
+        (list
+         (expr:value-set
+          (car form)
+          `(,(expr:value-set (car form) 'letrec)
+            ,(expr:value-set (car form)
+                             (map (lambda (def)
+                                    (expand-macro (cdr def)
+                                                  (car def)))
+                               defs))
+            ,@inner-exp))))))
 
 (define (let/letrec-helper rec code env)
   (parameterize
@@ -899,9 +904,10 @@
                        (cons (expr*:value prefix)
                              ps)
                        ps)))))
-           `(,(if rec
-                  'letrec
-                  'let)
+           `(,(expr*:value-set (car (expr*:value code))
+                               (if rec
+                                   'letrec
+                                   'let))
              ,@(if prefix
                    `(,(expand-macro prefix let-env))
                    '())
@@ -1255,11 +1261,9 @@
                       #!optional
                       (env (*top-environment*)))
   (let* ((source
-          (expr*:value-set
-           source
-           (expand-syncapture
-            (expr*:value source)
-            env)))
+          (with-expr* source
+            (expand-syncapture source
+                               env)))
          (code (expr*:value source)))
     (cond
      ((pair? code)
@@ -1277,25 +1281,27 @@
              (default-action
                (lambda ()
                  (parameterize
-                  ((inside-letrec #f)
-                   (top-level (and (eq? '##begin hd)
-                                   (top-level))))
-                  (expr*:dotted-map (lambda (x)
-                                      (expand-macro x env))
-                                    source)))))
+                     ((inside-letrec #f)
+                      (top-level (and (eq? '##begin hd)
+                                      (top-level))))
+                   (expr*:dotted-map (lambda (x)
+                                       (expand-macro x env))
+                                     source)))))
         (if (symbol? hd) ;; This is equivalent to (identifier? hd-val)
             (cond
              ((environment-get env hd sc-environment: search-env) =>
               (lambda (val)
                 (if (eq? 'def (car val))
                     (parameterize
-                     ((inside-letrec #f)
-                      (top-level #f))
-                     (cons (expr*:value-set (car code)
-                                            (cadr val))
-                           (dotted-map (lambda (x)
-                                         (expand-macro x env))
-                                       (cdr code))))
+                        ((inside-letrec #f)
+                         (top-level #f))
+                      (expr*:value-set
+                       source
+                       (cons (expr*:value-set (car code)
+                                              (cadr val))
+                             (dotted-map (lambda (x)
+                                           (expand-macro x env))
+                                         (cdr code)))))
                     ((cadr val)
                      source
                      env
@@ -1320,7 +1326,7 @@
                          ##cond
                          ##case
                          ##define-macro))
-              (expr*:value-set code
+              (expr*:value-set source
                                (cons (expr*:value-set (car code)
                                                       hd)
                                      (cdr code))))
