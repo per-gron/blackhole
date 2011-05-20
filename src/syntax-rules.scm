@@ -84,8 +84,7 @@
               (loop (cdr pattern))))
 
      ((vector? pattern)
-      (apply
-       append
+      (flatten1
        (vector-fold (lambda (accum val)
                       (cons (loop val)
                             accum))

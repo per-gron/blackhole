@@ -104,28 +104,45 @@
         (delete-directory dir))
       (delete-file dir)))
 
-;; TODO This is probably very slow
+;; Utility function for flatten and flatten1
+(define (accumulate-list thunk)
+  (let ((previous '())
+        (result '()))
+
+    (thunk (lambda (item)
+             (if (null? previous)
+                 (begin
+                   (set! result (cons item '()))
+                   (set! previous result))
+                 (let ((new-pair (cons item '())))
+                   (set-cdr! previous new-pair)
+                   (set! previous new-pair)))))
+    
+    (if (null? previous)
+        '()
+        (begin
+          (set-cdr! previous '())
+          result))))
+
 (define (flatten list)
-  (cond ((null? list) '())
+  (accumulate-list
+   (lambda (add-item)
+     (let rec ((list list))
+       (cond
+        ((pair? list)
+         (rec (car list))
+         (rec (cdr list)))
 
-        ((null? (car list))
-         (flatten (cdr list)))
-        
-        ((pair? (car list))
-         (append (flatten (car list))
-                 (flatten (cdr list))))
-        (else
-         (cons (car list)
-               (flatten (cdr list))))))
+        ((not (null? list))
+         (add-item list)))))))
 
-;; TODO This is probably very slow
 (define (flatten1 list)
-  (cond
-   ((null? list)
-    '())
-   (else
-    (append (car list)
-            (flatten1 (cdr list))))))
+  (accumulate-list
+   (lambda (add-item)
+     (for-each
+         (lambda (sublist)
+           (for-each add-item sublist))
+       list))))
 
 (define (remove! pred list)
   (cond
