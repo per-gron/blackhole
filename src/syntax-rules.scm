@@ -172,12 +172,15 @@
            (= (vector-length pattern)
               (vector-length form))
            (vector-fold2 (lambda (accum pattern-elm form-elm)
-                           (substitution-append
-                            accum
-                            (pattern-match literals
-                                           env
-                                           pattern-elm
-                                           form-elm)))
+                           (let ((match
+                                     (pattern-match literals
+                                                    env
+                                                    pattern-elm
+                                                    form-elm)))
+                             (and accum
+                                  match
+                                  (substitution-append accum
+                                                       match))))
                          '()
                          pattern
                          form)))
