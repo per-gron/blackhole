@@ -1124,7 +1124,7 @@
     (test)))
 
 ;; Test that we don't leak scope over expansion phase borders
-(begin
+#;(begin ;; TODO syntax-begin is removed; reimplement this test without it.
   (syntax-begin (define ---test-variable #t))
   (eval
    `(let ((---test-variable #f))
