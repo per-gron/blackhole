@@ -198,7 +198,7 @@
              
              (expr*:value-set
               code
-              `(,(expr*:value-set (car code) 'define)
+              `(,(expr*:value-set (car (expr*:value code)) 'define)
                 ,(with-expr* name
                    (gen-symbol ns name))
                 ,(expand-macro (let ((src-v (expr*:value src)))
