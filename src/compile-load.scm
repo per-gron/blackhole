@@ -61,6 +61,16 @@
 
 ;;;; ---------- Loading ----------
 
+;; TODO This doesn't work atm [I have forgotten why I wrote this]
+(define (module-needs-compile? mod)
+  (let ((mod (resolve-one-module mod)))
+    (let* ((path (module-reference-path mod))
+           (of (last-object-file path)))
+      (if of
+          (and (file-exists? path)
+               (file-newer? path of))
+          'not-compiled))))
+
 (define (load-module-scm-file module-ref file)
   (let ((runtime-code
          compiletime-code

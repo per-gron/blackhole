@@ -4,6 +4,7 @@
 
 (declare (standard-bindings)
 	 (extended-bindings)
+         #;(not proper-tail-calls) ;; Useful for debugging
 	 (block))
 
 (define *blackhole-work-dir* "~/.blackhole")

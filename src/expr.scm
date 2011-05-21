@@ -4,18 +4,8 @@
 ;; Apache License Version 2.0; you can choose whichever license you
 ;; prefer.
 
-(define (map* fn obj #!optional (tail '()))
-  (let rec ((obj obj))
-    (cond ((pair? obj)
-	   (cons (fn (car obj))
-		 (rec (cdr obj))))
-	  ((null? obj)
-	   tail)
-	  (else
-	   (fn obj)))))
-
-;; a map* that shares structure as much as possible
-(define (map** fn obj #!optional (tail '()))
+;; a kindof-dotted map that shares structure as much as possible
+(define (map** fn obj)
   (let rec ((obj obj))
     (cond ((pair? obj)
 	   (let ((a (car obj))
@@ -27,16 +17,9 @@
 		   obj
 		   (cons a. r.)))))
 	  ((null? obj)
-	   tail)
+	   '())
 	  (else
 	   (fn obj)))))
-
-
-;; cj Sat, 01 Jul 2006 19:51:48 +0200
-;; moved some stuff from my unfinished cj-syntax module here, and added some more.
-
-;; call them "expr"'s ?
-;; or "syntax" like before?  or  ?
 
 
 ;; NOTE: most (if not all) of the functionality in this module is also
@@ -47,7 +30,8 @@
 ;; Gambit core.
 
 
-(define (expr? obj) ;; returns false for expressions without 'attached notes'
+;; Returns false for expressions without 'attached notes'
+(define (expr? obj)
   (and (vector? obj)
        (##fixnum.= (##vector-length obj) 4)
        (let ((v0 (##vector-ref obj 0)))
@@ -62,16 +46,13 @@
   (if (expr? obj)
       (th)
       (error "not an expression with attached location information:" obj)))
+
 (define-macro (check-expr obj . body)
   `(if-expr ,obj (lambda ()
 		   ,@body)))
-;(define (expr:value expr) (check-expr expr (@expr:value expr)))
-; (define-macro (define-check-proxy name)
-;   (define to-name (symbol-append '@ name))
-;   `(define (,name val)
-;      (check-expr ,val
-; 		 (,to-name ,val))))
-(define-macro (define-unsafe/safe parms . body)	;; only the first argument in parms is checked!
+
+;; Only the first argument in parms is checked!
+(define-macro (define-unsafe/safe parms . body)
   (let ((name (car parms))
 	(obj (cadr parms))
 	(rest (cddr parms)))
@@ -87,8 +68,6 @@
 	 (check-expr ,obj
 		     (,unsafe-name ,obj ,@rest))))))
 
-
-
 (define (expr:strip-locationinfo expr)
   (let ((v (expr:value expr)))
     (cond ((pair? v)
@@ -98,25 +77,7 @@
           (else v))))
 
 
-;" (define (syntax-type syn) ;; returns false, if it discovers   ach. wirr.
-;   (let ((type-vec (vector-ref syn 0)))
-;     (and (= (vector-length type-vec)
-; 	    1)
-; 	 (vector-ref type-vec 0))))
-; "
-
-(define (expr*:type expr) ;; returns false if it doesn't 'fit'
-  (and (vector? expr)
-       (>= (vector-length expr)
-	   1)
-       (let ((type-vec (vector-ref expr 0)))
-	 (and (vector? type-vec)
-	      (= (vector-length type-vec)
-		 1)
-	      (vector-ref type-vec 0)))))
-
-
-;; TODO I think this does the same thing as ##source-code
+;; TODO I think this does the same thing as ##source-code (barring safeness?)
 (define-unsafe/safe (expr:value expr)
   (vector-ref expr 1))
 
@@ -129,24 +90,6 @@
 (define (make-error message)
   (lambda (erroneous-object)
     (error message erroneous-object)))
-
-
-;;cj 30.10.06: todo  an error/exception function which emits an exception with text with location
-;;ehr now only todo make it better and place it to correct place
-(define (expr:error message expr)
-  (error message
-	 (expr:strip-locationinfo expr)
-	 '|:|
-	 'file
-	 (expr*:file expr)
-	 'line
-	 (expr*:line expr)
-	 'col
-	 (expr*:col expr)))
-
-;;/todo
-
-
 
 
 (define (pos:line pos)
@@ -178,22 +121,7 @@
 	(else
 	 (error syn))))
 
-;; ((hm wird die benamsung hier nun, mit : wäre schlecht,
-;; inkonsistent?  with-expr:line/col ??))
-(define-unsafe/safe (with-expr-line/col expr
-					success
-					#!optional
-					(error (make-error "with-expr-line/col: no position info:"))
-					;; and take even one more error handler for type errors? instead of using the checker inserted from the macro
-					)
-  (cond ((@expr:pos expr)
-	 => (lambda (pos)
-	      (success (+ 1 (bitwise-and pos 65535))
-		       (+ 1 (quotient pos 65536)))))
-	(else
-	 (error expr))))
-
-;; TODO This function does the same thing as ##source-strip
+;; TODO This function does the same thing as ##source-strip (barring safeness?)
 (define (expr*:value obj)
   (if (expr? obj)
       (@expr:value obj)
@@ -245,17 +173,9 @@
   (+ (fixnum:- line 1)
      (* (fixnum:- col 1) 65536)))
 
+(define (make-expr val file pos)
+  (vector '#(source1) val file pos))
 
-;; quasi "overloaded" on the number of arguments:
-(define (make-expr val
-		   file
-		   pos)
-  (vector '#(source1) ;; was ist das?
-	  val
-	  file
-	  pos))
-
-;;(alt:  "sollte ich es  syntax-value-replace   oder syntax-replace-value nennen ?")
 (define-unsafe/safe (expr:value-set expr val)
   (vector (vector-ref expr 0)
 	  val
@@ -294,7 +214,7 @@
 
 ;; TODO This function does the same thing as ##sourcify-deep. (Does
 ;; ##sourcify-deep share structure?) (Does ##sourcify-deep look inside
-;; source objects?)
+;; source objects?) (barring safeness?)
 ;;
 ;; recursively, and peeks into existing expr's; functional, but
 ;; shares structure as much as possible
@@ -314,7 +234,8 @@
 			 (let ((file (@expr:file obj))
                                (pos (@expr:pos obj)))
                            (map** (lambda (x)
-                                    (expr:deep-fixup x file pos)) v))
+                                    (expr:deep-fixup x file pos))
+                                  v))
 			 v)))
 	     (if (eq? v v.)
 		 obj

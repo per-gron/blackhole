@@ -4,16 +4,6 @@
 ;;;                                                                  ;;;
 ;;;  --------------------------------------------------------------  ;;;
 
-;; TODO This doesn't work atm
-(define (module-needs-compile? mod)
-  (let ((mod (resolve-one-module mod)))
-    (let* ((path (module-reference-path mod))
-           (of (last-object-file path)))
-      (if of
-          (and (file-exists? path)
-               (file-newer? path of))
-          'not-compiled))))
-
 (define (module-compile! mod
                          #!key
                          continue-on-error
