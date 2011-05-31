@@ -6,6 +6,9 @@ previously has been tricky on Gambit. Conversely you can also export
 your own code and create your own libraries to fully modularise your
 development.
 
+# Vaporware warning
+
+At the moment, Black Hole is pretty much not mainained.
 
 # Installation
 
