@@ -24,15 +24,16 @@ merely for convenience:
   the Black Hole source directory.
 * Make a symbolic link called `bsc` that points to `gsc` and put it
   in your `PATH`.
-* Put this in your `~/.gambcini` file, changing `blackhole-path` to
-  point to where Black Hole is installed:
+* Put this in your `~/.gambcini` file. Black Hole assumes it is installed
+  in a sub folder of Gambit by default. If it is not installed here, then
+  set the environment variable "BLACKHOLE_PATH" to point to it.
 
-        (let ((blackhole-path "~~lib/modules"))
-          (and (equal? (path-strip-directory (car (command-line))) "bsc")
-               (load (path-expand "build" blackhole-path))
-               (begin 
-                 (set! module#ns-file (path-expand "ns.dat" blackhole-path))
-                 (println "Loaded Black Hole."))))
+      (let ((blackhole-path (getenv "BLACKHOLE_PATH" "~~/lib/modules")))
+        (and (equal? (path-strip-directory (car (command-line))) "bsc")
+             (load (path-expand "build" blackhole-path))
+             (begin 
+               (set! module#ns-file (path-expand "ns.dat" blackhole-path))
+               (println "Loaded Black Hole."))))
 
 * You can now run Black Hole with the command `bsc`
 

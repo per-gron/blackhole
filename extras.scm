@@ -113,7 +113,7 @@
                    (module-info mod))))))
   
 (define (generate-tmp-dir thunk)
-  (let ((compile-tmp-dir "~~/lib/modules/work/compile-tmp/"))
+  (let ((compile-tmp-dir (path-expand "work/compile-tmp/" *blackhole-path*)))
     (create-dir-unless-exists compile-tmp-dir)
     (let ((fn (let loop ((i 0))
                 (let ((fn (path-expand (number->string i)
@@ -332,5 +332,5 @@
 ;;(module-compile-bunch 'link
 ;;                      "std/build.ob"
 ;;                      (module-files-in-dir
-;;                       "~~/lib/modules/std"))
+;;                       (path-expand "std" *blackhole-path*)))
 

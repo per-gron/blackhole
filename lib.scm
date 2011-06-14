@@ -76,13 +76,13 @@
                       p))))
 
 (define lib-files-dir
-  "~~/lib/modules/work/lib")
+  (path-expand "work/lib" *blackhole-path*))
 
 (define lib-get-shell-command
   "wget -nv -x -N")
 
 (define lib-cache-dir
-  "~~/lib/modules/work/lib-cache")
+  (path-expand "work/lib-cache" *blackhole-path*))
 
 (define (generate-lib-cache-dir)
   (let loop ((i 0))

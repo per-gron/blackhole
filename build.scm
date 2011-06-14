@@ -2,9 +2,13 @@
 
 (##include "~~/lib/gambit#.scm")
 
-(declare (standard-bindings)
-	 (extended-bindings)
-	 (block))
+(define *blackhole-path* (getenv "BLACKHOLE_PATH" "~~/lib/modules"))
+
+(declare
+    (standard-bindings)
+	(extended-bindings)
+	(block)
+)
 
 ;; Utility functions. There because I can't include libraries from here
 (##include "util.scm")
