@@ -853,14 +853,14 @@
     (if (null? defs)
         inner-exp
         (list
-         (expr:value-set
+         (expr*:value-set
           (car form)
-          `(,(expr:value-set (car form) 'letrec)
-            ,(expr:value-set (car form)
-                             (map (lambda (def)
-                                    (expand-macro (cdr def)
-                                                  (car def)))
-                               defs))
+          `(,(expr*:value-set (car form) 'letrec)
+            ,(expr*:value-set (car form)
+                              (map (lambda (def)
+                                     (expand-macro (cdr def)
+                                                   (car def)))
+                                defs))
             ,@inner-exp))))))
 
 (define (let/letrec-helper rec code env)
@@ -1022,7 +1022,7 @@
                                          '()))))
                               
                               (else
-                               (loop rest env accum-result key)))))))
+                               (loop rest env accum-result key accum-ids)))))))
                      (cond
                       ((null? params)
                        (let ((new-env
@@ -1034,7 +1034,7 @@
                        (action (expr*:value (car params))
                                (cdr params)))
                       (else
-                       (action params
+                       (action (expr*:value params)
                                '())))))))
             (let ((hygparams
                    (let ((key #f)
