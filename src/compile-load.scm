@@ -134,9 +134,11 @@
         (read-subu8vector u8v 0 fs)
         (u8vector->module-reference u8v)))))
 
-(define (load-deps-from-deps-file fn)
-  (for-each module-reference-ref
-    (load-deps-file fn)))
+(define (invoke-deps-from-deps-file fn)
+  (loaded-modules-invoke/deps
+   (map module-reference-ref
+     (load-deps-file fn))
+   (syntactic-tower-first-phase *repl-syntactic-tower*)))
 
 (define (load-module-from-file module-ref file-with-extension)
   (let* ((file
@@ -178,7 +180,7 @@
       (let* ((module-object-table
               (let ((deps-fn (deps-file-name object-fn)))
                 (if (file-exists? deps-fn)
-                    (load-deps-from-deps-file deps-fn))
+                    (invoke-deps-from-deps-file deps-fn))
                 (load-module-object-table object-fn)))
              (ns
               (let ((str (module-reference-namespace module-ref)))
