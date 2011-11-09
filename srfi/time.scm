@@ -91,7 +91,7 @@
 ;; --------------------------------------------------------------
 
 
-(import ../misc/optionals)
+(import _optionals)
 
 (define time-tai 'time-tai)
 (define time-utc 'time-utc)
