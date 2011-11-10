@@ -337,27 +337,31 @@
                          (loop (cdr mods)
                                (+ 1 i))))))))
             (c-files
-             (let loop ((fs c-files-no-ext)
-                        (accum '()))
-               (cond
-                ((pair? fs)
-                 (let ((f (car fs)))
-                   (loop
-                    (cdr fs)
-                    (if standalone
-                        (cons (string-append f "-rt.c") accum)
-                        `(,(string-append f "-rt.c")
-                          ,(string-append f "-ct.c")
-                          ,(string-append f "-vt.c")
-                          ,(string-append f "-mi.c")
-                          ,@accum)))))
-                (else
-                 accum))))
+             ;; It is critical for this list to be in the correct
+             ;; order, or standalone executables won't load the
+             ;; modules in the correct order.
+             (reverse
+              (let loop ((fs c-files-no-ext)
+                         (accum '()))
+                (cond
+                 ((pair? fs)
+                  (let ((f (car fs)))
+                    (loop
+                     (cdr fs)
+                     (if standalone
+                         (cons (string-append f "-rt.c") accum)
+                         `(,(string-append f "-rt.c")
+                           ,(string-append f "-ct.c")
+                           ,(string-append f "-vt.c")
+                           ,(string-append f "-mi.c")
+                           ,@accum)))))
+                 (else
+                  accum)))))
 
             (deps-tree empty-tree)
             (ld-options-prelude-accum "")
             (ld-options-accum ""))
-       
+
        (display "Compiling " port)
        (display (length files) port)
        (display " files...\n" port)
