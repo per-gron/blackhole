@@ -43,16 +43,18 @@
 (define *compiler-ld-options-prelude* "")
 (define *compiler-ld-options* "")
 
+(define *srfi-directory*
+  (path-expand "../srfi"
+               (path-expand
+                (path-directory
+                 (get-path)))))
+(define *std-directory* "~~lib/modules/std")
 (set! *module-resolvers*
       `((here ,@current-module-resolver)
         (black-hole ,@black-hole-module-resolver)
         (lib ,@lib-module-resolver)
-        (std ,@(directory-module-resolver "~~lib/modules/std"))
-        (srfi ,@(directory-module-resolver
-                 (path-expand "../srfi"
-                              (path-expand
-                               (path-directory
-                                (get-path))))))
+        (std ,@(directory-module-resolver *std-directory*))
+        (srfi ,@(directory-module-resolver *srfi-directory*))
         (pkg ,@package-module-resolver)))
 
 
