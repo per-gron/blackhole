@@ -439,6 +439,11 @@
             (set! *remote-packages* rp)
             rp)))))
 
+;; A function suitable in a public API, as opposed to
+;; get-remote-packages: This one returns a list, and not a tree.
+(define (remote-packages)
+  (tree->list (get-remote-packages)))
+
 
 ;;; Local packages
 
@@ -487,6 +492,11 @@
       (let ((ip (load-installed-packages)))
         (set! *installed-packages* ip)
         ip)))
+
+;; A function suitable in a public API, as opposed to
+;; get-installed-packages: This one returns a list, and not a tree.
+(define (installed-packages)
+  (tree->list (get-installed-packages)))
 
 
 ;;; Module loader and resolver
