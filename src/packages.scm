@@ -784,6 +784,9 @@
                                  (package-metadata install-pkg)))
                           (push! pkgs-to-be-installed install-pkg))))))
             (loop (cdr deps))))))
+    
+    (set! pkgs-to-be-installed
+          (remove-duplicates pkgs-to-be-installed))
 
     (display "Installing the following packages:\n" port)
     (for-each
