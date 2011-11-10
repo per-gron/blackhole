@@ -12,12 +12,12 @@
 (define short-opts
   '((#\b 1 "bunch") ;; 1 means that bunch takes an argument ...
     (#\c 0 "compile") ;; ... compile doesn't (hence 0)
-    (#\d 0 "deps")
     (#\e 1 "eval")
     (#\f 0 "force")
     (#\k 0 "continue")
     (#\o 1 "output")
-    (#\q 0 "quiet")))
+    (#\q 0 "quiet")
+    (#\r 0 "recursive")))
 
 (define (parse-opts args kont)
   (define (opt? str)
@@ -168,7 +168,7 @@
              (current-output-port))))
 
 (define (compile-cmd cmd opts args)
-  (define deps #f)
+  (define recursive #f)
   (define bunch #f)
   (define quiet #f)
   (define continue #f)
@@ -176,9 +176,9 @@
 
   (handle-opts!
    opts
-   `(("deps"
+   `(("recursive"
       ,@(lambda (val)
-          (set! deps (not (equal? val "no")))))
+          (set! recursive (not (equal? val "no")))))
      ("bunch"
       ,@(lambda (val)
           (set! bunch val)))
@@ -201,7 +201,7 @@
                  (module-reference-from-file fn))
             args))
          (mods-and-deps
-          (if deps
+          (if recursive
               (modules-deps mod-refs)
               mod-refs))
          (port
@@ -221,14 +221,14 @@
                           force?: force))))
 
 (define (clean-cmd cmd opts args)
-  (define deps #f)
+  (define recursive #f)
   (define quiet #f)
 
   (handle-opts!
    opts
-   `(("deps"
+   `(("recursive"
       ,@(lambda (val)
-          (set! deps (not (equal? val "no")))))
+          (set! recursive (not (equal? val "no")))))
      ("quiet"
       ,@(lambda (val)
           (set! quiet (not (equal? val "no")))))))
@@ -242,7 +242,7 @@
                  (module-reference-from-file fn))
             args))
          (mods-and-deps
-          (if deps
+          (if recursive
               (modules-deps mod-refs)
               mod-refs))
          (port
