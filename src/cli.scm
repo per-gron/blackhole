@@ -17,8 +17,7 @@
     (#\f 0 "force")
     (#\k 0 "continue")
     (#\o 1 "output")
-    (#\q 0 "quiet")
-    (#\v 0 "version")))
+    (#\q 0 "quiet")))
 
 (define (parse-opts args kont)
   (define (opt? str)
@@ -174,8 +173,6 @@
   (define quiet #f)
   (define continue #f)
   (define force #f)
-  
-  (ensure-args! args)
 
   (handle-opts!
    opts
@@ -184,19 +181,18 @@
           (set! deps (not (equal? val "no")))))
      ("bunch"
       ,@(lambda (val)
-          (set! deps (not (equal? val "no")))))
+          (set! bunch val)))
      ("quiet"
       ,@(lambda (val)
-          (set! quiet
-                (not (equal? val "no")))))
+          (set! quiet (not (equal? val "no")))))
      ("continue"
       ,@(lambda (val)
-          (set! continue
-                (not (equal? val "no")))))
+          (set! continue (not (equal? val "no")))))
      ("force"
       ,@(lambda (val)
-          (set! force
-                (not (equal? val "no")))))))
+          (set! force (not (equal? val "no")))))))
+  
+  (ensure-args! args)
 
   (let* ((mod-refs
           (map (lambda (fn)
@@ -207,13 +203,23 @@
          (mods-and-deps
           (if deps
               (modules-deps mod-refs)
-              mod-refs)))
-    (modules-compile! mods-and-deps
-                      continue-on-error?: continue
-                      port: (if quiet
-                                (open-string "")
-                                (current-output-port))
-                      force?: force)))
+              mod-refs))
+         (port
+          (if quiet
+              (open-string "")
+              (current-output-port))))
+    (pp bunch)
+    (if bunch
+        (module-compile-bunch 'link
+                              bunch
+                              (map module-reference-path mods-and-deps)
+                              modules: mods-and-deps
+                              port: port
+                              verbose: #f)
+        (modules-compile! mods-and-deps
+                          continue-on-error?: continue
+                          port: port
+                          force?: force))))
 
 (define (clean-cmd cmd opts args)
   (println "CLEAN! (Not implemented)"))

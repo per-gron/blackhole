@@ -299,6 +299,9 @@
                               (ld-options "")
                               modules
                               verbose)
+  (if (not (string? to-file))
+      (error "Invalid argument to module-compile-bunch (to-file)"
+             to-file))
   (generate-tmp-dir
    (path-expand "compile-tmp"
                 *blackhole-work-dir*)
