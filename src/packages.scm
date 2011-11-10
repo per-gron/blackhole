@@ -785,7 +785,7 @@
                           (push! pkgs-to-be-installed install-pkg))))))
             (loop (cdr deps))))))
 
-    (display "Installing following packages:\n" port)
+    (display "Installing the following packages:\n" port)
     (for-each
         (lambda (pkg)
           (display " * " port)
