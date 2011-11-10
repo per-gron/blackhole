@@ -150,6 +150,19 @@
        (loaded-module-info
         (module-reference-ref mod)))))
 
+(define (modules-deps mods #!optional recursive?)
+  (filter
+   (lambda (x)
+     (eq? local-loader
+          (module-reference-loader x)))
+   (remove-duplicates
+    (reverse
+     (apply
+      append
+      (map (lambda (mod)
+             (cons mod (module-deps mod recursive?)))
+        mods))))))
+
 (define (module-compile/deps! mod #!optional continue-on-error port)
   (let ((mod (resolve-one-module mod)))
     (modules-compile! (cons mod (module-deps mod #t)) continue-on-error port)))
