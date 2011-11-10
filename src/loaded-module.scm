@@ -280,7 +280,7 @@
                  (make-env-from-letsyntax-environment env (caddr def))
                  phase-number: phase-number)))
              (else
-              (error "Internal error"))))
+              (error "Internal error in Black Hole (loaded-module.scm)"))))
         (module-info-definitions module-info)))
 
     (module-add-defs-to-env (module-info-imports module-info)
@@ -532,7 +532,7 @@
                            macros-env
                            (macro+env-from-module-ref phase (cadddr def))))
                       (if (not (and macros macros-env))
-                          (error "Internal error"))
+                          (error "Internal error in Black Hole (loaded-module.scm)"))
                       (environment-add-mac! env
                                             ;; The name it's imported as
                                             (car def)
@@ -548,7 +548,7 @@
                                 env-or-ref
                                 (let ((mi (module-instance-ref phase env-or-ref)))
                                   (or (and mi (module-instance-macro-env mi))
-                                      (error "Internal error"))))))
+                                      (error "Internal error in Black Hole (loaded-module.scm)"))))))
                       (environment-add-mac! env
                                             ;; The name it's imported as
                                             (car def)

@@ -151,7 +151,8 @@
         (module-reference-ref mod)))))
 
 (define (module-compile/deps! mod #!optional continue-on-error port)
-  (modules-compile! (cons mod (module-deps mod #t)) continue-on-error port))
+  (let ((mod (resolve-one-module mod)))
+    (modules-compile! (cons mod (module-deps mod #t)) continue-on-error port)))
 
 (define (module-clean/deps! mod #!optional continue-on-error port)
   (modules-clean! (cons mod (module-deps mod #t))))
@@ -167,13 +168,17 @@
                                       #!key
                                       verbose
                                       (port (current-output-port)))
-  (let ((mod (resolve-one-module mod)))
+  (let* ((mod (resolve-one-module mod))
+         (mods (append (module-deps mod #t)
+                       (list mod))))
     (module-compile-bunch
      'exe
      name
-     (map module-reference-path
-          (append (module-deps mod #t)
-                  (list mod)))
+     (map (lambda (mref)
+            (loader-real-path (module-reference-loader mref)
+                              (module-reference-path mref)))
+       mods)
+     modules: mods
      verbose: verbose
      port: port)))
 

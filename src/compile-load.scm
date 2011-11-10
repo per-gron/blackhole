@@ -61,15 +61,20 @@
 
 ;;;; ---------- Loading ----------
 
-;; TODO This doesn't work atm [I have forgotten why I wrote this]
 (define (module-needs-compile? mod)
   (let ((mod (resolve-one-module mod)))
     (let* ((path (module-reference-path mod))
-           (of (last-object-file path)))
-      (if of
-          (and (file-exists? path)
-               (file-newer? path of))
-          'not-compiled))))
+           (of (last-object-file path))
+           (ol (string-append (path-strip-extension path)
+                              ".ol")))
+      (cond
+       ((file-exists? ol)
+        #f)
+       (of
+        (and (file-exists? path)
+             (file-newer? path of)))
+       (else
+        'not-compiled)))))
 
 (define (load-module-scm-file module-ref file)
   (let ((runtime-code
@@ -298,6 +303,21 @@
    (path-expand "compile-tmp"
                 *blackhole-work-dir*)
    (lambda (dir)
+     (define standalone #f)
+     (define save-depfile #t)
+     (define save-links #f)
+
+     (case mode
+       ((exe)
+        (set! standalone #t)
+        (set! save-depfile #f))
+       ((dyn)
+        #!void) ;; Nothing to be done
+       ((link)
+        (set! save-links #t))
+       (else
+        (error "Unknown module-compile-bunch mode" mode)))
+     
      (let* ((mods (or modules
                       (map module-reference-from-file files)))
             (c-files-no-ext
@@ -322,33 +342,21 @@
                (cond
                 ((pair? fs)
                  (let ((f (car fs)))
-                   (loop (cdr fs)
-                         `(,(string-append f "-rt.c")
-                           ,(string-append f "-ct.c")
-                           ,(string-append f "-vt.c")
-                           ,(string-append f "-mi.c")
-                           ,@accum))))
+                   (loop
+                    (cdr fs)
+                    (if standalone
+                        (cons (string-append f "-rt.c") accum)
+                        `(,(string-append f "-rt.c")
+                          ,(string-append f "-ct.c")
+                          ,(string-append f "-vt.c")
+                          ,(string-append f "-mi.c")
+                          ,@accum)))))
                 (else
                  accum))))
 
             (deps-tree empty-tree)
             (ld-options-prelude-accum "")
-            (ld-options-accum "")
-
-            (standalone #f)
-            (save-depfile #t)
-            (save-links #f))
-
-       (case mode
-         ((exe)
-          (set! standalone #t)
-          (set! save-depfile #f))
-         ((dyn)
-          #!void) ;; Nothing to be done
-         ((link)
-          (set! save-links #t))
-         (else
-          (error "Unknown module-compile-bunch mode" mode)))
+            (ld-options-accum ""))
        
        (display "Compiling " port)
        (display (length files) port)
@@ -411,12 +419,14 @@
                  
                  (compile-sexp-to-o runtime-code
                                     (string-append c-file "-rt.c"))
-                 (compile-sexp-to-o compiletime-code
-                                    (string-append c-file "-ct.c"))
-                 (compile-sexp-to-o visit-code
-                                    (string-append c-file "-vt.c"))
-                 (compile-sexp-to-o info-code
-                                    (string-append c-file "-mi.c"))))
+                 (if (not standalone)
+                     (begin
+                       (compile-sexp-to-o compiletime-code
+                                          (string-append c-file "-ct.c"))
+                       (compile-sexp-to-o visit-code
+                                          (string-append c-file "-vt.c"))
+                       (compile-sexp-to-o info-code
+                                          (string-append c-file "-mi.c"))))))
              (newline))
         mods c-files-no-ext files)
        

@@ -53,7 +53,7 @@
                       define-macro
                       define-syntax)
                      ;; This shouldn't happen
-                     (error "Internal error in transform-to-let (1)" code))
+                     (error "Internal error in Black Hole, transform-to-let (1)" code))
                     
                     ((declare
                       ##declare)
@@ -62,7 +62,8 @@
                     ((##define define)
                      (if (not (and (pair? (cdr code))
                                    (symbol? (expr*:value (cadr code)))))
-                         (error "Internal error in transform-to-let (2)" code))
+                         (error "Internal error in Black Hole, transform-to-let (2)"
+                                code))
                      (set! names (cons (expr*:value (cadr code)) names))
                      (expr*:value-set source
                                       (cons 'set!
@@ -139,11 +140,11 @@
    expanded-code
    (lambda (def phase)
      (if (not (expansion-phase-runtime? phase))
-         (error "Internal error in generate-macro-code"))
+         (error "Internal error in Black Hole, generate-macro-code"))
      (cadr def))
    (lambda (def phase val)
      (if (not (expansion-phase-runtime? phase))
-         (error "Internal error in generate-macro-code"))
+         (error "Internal error in Black Hole, generate-macro-code"))
      `(set! ,(cadr def) ,val))))
 
 (define (module-instance-let-fn dep table)
@@ -166,13 +167,16 @@
                            ',(module-reference->u8vector dep))
                           (bh#loaded-module-reference
                            ,loaded-module-sym)))))
-               (or tmp (error "Internal error"))))
+               (or tmp
+                   (error "Internal error in Black Hole (module-macroexpansion.scm)"))))
             (,get-sym
              (let ((tmp (bh#module-instance-getter ,sym)))
-               (or tmp (error "Internal error"))))
+               (or tmp
+                   (error "Internal error in Black Hole (module-macroexpansion.scm)"))))
             (,set-sym
              (let ((tmp (bh#module-instance-setter ,sym)))
-               (or tmp (error "Internal error")))))))))
+               (or tmp
+                   (error "Internal error in Black Hole (module-macroexpansion.scm)")))))))))
 
 (define (clone-sexp/sym-table sexp ref->sym-table)
   (clone-sexp sexp
