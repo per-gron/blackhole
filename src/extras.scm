@@ -191,21 +191,3 @@
                         (module-files-in-dir dir)
                         port: port
                         verbose: verbose))
-
-(define (compile-srfis!)
-  (modules-compile-directory!
-   *srfi-directory*
-   (path-expand
-    "../srfis.o1"
-    (path-expand
-     (path-directory
-      (get-path))))))
-
-(define (compile-std!)
-  (modules-compile-directory!
-   *std-directory*
-   (path-expand
-    "../std.o1"
-    (path-expand
-     (path-directory
-      (get-path))))))

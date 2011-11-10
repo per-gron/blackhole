@@ -40,10 +40,11 @@
                (values 'here (list name)))
               ((string? name)
                (values 'lib (list name)))
-              ((vector? name)
-               (values 'pkg (vector->list name)))
               ((pair? name)
-               (values (car name) (cdr name)))
+               (values 'pkg name))
+              ((vector? name)
+               (let ((lst (vector->list name)))
+                 (values (car lst) (cdr lst))))
               (else
                (error "Invalid module identifier:" name)))))
         (let ((resolver (let ((pair (assq resolver-id
