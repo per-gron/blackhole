@@ -574,8 +574,7 @@
         (table-set! currently-loading name 'loaded))))))
 
 (define (package-module-path-path path)
-  (path-normalize (string-append (symbol->string
-                                  (package-module-path-id path))
+  (path-normalize (string-append (package-module-path-id path)
                                  ".scm")
                   #f ;; Don't allow relative paths
                   (path-normalize
@@ -589,15 +588,44 @@
                       (package-dir pkg))))))
 
 (define (make-package-module-path pkg id)
+  (if (or (not (package? pkg))
+          (not (string? id)))
+      (error "Invalid parameters to make-package-module-path" pkg id))
   (vector '56BBBA2B-66E5-49A7-A74A-D6992792526E
           (version->symbol (package-version pkg))
           (package-name pkg)
+          id))
+
+(define (make-package-module-path-from-version-and-name version name id)
+  (if (or (not (version? version))
+          (not (string? name))
+          (not (string? id)))
+      (error "Invalid parameters to make-package-module-path-from-version-and-name"
+             version name id))
+  (vector '56BBBA2B-66E5-49A7-A74A-D6992792526E
+          (version->symbol version)
+          name
           id))
 
 (define (package-module-path? pmp)
   (and (vector? pmp)
        (eq? '56BBBA2B-66E5-49A7-A74A-D6992792526E
             (vector-ref pmp 0))))
+
+(define (package-module-path-version pmp)
+  (if (not (package-module-path? pmp))
+      (error "Expected package-module-path" pmp))
+  (vector-ref pmp 1))
+
+(define (package-module-path-name pmp)
+  (if (not (package-module-path? pmp))
+      (error "Expected package-module-path" pmp))
+  (vector-ref pmp 2))
+
+(define (package-module-path-id pmp)
+  (if (not (package-module-path? pmp))
+      (error "Expected package-module-path" pmp))
+  (vector-ref pmp 3))
 
 (define (package-module-path-package pmp)
   (if (not (package-module-path? pmp))
@@ -607,11 +635,6 @@
                          version:
                          `(= ,(vector-ref pmp 1))))
 
-(define (package-module-path-id pmp)
-  (if (not (package-module-path? pmp))
-      (error "Expected package-module-path" pmp))
-  (vector-ref pmp 3))
-
 (define (package-module-resolver loader path relative pkg-name
                                  #!rest
                                  ids
@@ -620,9 +643,12 @@
   (let ((package (find-suitable-loaded-package (symbol->string pkg-name)
                                                version: version)))
     (map (lambda (id)
+           (if (not (symbol? id))
+               (error "Invalid package module path id" id))
            (make-module-reference
             package-loader
-            (make-package-module-path package id)))
+            (make-package-module-path package
+                                      (symbol->string id))))
       (if (null? ids)
           (let ((def (package-metadata-default-module
                       (package-metadata package))))
@@ -639,25 +665,26 @@
    'package
 
    path-absolute?:
-   (lambda (p) #t)
+   package-module-path?
    
    path-absolutize:
    (lambda (path #!optional ref)
      (if (not (package-module-path? ref))
          (error "Invalid parameters" ref))
      (make-package-module-path
-      (string->symbol
-       (remove-dot-segments
-        (string-append (symbol->string (package-module-path-id ref))
-                       "/"
-                       (symbol->string path))))
-      (package-module-path-package ref)))
+      (package-module-path-package ref)
+      (remove-dot-segments
+       (string-append (package-module-path-id ref)
+                      "/../"
+                      (symbol->string path)))))
 
    real-path:
    package-module-path-path
    
    load-module:
    (lambda (path)
+     (if (not (package-module-path? path))
+         (error "Invalid parameters passed to package-loader load-module" path))
      (let* ((ref (make-module-reference package-loader path))
             (actual-path (package-module-path-path path)))
        (let ((invoke-runtime
@@ -688,7 +715,25 @@
              (path-strip-extension
               (package-module-path-path path)))
             (else
-             (error "Invalid path" path)))))))
+             (error "Invalid path" path)))))
+
+   path<?:
+   (lambda (a b)
+     (if (not (and (package-module-path? a)
+                   (package-module-path? b)))
+         (error "package loader path<? needs absolute paths as arguments"
+                a b))
+     (let ((a-pkg (package-module-path-name a))
+           (b-pkg (package-module-path-name b))
+           (a-ver (symbol->version (package-module-path-version a)))
+           (b-ver (symbol->version (package-module-path-version b)))
+           (a-id (package-module-path-id a))
+           (b-id (package-module-path-id b)))
+     (or (string<? a-pkg b-pkg)
+         (and (equal? a-pkg b-pkg)
+              (or (version<? a-ver b-ver)
+                  (and (version=? a-ver b-ver)
+                       (string<? a-id b-id)))))))))
 
 
 ;;; Package installation and uninstallation
@@ -820,23 +865,37 @@
 
            ;;; Compile
            (if compile?
-               (module-compile-bunch
-                'link
-                (let loop ((n 0))
-                  (let ((fn
-                         (path-expand (string-append name
-                                                     "-"
-                                                     (number->string n)
-                                                     ".o1")
-                                      target-dir)))
-                    (if (file-exists? fn)
-                        (loop (+ n 1))
-                        fn)))
-                (module-files-in-dir
-                 (path-expand (package-metadata-source-directory metadata)
-                              target-dir))
-                port: port
-                verbose: verbose))))
+               (let* ((src-dir
+                       (path-expand (package-metadata-source-directory metadata)
+                                    target-dir))
+                      (files
+                       (module-files-in-dir src-dir)))
+                 (module-compile-bunch
+                  'link
+                  (let loop ((n 0))
+                    (let ((fn
+                              (path-expand (string-append name
+                                                          "-"
+                                                          (number->string n)
+                                                          ".o1")
+                                           target-dir)))
+                      (if (file-exists? fn)
+                          (loop (+ n 1))
+                          fn)))
+                  files
+                  modules:
+                  (map (lambda (fn)
+                         (make-module-reference
+                          package-loader
+                          (make-package-module-path-from-version-and-name
+                           (package-metadata-version metadata)
+                           name
+                           (path-normalize (path-strip-extension fn)
+                                           #t
+                                           src-dir))))
+                    files)
+                  port: port
+                  verbose: verbose)))))
        
        ;;; Update *installed-packages*
        (reset-installed-packages!)

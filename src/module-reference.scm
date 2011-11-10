@@ -30,8 +30,10 @@
         (and (equal? la lb)
              ;; It's really dirty to assume that module-reference-path
              ;; is a string...
-             (string<? (module-reference-path a)
-                       (module-reference-path b))))))
+             ((loader-path<?-fn la) ;; Since la = lb, it doesn't
+                                    ;; matter which one we choose
+              (module-reference-path a)
+              (module-reference-path b))))))
 
 (define (current-loader)
   (let ((cm (current-module-reference)))
@@ -52,7 +54,7 @@
                  (module-reference-loader ref)))
     (error "Cannot absolutize a relative module reference with \
             respect to a module reference with a different module \
-            loader"))
+            loader" module-reference ref))
 
    (else
     (make-module-reference

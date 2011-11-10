@@ -24,7 +24,11 @@
   (load-module-fn unprintable: equality-skip: read-only:)
   (compare-stamp-fn unprintable: equality-skip: read-only:)
   ;; Takes a path and returns a string for the name of the module
-  (module-name-fn unprintable: equality-skip: read-only:))
+  (module-name-fn unprintable: equality-skip: read-only:)
+  ;; Takes two absolute paths and returns true if the first argument is
+  ;; less than the other in some sense. This function is set to string<?
+  ;; by default.
+  (path<?-fn unprintable: equality-skip: read-only:))
 
 (define (loader<? a b)
   (string<? (symbol->string (loader-name a))
@@ -57,14 +61,16 @@
                      (real-path (lambda (x) x))
                      load-module
                      compare-stamp
-                     module-name)
+                     module-name
+                     (path<? string<?))
   (if (not (and (symbol? name)
                 (procedure? path-absolute?)
                 (procedure? path-absolutize)
                 (procedure? real-path)
                 (procedure? load-module)
                 (procedure? compare-stamp)
-                (procedure? module-name)))
+                (procedure? module-name)
+                (procedure? path<?)))
       (error "Invalid parameters"))
   (let ((result
          (make-loader/internal name
@@ -73,7 +79,8 @@
                                real-path
                                load-module
                                compare-stamp
-                               module-name)))
+                               module-name
+                               path<?)))
     (table-set! loader-registry name result)
     result))
 
@@ -91,6 +98,7 @@
 
 (define (loader->skeleton loader)
   (make-loader/internal (loader-name loader)
+                        #f
                         #f
                         #f
                         #f

@@ -292,12 +292,14 @@
                               (cc-options "")
                               (ld-options-prelude "")
                               (ld-options "")
+                              modules
                               verbose)
   (generate-tmp-dir
    (path-expand "compile-tmp"
                 *blackhole-work-dir*)
    (lambda (dir)
-     (let* ((mods (map module-reference-from-file files))
+     (let* ((mods (or modules
+                      (map module-reference-from-file files)))
             (c-files-no-ext
              (let loop ((mods mods) (i 0))
                (cond
