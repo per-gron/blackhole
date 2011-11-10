@@ -135,6 +135,9 @@
                 (< a b))))))
     (let loop ((a-ns a-ns) (b-ns b-ns))
       (cond
+       ((and (null? a-ns)
+             (null? b-ns))
+        #f)
        ((null? a-ns)
         #t)
        ((null? b-ns)
@@ -781,7 +784,16 @@
                                  (package-metadata install-pkg)))
                           (push! pkgs-to-be-installed install-pkg))))))
             (loop (cdr deps))))))
-    
+
+    (display "Installing following packages:\n" port)
+    (for-each
+        (lambda (pkg)
+          (display " * " port)
+          (display (package-name pkg) port)
+          (display " " port)
+          (display (version->symbol (package-version pkg)) port)
+          (display "\n" port))
+      pkgs-to-be-installed)
     (for-each (lambda (pkg)
                 (package-install-from-url!
                  (package-name pkg)
