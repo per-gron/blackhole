@@ -14,6 +14,7 @@
     (#\c 0 "compile") ;; ... compile doesn't (hence 0)
     (#\d 0 "deps")
     (#\e 1 "eval")
+    (#\f 0 "force")
     (#\k 0 "continue")
     (#\o 1 "output")
     (#\q 0 "quiet")
@@ -172,6 +173,7 @@
   (define bunch #f)
   (define quiet #f)
   (define continue #f)
+  (define force #f)
   
   (ensure-args! args)
 
@@ -190,6 +192,10 @@
      ("continue"
       ,@(lambda (val)
           (set! continue
+                (not (equal? val "no")))))
+     ("force"
+      ,@(lambda (val)
+          (set! force
                 (not (equal? val "no")))))))
 
   (let* ((mod-refs
@@ -203,10 +209,11 @@
               (modules-deps mod-refs)
               mod-refs)))
     (modules-compile! mods-and-deps
-                      continue
-                      (if quiet
-                          (open-string "")
-                          (current-output-port)))))
+                      continue-on-error?: continue
+                      port: (if quiet
+                                (open-string "")
+                                (current-output-port))
+                      force?: force)))
 
 (define (clean-cmd cmd opts args)
   (println "CLEAN! (Not implemented)"))

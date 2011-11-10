@@ -6,7 +6,7 @@
 
 (define (module-compile! mod
                          #!key
-                         continue-on-error
+                         continue-on-error?
                          to-c
                          (port (current-output-port))
                          verbose
@@ -37,7 +37,7 @@
                              port: port)))
                 (if (not result)
                     (error "Compilation failed")))))))
-    (if continue-on-error
+    (if continue-on-error?
         (with-exception-catcher
          (lambda (e)
            (display "Warning: Compilation failed: " port)
@@ -47,12 +47,13 @@
         (perform-compile!))))
 
 
-(define (modules-compile! mods #!optional continue-on-error port)
+(define (modules-compile! mods #!key
+                          continue-on-error? port force?)
   (let* ((mods (resolve-modules mods))
          (mods-sorted
           (filter (lambda (x)
                     (and (memq x mods)
-                         (module-needs-compile? x)))
+                         (or force? (module-needs-compile? x))))
                   (remove-duplicates
                    (reverse
                     (apply
@@ -81,9 +82,9 @@
        (write nmods port)
        (display ")\n" port)
        ;; The module might have been compiled by load-once earlier.
-       (if (module-needs-compile? mod)
+       (if (or force? (module-needs-compile? mod))
            (module-compile! mod
-                            continue-on-error: continue-on-error
+                            continue-on-error?: continue-on-error?
                             port: (open-u8vector)))
        (set! file-number (+ file-number 1)))
      mods-sorted)))
@@ -163,11 +164,14 @@
              (cons mod (module-deps mod recursive?)))
         mods))))))
 
-(define (module-compile/deps! mod #!optional continue-on-error port)
+(define (module-compile/deps! mod #!key continue-on-error? port force?)
   (let ((mod (resolve-one-module mod)))
-    (modules-compile! (cons mod (module-deps mod #t)) continue-on-error port)))
+    (modules-compile! (cons mod (module-deps mod #t))
+                      continue-on-error?: continue-on-error?
+                      port: port
+                      force?: force?)))
 
-(define (module-clean/deps! mod #!optional continue-on-error port)
+(define (module-clean/deps! mod #!key continue-on-error? port)
   (modules-clean! (cons mod (module-deps mod #t))))
 
 (define (module-generate-export-list mod)
