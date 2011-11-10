@@ -253,6 +253,7 @@
     (display "Cleaning modules...\n" port)
     (for-each
         (lambda (mod)
+          (display " * " port)
           (display (path-normalize (module-reference-path mod)
                                    'shortest)
                    port)
@@ -321,7 +322,9 @@
               (lambda (dep)
                 (if (not quiet)
                     (print " * "))
-                (write (module-reference-path dep))
+                (print (loader-prettify-path
+                        (module-reference-loader dep)
+                        (module-reference-path dep)))
                 (newline))
             deps)))
     args))

@@ -71,11 +71,15 @@
     
     (display "Compiling " port)
     (write nmods port)
-    (display " modules\n" port)
+    (display " modules...\n" port)
     
     (for-each
      (lambda (mod)
-       (write (module-reference-path mod) port)
+       (display " * " port)
+       (display (loader-prettify-path
+               (module-reference-loader mod)
+               (module-reference-path mod))
+              port)
        (display " (" port)
        (write file-number port)
        (display "/" port)

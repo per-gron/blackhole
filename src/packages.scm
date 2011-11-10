@@ -746,7 +746,16 @@
          (and (equal? a-pkg b-pkg)
               (or (version<? a-ver b-ver)
                   (and (version=? a-ver b-ver)
-                       (string<? a-id b-id)))))))))
+                       (string<? a-id b-id)))))))
+
+   prettify-path:
+   (lambda (path)
+     (string-append
+      (package-module-path-name path)
+      "-"
+      (symbol->string (package-module-path-version path))
+      ":"
+      (package-module-path-id path)))))
 
 
 ;;; Package installation and uninstallation

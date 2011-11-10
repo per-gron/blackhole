@@ -28,7 +28,10 @@
   ;; Takes two absolute paths and returns true if the first argument is
   ;; less than the other in some sense. This function is set to string<?
   ;; by default.
-  (path<?-fn unprintable: equality-skip: read-only:))
+  (path<?-fn unprintable: equality-skip: read-only:)
+  ;; Takes an absolute path as argument and returns a human-friendly
+  ;; string. It is used for things like command line output.
+  (prettify-path-fn unprintable: equality-skip: read-only:))
 
 (define (loader<? a b)
   (string<? (symbol->string (loader-name a))
@@ -52,6 +55,9 @@
 (define (loader-module-name loader path)
   ((loader-module-name-fn loader) path))
 
+(define (loader-prettify-path loader path)
+  ((loader-prettify-path-fn loader) path))
+
 (define loader-registry (make-table))
 
 (define (make-loader #!key
@@ -62,7 +68,8 @@
                      load-module
                      compare-stamp
                      module-name
-                     (path<? string<?))
+                     (path<? string<?)
+                     (prettify-path (lambda (x) x)))
   (if (not (and (symbol? name)
                 (procedure? path-absolute?)
                 (procedure? path-absolutize)
@@ -70,7 +77,8 @@
                 (procedure? load-module)
                 (procedure? compare-stamp)
                 (procedure? module-name)
-                (procedure? path<?)))
+                (procedure? path<?)
+                (procedure? prettify-path)))
       (error "Invalid parameters"))
   (let ((result
          (make-loader/internal name
@@ -80,7 +88,8 @@
                                load-module
                                compare-stamp
                                module-name
-                               path<?)))
+                               path<?
+                               prettify-path)))
     (table-set! loader-registry name result)
     result))
 
@@ -98,6 +107,7 @@
 
 (define (loader->skeleton loader)
   (make-loader/internal (loader-name loader)
+                        #f
                         #f
                         #f
                         #f
@@ -264,7 +274,11 @@
             ((string? path)
              (path-strip-extension path))
             (else
-             (error "Invalid path" path)))))))
+             (error "Invalid path" path)))))
+
+   prettify-path:
+   (lambda (path)
+     (path-normalize path 'shortest))))
 
 (define black-hole-module-loader
   (make-loader

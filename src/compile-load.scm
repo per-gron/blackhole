@@ -371,6 +371,7 @@
        
        (for-each
            (lambda (mod c-file file)
+             (display " * " port)
              (display (if verbose
                           file
                           (path-strip-directory file))
