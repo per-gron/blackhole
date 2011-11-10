@@ -431,7 +431,7 @@
                                           (string-append c-file "-vt.c"))
                        (compile-sexp-to-o info-code
                                           (string-append c-file "-mi.c"))))))
-             (newline))
+             (newline port))
         mods c-files-no-ext files)
        
        (let ((link-c-file
