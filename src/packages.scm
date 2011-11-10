@@ -874,6 +874,7 @@
            (if (file-exists? target-dir)
                (error "Package is already installed" target-dir))
            (rename-file dir target-dir)
+           (reset-installed-packages!)
 
            ;;; Compile
            (if compile?
