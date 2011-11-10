@@ -158,7 +158,8 @@
       (error "Expected string" str))
   (let* ((str-len (string-length str))
          (str-no-v
-          (if (> str-len 1)
+          (if (and (> str-len 1)
+                   (char=? #\v (string-ref str 0)))
               (substring str 1 str-len)
               (error "Invalid format" str)))
          (split-string (string-split #\. str-no-v))
