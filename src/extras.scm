@@ -174,12 +174,15 @@
 (define (module-clean/deps! mod #!key continue-on-error? port)
   (modules-clean! (cons mod (module-deps mod #t))))
 
+(define (module-exported-names mod)
+  (append
+   (map car (module-info-symbols
+             (loaded-module-info
+              (module-reference-ref mod))))))
+
 (define (module-generate-export-list mod)
   (cons 'export
-        (append
-         (map car (module-info-symbols
-                   (loaded-module-info
-                    (module-reference-ref mod)))))))
+        (module-exported-names mod)))
 
 (define (module-compile-to-standalone name mod
                                       #!key

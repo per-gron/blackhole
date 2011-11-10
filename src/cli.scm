@@ -297,10 +297,58 @@
     (remote-packages)))
 
 (define (deps-cmd cmd opts args)
-  (println "DEPS! (Not implemented)"))
+  (define quiet #f)
+  (define recursive #f)
+  
+  (handle-opts!
+   opts
+   `(("recursive"
+      ,@(lambda (val)
+          (set! recursive (not (equal? val "no")))))
+     ("quiet"
+      ,@(lambda (val)
+          (set! quiet (not (equal? val "no")))))))
+  
+  (ensure-args! args)
+
+  (for-each
+      (lambda (arg)
+        (if (not quiet)
+            (println "Dependencies for " arg ":"))
+        (let ((deps (module-deps (module-reference-from-file arg)
+                                 recursive)))
+          (for-each
+              (lambda (dep)
+                (if (not quiet)
+                    (print " * "))
+                (write (module-reference-path dep))
+                (newline))
+            deps)))
+    args))
 
 (define (exported-names-cmd cmd opts args)
-  (println "EXPORTED-NAMES! (Not implemented)"))
+  (define quiet #f)
+  
+  (handle-opts!
+   opts
+   `(("quiet"
+      ,@(lambda (val)
+          (set! quiet (not (equal? val "no")))))))
+  
+  (ensure-args! args)
+
+  (for-each
+      (lambda (arg)
+        (if (not quiet)
+            (println "Exported names from " arg ":"))
+        (for-each
+            (lambda (name)
+              (if (not quiet)
+                  (print " * "))
+              (println name))
+          (module-exported-names
+           (module-reference-from-file arg))))
+    args))
 
 (define (help-cmd cmd opts args)
   (println "HELP! (Not implemented)"))
