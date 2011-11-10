@@ -208,7 +208,6 @@
           (if quiet
               (open-string "")
               (current-output-port))))
-    (pp bunch)
     (if bunch
         (module-compile-bunch 'link
                               bunch
@@ -222,7 +221,44 @@
                           force?: force))))
 
 (define (clean-cmd cmd opts args)
-  (println "CLEAN! (Not implemented)"))
+  (define deps #f)
+  (define quiet #f)
+
+  (handle-opts!
+   opts
+   `(("deps"
+      ,@(lambda (val)
+          (set! deps (not (equal? val "no")))))
+     ("quiet"
+      ,@(lambda (val)
+          (set! quiet (not (equal? val "no")))))))
+  
+  (ensure-args! args)
+
+  (let* ((mod-refs
+          (map (lambda (fn)
+                 (if (not (file-exists? fn))
+                     (die/error "File does not exist:" fn))
+                 (module-reference-from-file fn))
+            args))
+         (mods-and-deps
+          (if deps
+              (modules-deps mod-refs)
+              mod-refs))
+         (port
+          (if quiet
+              (open-string "")
+              (current-output-port))))
+    
+    (display "Cleaning modules...\n" port)
+    (for-each
+        (lambda (mod)
+          (display (path-normalize (module-reference-path mod)
+                                   'shortest)
+                   port)
+          (module-clean! mod)
+          (newline port))
+      mods-and-deps)))
 
 (define (install-cmd cmd opts args)
   (println "INSTALL! (Not implemented)"))
