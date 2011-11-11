@@ -238,7 +238,7 @@
                           continue-on-error?: continue
                           port: port
                           force?: force
-                          verbose? verbose))))
+                          verbose?: verbose))))
 
 (define (clean-cmd cmd opts args)
   (define recursive #f)
