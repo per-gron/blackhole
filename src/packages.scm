@@ -907,6 +907,7 @@
                  to-dir)))
            (if (file-exists? target-dir)
                (error "Package is already installed" target-dir))
+           (create-dir-unless-exists (path-directory target-dir))
            (rename-file dir target-dir)
            (reset-installed-packages!)
 
