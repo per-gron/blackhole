@@ -9,28 +9,18 @@ development.
 
 # Installation
 
-Black Hole installs itself in the Gambit interpreter and compiler as a
-macro expander. The installation of Black Hole basically consists of
-downloading it, compiling it, and making sure it is `load`ed at the
-proper times. Compilation isn't necessary, and it can be loaded
-manually from the REPL by `load`ing "build.scm". This approach is
-merely for convenience:
+Black Hole is a layer written on top of Gambit Scheme. Practical use
+of Black Hole goes through its command line interface: `bh`. Here's
+how to install Black Hole
 
 * Download Black Hole
-* Compile Black Hole by running `gsc build` from a terminal inside
+* Compile Black Hole by running `./compile.sh` from a terminal inside
   the Black Hole source directory.
-* Make a symbolic link called `bsc` that points to `gsc` and put it
-  in your `PATH`.
-* Put this in your `~/.gambcini` file, changing `blackhole-path` to
-  point to where Black Hole is installed:
-
-        (let ((blackhole-path "~~lib/modules"))
-          (and (equal? (path-strip-directory (car (command-line))) "bsc")
-               (load (path-expand "build" blackhole-path))
-               (begin 
-                 (println "Loaded Black Hole."))))
-
-* You can now run Black Hole with the command `bsc`
+* Make a symbolic link called `bsc` somewhere in your path that points
+  the to the newly created `bh` binary in the Black Hole source
+  directory.
+* You can now run Black Hole with the command `bh`. To see what you
+  can do with the `bh` command, run `bh help`.
 
 
 # Usage
@@ -69,13 +59,12 @@ is located (or the working directory if in the REPL).
 
 ## Compiling modules
 
-Modules are not compiled like plain Gambit with the `gsc` command;
-They are compiled from the REPL:
+Modules are not compiled using the `bh` command.
 
-* `(module-compile! 'test)` compiles the module found in "test.scm".
-* `(module-compile/deps! 'test)` compiles the module found in
+* `bh compile test.scm` compiles the module found in "test.scm".
+* `bh compile -r test.scm` compiles the module found in
    "test.scm" and all its dependencies.
-* `(module-compile-to-standalone "a.out" 'test)` compiles the module
+* `bh exe --output=a.out test.scm` compiles the module
    found in "test.scm" to a standalone executable "a.out"
 
 ## Macros
