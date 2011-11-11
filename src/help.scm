@@ -14,10 +14,73 @@ Example usage:
                          installation
 
 Further help:
+  bh help modules      # Show help on modules
   bh help packages     # Show help on packages
   bh help commands     # Show a list of available commands
   bh help COMMAND      # Show detailed information about a specific
                          command
+THE-END
+)
+
+(define help-modules #<<THE-END
+  Black Hole modules
+
+In Black Hole, modules are the basic building block. A module
+corresponds directly to a .scm source code file. To create a new
+module, create a .scm file.
+
+Black Hole is designed to add as little extra syntax as possible from
+plain R5RS code. A simple R5RS .scm file without any external
+dependencies is without modification a valid Black Hole module.
+
+  Importing and exporting names
+
+By default, all defined functions, globals and macros are exported. To
+control that, place an export form at the top of the file, that
+enumerates the names that should be exported. For instance you could
+create a file named "a-module.scm" with the following contents:
+
+  (export a-procedure a-number)
+  (define secret-number 1)
+  (define (a-procedure var) (+ secret-number var))
+  (define a-number 5)
+
+For a module system to be useful, a module has to be able to use code
+from other modules. That is done with the (import) form. (import)
+takes one or more module identifiers. A module identifier can be
+several things, but the most common kind of module identifier is a
+symbol. (import a-module) will import the module in the
+file "a-module.scm".
+
+These paths are always relative to the directory where the module file
+is located (or the working directory if in the REPL).
+(import ../dir/module) imports the module that is found at
+"../dir/module.scm"
+
+  Interactive development
+
+Black Hole is designed to allow interactive development: With Black
+Hole, you can fully leverage the power of the REPL while coding. To be
+able to do so efficiently, there are a couple of tools:
+
+The most important one is to use an editor that is capable of running
+a REPL and evaluating expression in it. With Emacs, you can evaluate
+the expression that is where the cursor is with the command C-c C-e.
+
+For this to work well, you need to be able to control in which scope
+that expressions are evaluated. By default, you are in the REPL scope,
+and if you define a function with the same name as a function in a
+module, that function isn't overwritten, because the REPL scope is
+distinct from that module's scope.
+
+To be able to overwrite functions, the (module) special form is
+used. To enter the scope of the module mod, type (module mod).
+Subsequent definitions will be done in that module's scope. To get
+back to the REPL scope, type (module).
+
+It is also possible to choose which modules that you want to have
+compiled, and which ones that should be run by the interpreter. For
+more info on that, see the compile help page.
 THE-END
 )
 
