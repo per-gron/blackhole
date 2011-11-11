@@ -441,11 +441,9 @@
                    "Uninstalling the following packages:\n")
                port)
       (display-pkgs to-be-uninstalled port)
-      (if verbose
-          (newline port))
 
-      (if verbose
-          (display "Uninstalling:\n" port))
+      (if (and verbose (not pretend))
+          (display "\nUninstalling:\n" port))
       (if (not pretend)
           (for-each
               (lambda (pkg)
