@@ -30,6 +30,7 @@
 (##include "lib.scm")                   ;; The lib (fetching remote
                                         ;; modules) implementation
 (##include "packages.scm")              ;; The packages implementation
+(##include "help.scm")                  ;; Command line help
 (##include "cli.scm")                   ;; The command-line utility implementation
 
 

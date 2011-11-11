@@ -15,6 +15,7 @@
     (#\D 0 "ignore-dependencies")
     (#\e 1 "eval")
     (#\f 0 "force")
+    (#\h 0 "help")
     (#\k 0 "continue")
     (#\o 1 "output")
     (#\p 0 "pretend")
@@ -73,7 +74,7 @@
         (loop (cdr args)
               args-sans-opts
               (cons (list opt-name
-                          (string-append "-" opt-name)
+                          (string-append "--" opt-name)
                           opt-val)
                     opts))))
 
@@ -550,10 +551,44 @@
     args))
 
 (define (help-cmd cmd opts args)
-  (println "HELP! (Not implemented)"))
+  (define help-topics
+    `(("commands" ,@help-commands)
+
+      ("exe" ,@help-exe)
+      ("compile" ,@help-compile)
+      ("clean" ,@help-clean)
+
+      ("install" ,@help-install)
+      ("uninstall" ,@help-uninstall)
+      ("list" ,@help-list)
+      ("search" ,@help-search)
+
+      ("deps" ,@help-deps)
+      ("exported-names" ,@help-exported-names)
+
+      ("repl" ,@help-repl)))
+  
+  (define num-args (length args))
+  
+  (handle-opts! opts `(("help" ,@(lambda (val) #t))))
+
+  (cond
+   ((zero? num-args)
+    (println help-string))
+
+   ((= 1 num-args)
+    (let* ((arg (car args))
+           (res (assoc arg help-topics)))
+      (if res
+          (println (cdr res))
+          (die/error "Unknown help topic:" arg))))
+   
+   (else
+    (die/error "Invalid arguments passed to help:" args))))
 
 (define (repl-cmd cmd opts args)
   (define quiet #f)
+  (define help #f)
   
   (ensure-no-args! args)
   
@@ -569,24 +604,26 @@
            (with-input-from-string val read))))
      ("quiet"
       ,@(lambda (val)
-          (set! quiet
-                (not (equal? val "no")))))))
+          (set! quiet (not (equal? val "no")))))
+     ("help"
+      ,@(lambda (val)
+          (set! help (not (equal? val "no")))))))
 
-  (if (not quiet)
-      (println "Gambit Scheme w/ Black Hole"))
-  (##repl-debug #f #t))
+  (cond
+   (help
+    (help-cmd cmd opts args))
+   (else
+    (if (not quiet)
+        (println "Gambit Scheme w/ Black Hole"))
+    (##repl-debug #f #t))))
 
 (define (unknown-cmd cmd opts args-sans-opts)
   (die/error "Unknown command:"
              cmd
              "To get a list of options, type 'bh help'"))
 
-(define (cli actual-arguments)
-  (let ((arguments (if (null? actual-arguments)
-                       '("repl")
-                       actual-arguments))
-
-        (commands
+(define (cli arguments)
+  (let ((commands
          `(("exe" ,@exe-cmd)
            ("compile" ,@compile-cmd)
            ("clean" ,@clean-cmd)
@@ -603,13 +640,16 @@
            ("repl" ,@repl-cmd)
 
            ("unknown-command" ,@unknown-cmd))))
-    (let* ((cmd-pair (assoc (car arguments) commands))
-           (cmd (if cmd-pair
-                    (cdr cmd-pair)
-                    (cdr (assoc "unknown-command" commands)))))
-      (parse-opts
-       (cdr arguments)
-       (lambda (args-sans-opts opts)
-         (cmd (car arguments)
+    (parse-opts
+     arguments
+     (lambda (actual-args-sans-opts opts)
+       (let* ((args-sans-opts (if (null? actual-args-sans-opts)
+                                  '("repl")
+                                  actual-args-sans-opts))
+              (cmd-pair (assoc (car args-sans-opts) commands))
+              (cmd (if cmd-pair
+                       (cdr cmd-pair)
+                       (cdr (assoc "unknown-command" commands)))))
+         (cmd (car args-sans-opts)
               opts
-              args-sans-opts))))))
+              (cdr args-sans-opts)))))))
