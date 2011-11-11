@@ -144,6 +144,14 @@
        die/error
        (cons "Expected exactly one argument:" args))))
 
+(define (display-pkgs pkgs port)
+  (for-each
+      (lambda (pkg)
+        (display " * " port)
+        (display (package-name&version pkg) port)
+        (newline port))
+    pkgs))
+
 (define (exe-cmd cmd opts args)
   (define output-fn #f)
   (define quiet #f)
@@ -308,8 +316,8 @@
 
   (if (and (not (eqv? #t version))
            (not (= 1 (length args))))
-      (error "When specifying a version, only one package can be \
-              installed at a time:" args))
+      (die/error "When specifying a version, only one package can be \
+                  installed at a time:" args))
 
   (let ((pkgs-to-be-installed
          (find-packages-for-installation
@@ -323,39 +331,151 @@
                  "Would install the following packages:\n"
                  "Installing the following packages:\n")
              port)
-    (for-each
-        (lambda (pkg)
-          (display " * " port)
-          (display (package-name pkg) port)
-          (display " " port)
-          (display (version->symbol (package-version pkg)) port)
-          (display "\n" port))
-      pkgs-to-be-installed)
+    (display-pkgs pkgs-to-be-installed port)
+    (newline port)
+    
     (if (not pretend)
         (for-each (lambda (pkg)
                     (package-install!
                      pkg
-                     compile?: compile?
+                     compile?: compile
                      port: port
-                     verbose?: verbose?))
+                     verbose?: verbose))
           pkgs-to-be-installed))))
 
 (define (uninstall-cmd cmd opts args)
-  (println "UNINSTALL! (Not implemented)"))
+  (define version #t)
+  (define quiet #f)
+  (define pretend #f)
+  (define verbose #f)
+  (define ignore-dependencies #f)
+  (define force #f)
+
+  (handle-opts!
+   opts
+   `(("version"
+      ,@(lambda (val)
+          (set! version
+                (with-input-from-string val read))))
+     ("quiet"
+      ,@(lambda (val)
+          (set! quiet (not (equal? val "no")))))
+     ("pretend"
+      ,@(lambda (val)
+          (set! pretend (not (equal? val "no")))))
+     ("verbose"
+      ,@(lambda (val)
+          (set! verbose (not (equal? val "no")))))
+     ("ignore-dependencies"
+      ,@(lambda (val)
+          (set! ignore-dependencies (not (equal? val "no")))))
+     ("force"
+      ,@(lambda (val)
+          (set! force (not (equal? val "no")))))))
+  
+  (ensure-args! args)
+
+  (if (and (not (eqv? #t version))
+           (not (= 1 (length args))))
+      (die/error "When specifying a version, only one package can be \
+                  uninstalled at a time:" args))
+
+  (let* ((pkgs (get-installed-packages))
+         (after-pkgs
+          (foldr
+           (lambda (pkg-name accum)
+             (let ((pkg-found
+                    (find-suitable-package
+                     pkgs
+                     pkg-name
+                     version: version
+                     throw-error?: #f)))
+               (if pkg-found
+                   (tree-delete pkgs
+                                pkg-found
+                                package<?)
+                   (die/error "Package could not be found:"
+                              pkg-name
+                              version))))
+           pkgs
+           args))
+         (orphans
+          (packages-find-orphans after-pkgs))
+         (port (if quiet
+                   (open-string "")
+                   (current-output-port))))
+
+    (if (not (null? orphans))
+        (cond
+         (ignore-dependencies
+          (display "Warning: The following packages depend on the \
+                    packages you are requesting to remove:\n" port)
+          (for-each
+              (lambda (pkg)
+                (display " * " port)
+                (display (package-name&version pkg) port)
+                (newline port))
+            orphans))
+         (force
+          (set! after-pkgs
+                (tree-difference after-pkgs
+                                 (list->tree orphans
+                                             package<?)
+                                 package<?)))
+         (else
+          (apply
+           die/error
+           (cons "The following packages depend on the packages \
+                  you are requesting to remove:\n"
+                 (map package-name&version
+                   orphans))))))
+
+    (let ((to-be-uninstalled
+           (tree->list
+            (tree-difference pkgs
+                             after-pkgs
+                             package<?))))
+      (display (if pretend
+                   "Would uninstall the following packages:\n"
+                   "Uninstalling the following packages:\n")
+               port)
+      (display-pkgs to-be-uninstalled port)
+      (if verbose
+          (newline port))
+
+      (if verbose
+          (display "Uninstalling:\n" port))
+      (if (not pretend)
+          (for-each
+              (lambda (pkg)
+                (if verbose
+                    (begin
+                      (display " * " port)
+                      (display (package-name&version pkg) port)
+                      (display " ." port)))
+                (package-uninstall! pkg)
+                (if verbose
+                    (display ".\n" port)))
+            to-be-uninstalled)))))
 
 (define (list-cmd cmd opts args)
-  (ensure-no-args! args)
-  (handle-opts! opts '())
+  (define quiet #f)
 
-  (println "Installed packages:")
+  (handle-opts!
+   opts
+   `(("quiet"
+      ,@(lambda (val)
+          (set! quiet (not (equal? val "no")))))))
+  
+  (ensure-no-args! args)
+
+  (if (not quiet)
+      (println "Installed packages:"))
   (for-each
       (lambda (pkg)
-        (println " * "
-                 (package-name pkg)
-                 " ("
-                 (version->symbol
-                  (package-version pkg))
-                 ")"))
+        (if (not quiet)
+            (print " * "))
+        (println (package-name&version pkg)))
     (installed-packages)))
 
 (define (search-cmd cmd opts args)

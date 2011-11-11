@@ -361,6 +361,12 @@
   (metadata package-metadata/internal
             package-metadata-set!))
 
+(define (package-name&version pkg)
+  (string-append (package-name pkg)
+                 "-"
+                 (version->string
+                  (package-version pkg))))
+
 (define (package<? a b)
   (let ((a-name (package-name a))
         (b-name (package-name b)))
@@ -936,6 +942,49 @@
        (reset-installed-packages!)
        
        #!void))))
+
+(define (package-find-missing-dependencies pkg pkgs found)
+  (for-each
+      (lambda (dep)
+        (let* ((dep-pkg-name
+                (symbol->string (car dep)))
+               (dep-pkg-v `(and ,@(cdr dep)))
+               (installed-pkg
+                (find-suitable-package pkgs
+                                       dep-pkg-name
+                                       version: dep-pkg-v
+                                       throw-error?: #f)))
+          (if (not installed-pkg)
+              (found dep))))
+    (package-metadata-dependencies
+     (package-metadata pkg))))
+
+(define (packages-find-orphans pkgs
+                               #!key
+                               (recursive? #t))
+  (let ((orphans empty-tree))
+    (let loop ((pkgs pkgs))
+      (define prev-orphans orphans)
+      
+      (tree-fold
+       (lambda (pkg _)
+         (package-find-missing-dependencies
+          pkg
+          pkgs
+          (lambda (offending-dep)
+            (set! orphans
+                  (tree-add orphans
+                            pkg
+                            package<?)))))
+       #f
+       pkgs)
+
+      (if (and recursive?
+               (not (eqv? prev-orphans orphans)))
+          (loop (tree-difference pkgs
+                                 orphans
+                                 package<?))))
+    (tree->list orphans)))
 
 (define (package-uninstall! pkg)
   (if (not (package-installed? pkg))

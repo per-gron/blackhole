@@ -256,6 +256,15 @@
        (else
         accum)))))
 
+(define (foldr func end lst)
+  (cond
+   ((null? lst) end)
+   ((pair? lst) (func (car lst)
+                      (foldr func
+                             end
+                             (cdr lst))))
+   (else "Expected list" lst)))
+
 (define (last lst)
   (cond ((null? lst) #f)
         ((null? (cdr lst)) (car lst))
