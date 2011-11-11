@@ -238,7 +238,7 @@
                         output
                         (cc-options "")
                         shared
-                        verbose)
+                        verbose?)
     (if (not (and (or (not output)
                     (string? output))
                 (string? cc-options)))
@@ -260,7 +260,7 @@
                   cc-options)
               "" ;; ld-options-prelude
               "" ;; ld-options
-              verbose))
+              verbose?))
 
 (define (link-files o-files
                     o1-file
@@ -268,7 +268,7 @@
                     standalone
                     (ld-options-prelude "")
                     (ld-options "")
-                    verbose)
+                    verbose?)
   (if (not (and (string? o1-file)
                 (string? ld-options-prelude)
                 (string? ld-options)))
@@ -286,7 +286,7 @@
               "" ;; cc-options
               ld-options-prelude
               ld-options
-              verbose))
+              verbose?))
 
 (define (module-compile-bunch mode
                               to-file
@@ -298,7 +298,7 @@
                               (ld-options-prelude "")
                               (ld-options "")
                               modules
-                              verbose)
+                              verbose?)
   (if (not (string? to-file))
       (error "Invalid argument to module-compile-bunch (to-file)"
              to-file))
@@ -372,7 +372,7 @@
        (for-each
            (lambda (mod c-file file)
              (display " * " port)
-             (display (if verbose
+             (display (if verbose?
                           file
                           (path-strip-directory file))
                       port)
@@ -397,7 +397,7 @@
                          (display "." port)
                          (compile-c-to-o
                           fn
-                          verbose: verbose
+                          verbose?: verbose?
                           cc-options: cc-options
                           shared: (not (eq? mode 'exe)))
                          (display "." port))))
@@ -464,7 +464,7 @@
          
          (display "Compiling link file..\n" port)
          (compile-c-to-o link-c-file
-                         verbose: verbose
+                         verbose?: verbose?
                          cc-options: cc-options
                          shared: (not (eq? mode 'exe)))
          
@@ -476,7 +476,7 @@
                (cons link-c-file c-files))
           (path-expand to-file (current-directory))
           standalone: standalone
-          verbose: verbose
+          verbose?: verbose?
           ld-options-prelude: (string-append ld-options-prelude
                                              " "
                                              ld-options-prelude-accum)

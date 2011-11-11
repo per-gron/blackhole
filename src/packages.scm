@@ -161,7 +161,7 @@
           (if (and (> str-len 1)
                    (char=? #\v (string-ref str 0)))
               (substring str 1 str-len)
-              (error "Invalid format" str)))
+              (error "Invalid version format" str)))
          (split-string (string-split #\. str-no-v))
          (split-string-len (length split-string)))
     (let ((s->i
@@ -188,10 +188,9 @@
 (define (version->symbol v)
   (string->symbol (version->string v)))
 
-(define (version-comparison pred?)
-  (lambda (v ref)
-    (let loop ((v-n (version-numbers v))
-               (ref-n (version-numbers ref)))
+(define (version~=? ref v)
+  (let loop ((v-n (version-numbers v))
+             (ref-n (version-numbers ref)))
     (cond
      ((and (null? v-n)
            (null? ref-n))
@@ -203,14 +202,14 @@
      (else
       (let ((v-v (car v-n))
             (ref-v (car ref-n)))
-        (and (pred? v-v ref-v)
-             (loop (cdr v-n) (cdr ref-n)))))))))
-
-(define version~=? (version-comparison =))
-(define version~<? (version-comparison <))
-(define version~<=? (version-comparison <=))
-(define version~>? (version-comparison >))
-(define version~>=? (version-comparison >=))
+        (and (= v-v ref-v)
+             (loop (cdr v-n) (cdr ref-n))))))))
+(define (version~<? ref v) (version<? ref v))
+(define (version~>? ref v) (version<? v ref))
+(define (version~<=? ref v) (or (version~=? ref v)
+                                (version~<? ref v)))
+(define (version~>=? ref v) (or (version~=? ref v)
+                                (version~>? ref v)))
 
 (define version-match?
   (let ((tests
@@ -245,11 +244,15 @@
                               (null? (cddr exp))))
                     (error "Invalid expression" original-exp))
                 ((cdr test-pair)
-                 (symbol->version (cadr exp))
-                 v)))
+                 v
+                 (symbol->version (cadr exp)))))
              
              (else
               (error "Unknown expression" original-exp)))))
+
+         ((symbol? exp)
+          (let ((exp-v (symbol->version exp)))
+            (version~=? v exp-v)))
           
           (else
            (error "Unknown expression" original-exp)))))))
@@ -528,7 +531,7 @@
           (else
            (k #f)))))
       (and throw-error?
-           (error "No package with matching version is installed:"
+           (error "No package with matching version found:"
                   pkg-name
                   version))))
 
@@ -761,78 +764,74 @@
 
 ;;; Package installation and uninstallation
 
-(define (package-install! pkg-name-sym
+(define (find-packages-for-installation
+         pkg-names ;; A list of strings
+         #!key
+         (version #t)
+         ignore-dependencies?)
+  (remove-duplicates
+   (apply
+    append
+    (map
+        (lambda (pkg-name)
+          (let* ((pkg
+                  (find-suitable-package (get-remote-packages)
+                                         pkg-name
+                                         version: version))
+                 (pkg-md
+                  (package-metadata pkg))
+                 (pkgs-to-be-installed (list pkg)))
+            (if (not ignore-dependencies?)
+                (let loop ((deps (package-metadata-dependencies pkg-md)))
+                  (cond
+                   ((pair? deps)
+                    (let* ((dep-pkg-name
+                            (symbol->string (caar deps)))
+                           (dep-pkg-v `(and ,@(cdar deps)))
+                           (installed-pkg
+                            (find-suitable-package (get-installed-packages)
+                                                   dep-pkg-name
+                                                   version: dep-pkg-v
+                                                   throw-error?: #f)))
+                      (if (not installed-pkg)
+                          (let ((install-pkg
+                                 (find-suitable-package (get-remote-packages)
+                                                        dep-pkg-name
+                                                        version: dep-pkg-v
+                                                        throw-error?: #f)))
+                            (if (not install-pkg)
+                                (error "Can't install dependency"
+                                       dep-pkg-name
+                                       dep-pkg-v)
+                                (begin
+                                  (loop (package-metadata-dependencies
+                                         (package-metadata install-pkg)))
+                                  (push! pkgs-to-be-installed install-pkg))))))
+                    (loop (cdr deps))))))
+            
+            pkgs-to-be-installed))
+      pkg-names))))
+
+(define (package-install! pkg
                           #!key
-                          (version #t)
-                          ignore-dependencies
                           (compile? #t)
                           (to-dir *local-packages-dir*)
                           (port (current-output-port))
-                          verbose)
-  (let* ((pkg-name (symbol->string pkg-name-sym))
-         (pkg
-          (find-suitable-package (get-remote-packages)
-                                 pkg-name
-                                 version: version))
-         (pkg-md
-          (package-metadata pkg))
-         (pkgs-to-be-installed (list pkg)))
-    (if (not ignore-dependencies)
-        (let loop ((deps (package-metadata-dependencies pkg-md)))
-          (cond
-           ((pair? deps)
-            (let* ((dep-pkg-name
-                    (symbol->string (caar deps)))
-                   (dep-pkg-v `(and ,@(cdar deps)))
-                   (installed-pkg
-                    (find-suitable-package (get-installed-packages)
-                                           dep-pkg-name
-                                           version: dep-pkg-v
-                                           throw-error?: #f)))
-              (if (not installed-pkg)
-                  (let ((install-pkg
-                         (find-suitable-package (get-remote-packages)
-                                                dep-pkg-name
-                                                version: dep-pkg-v
-                                                throw-error?: #f)))
-                    (if (not install-pkg)
-                        (error "Can't install dependency"
-                               dep-pkg-name
-                               dep-pkg-v)
-                        (begin
-                          (loop (package-metadata-dependencies
-                                 (package-metadata install-pkg)))
-                          (push! pkgs-to-be-installed install-pkg))))))
-            (loop (cdr deps))))))
-    
-    (set! pkgs-to-be-installed
-          (remove-duplicates pkgs-to-be-installed))
-
-    (display "Installing the following packages:\n" port)
-    (for-each
-        (lambda (pkg)
-          (display " * " port)
-          (display (package-name pkg) port)
-          (display " " port)
-          (display (version->symbol (package-version pkg)) port)
-          (display "\n" port))
-      pkgs-to-be-installed)
-    (for-each (lambda (pkg)
-                (package-install-from-url!
-                 (package-name pkg)
-                 (package-url pkg)
-                 compile?: compile?
-                 to-dir: to-dir
-                 port: port
-                 verbose: verbose))
-      pkgs-to-be-installed)))
+                          verbose?)
+  (package-install-from-url!
+   (package-name pkg)
+   (package-url pkg)
+   compile?: compile?
+   to-dir: to-dir
+   port: port
+   verbose?: verbose?))
 
 (define (package-install-from-url! name url
                                    #!key
                                    (compile? #t)
                                    (to-dir *local-packages-dir*)
                                    (port (current-output-port))
-                                   verbose)
+                                   verbose?)
   (with-input-from-url
    url
    (lambda ()
@@ -841,7 +840,7 @@
                                  compile?: compile?
                                  to-dir: to-dir
                                  port: port
-                                 verbose: verbose))))
+                                 verbose?: verbose?))))
 
 (define (package-install-from-port! name
                                     in-port
@@ -849,7 +848,7 @@
                                     (compile? #t)
                                     (to-dir *local-packages-dir*)
                                     (port (current-output-port))
-                                    verbose)
+                                    verbose?)
   ;;; Create temporary directory
   (generate-tmp-dir
    (path-expand "pkgs-tmp"
@@ -931,7 +930,7 @@
                                            src-dir))))
                     files)
                   port: port
-                  verbose: verbose)))))
+                  verbose?: verbose?)))))
        
        ;;; Update *installed-packages*
        (reset-installed-packages!)

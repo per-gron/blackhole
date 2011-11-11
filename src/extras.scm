@@ -9,7 +9,7 @@
                          continue-on-error?
                          to-c
                          (port (current-output-port))
-                         verbose
+                         verbose?
                          (options '())
                          (cc-options "")
                          (ld-options-prelude "")
@@ -33,7 +33,7 @@
                              cc-options: cc-options
                              ld-options-prelude: ld-options-prelude
                              ld-options: ld-options
-                             verbose: verbose
+                             verbose?: verbose?
                              port: port)))
                 (if (not result)
                     (error "Compilation failed")))))))
@@ -47,8 +47,9 @@
         (perform-compile!))))
 
 
-(define (modules-compile! mods #!key
-                          continue-on-error? port force?)
+(define (modules-compile! mods
+                          #!key
+                          continue-on-error? port force? verbose?)
   (let* ((mods (resolve-modules mods))
          (mods-sorted
           (filter (lambda (x)
@@ -89,7 +90,8 @@
        (if (or force? (module-needs-compile? mod))
            (module-compile! mod
                             continue-on-error?: continue-on-error?
-                            port: (open-u8vector)))
+                            port: (open-u8vector)
+                            verbose?: verbose?))
        (set! file-number (+ file-number 1)))
      mods-sorted)))
 
@@ -190,7 +192,7 @@
 
 (define (module-compile-to-standalone name mod
                                       #!key
-                                      verbose
+                                      verbose?
                                       (port (current-output-port)))
   (let* ((mod (resolve-one-module mod))
          (mods (append (module-deps mod #t)
@@ -203,15 +205,15 @@
                               (module-reference-path mref)))
        mods)
      modules: mods
-     verbose: verbose
+     verbose?: verbose?
      port: port)))
 
 (define (modules-compile-directory! dir target
                                     #!key
-                                    verbose
+                                    verbose?
                                     (port (current-output-port)))
   (module-compile-bunch 'link
                         target
                         (module-files-in-dir dir)
                         port: port
-                        verbose: verbose))
+                        verbose?: verbose?))

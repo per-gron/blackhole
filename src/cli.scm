@@ -12,12 +12,15 @@
 (define short-opts
   '((#\b 1 "bunch") ;; 1 means that bunch takes an argument ...
     (#\c 0 "compile") ;; ... compile doesn't (hence 0)
+    (#\D 0 "ignore-dependencies")
     (#\e 1 "eval")
     (#\f 0 "force")
     (#\k 0 "continue")
     (#\o 1 "output")
+    (#\p 0 "pretend")
     (#\q 0 "quiet")
-    (#\r 0 "recursive")))
+    (#\r 0 "recursive")
+    (#\v 0 "verbose")))
 
 (define (parse-opts args kont)
   (define (opt? str)
@@ -144,6 +147,7 @@
 (define (exe-cmd cmd opts args)
   (define output-fn #f)
   (define quiet #f)
+  (define verbose #f)
   
   (handle-opts!
    opts
@@ -152,8 +156,10 @@
           (set! output-fn val)))
      ("quiet"
       ,@(lambda (val)
-          (set! quiet
-                (not (equal? val "no")))))))
+          (set! quiet (not (equal? val "no")))))
+     ("verbose"
+      ,@(lambda (val)
+          (set! verbose (not (equal? val "no")))))))
   (ensure-one-arg! args)
 
   (if (not output-fn)
@@ -165,7 +171,8 @@
    (module-reference-from-file (car args))
    port: (if quiet
              (open-string "")
-             (current-output-port))))
+             (current-output-port))
+   verbose?: verbose))
 
 (define (compile-cmd cmd opts args)
   (define recursive #f)
@@ -173,6 +180,7 @@
   (define quiet #f)
   (define continue #f)
   (define force #f)
+  (define verbose #f)
 
   (handle-opts!
    opts
@@ -190,7 +198,10 @@
           (set! continue (not (equal? val "no")))))
      ("force"
       ,@(lambda (val)
-          (set! force (not (equal? val "no")))))))
+          (set! force (not (equal? val "no")))))
+     ("verbose"
+      ,@(lambda (val)
+          (set! verbose (not (equal? val "no")))))))
   
   (ensure-args! args)
 
@@ -214,11 +225,12 @@
                               (map module-reference-path mods-and-deps)
                               modules: mods-and-deps
                               port: port
-                              verbose: #f)
+                              verbose?: verbose)
         (modules-compile! mods-and-deps
                           continue-on-error?: continue
                           port: port
-                          force?: force))))
+                          force?: force
+                          verbose? verbose))))
 
 (define (clean-cmd cmd opts args)
   (define recursive #f)
@@ -262,7 +274,71 @@
       mods-and-deps)))
 
 (define (install-cmd cmd opts args)
-  (println "INSTALL! (Not implemented)"))
+  (define version #t)
+  (define compile #t)
+  (define quiet #f)
+  (define pretend #f)
+  (define verbose #f)
+  (define ignore-dependencies #f)
+
+  (handle-opts!
+   opts
+   `(("version"
+      ,@(lambda (val)
+          (set! version
+                (with-input-from-string val read))))
+     ("compile"
+      ,@(lambda (val)
+          (set! compile (or (not val)
+                            (not (equal? val "no"))))))
+     ("quiet"
+      ,@(lambda (val)
+          (set! quiet (not (equal? val "no")))))
+     ("pretend"
+      ,@(lambda (val)
+          (set! pretend (not (equal? val "no")))))
+     ("verbose"
+      ,@(lambda (val)
+          (set! verbose (not (equal? val "no")))))
+     ("ignore-dependencies"
+      ,@(lambda (val)
+          (set! ignore-dependencies (not (equal? val "no")))))))
+  
+  (ensure-args! args)
+
+  (if (and (not (eqv? #t version))
+           (not (= 1 (length args))))
+      (error "When specifying a version, only one package can be \
+              installed at a time:" args))
+
+  (let ((pkgs-to-be-installed
+         (find-packages-for-installation
+          args
+          version: version
+          ignore-dependencies?: ignore-dependencies))
+        (port (if quiet
+                  (open-string "")
+                  (current-output-port))))
+    (display (if pretend
+                 "Would install the following packages:\n"
+                 "Installing the following packages:\n")
+             port)
+    (for-each
+        (lambda (pkg)
+          (display " * " port)
+          (display (package-name pkg) port)
+          (display " " port)
+          (display (version->symbol (package-version pkg)) port)
+          (display "\n" port))
+      pkgs-to-be-installed)
+    (if (not pretend)
+        (for-each (lambda (pkg)
+                    (package-install!
+                     pkg
+                     compile?: compile?
+                     port: port
+                     verbose?: verbose?))
+          pkgs-to-be-installed))))
 
 (define (uninstall-cmd cmd opts args)
   (println "UNINSTALL! (Not implemented)"))
@@ -370,8 +446,7 @@
      ("eval"
       ,@(lambda (val)
           (eval
-           (with-input-from-string val
-             (lambda () (read))))))
+           (with-input-from-string val read))))
      ("quiet"
       ,@(lambda (val)
           (set! quiet
