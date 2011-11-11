@@ -321,10 +321,15 @@
                   installed at a time:" args))
 
   (let ((pkgs-to-be-installed
-         (find-packages-for-installation
-          args
-          version: version
-          ignore-dependencies?: ignore-dependencies))
+         (or (find-packages-for-installation
+              args
+              version: version
+              ignore-dependencies?: ignore-dependencies
+              throw-error?: #f)
+             (apply
+              die/error
+              (cons "No package with the specified version was found:"
+                    args))))
         (port (if quiet
                   (open-string "")
                   (current-output-port))))

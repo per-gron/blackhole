@@ -774,49 +774,55 @@
          pkg-names ;; A list of strings
          #!key
          (version #t)
-         ignore-dependencies?)
-  (remove-duplicates
-   (apply
-    append
-    (map
-        (lambda (pkg-name)
-          (let* ((pkg
-                  (find-suitable-package (get-remote-packages)
-                                         pkg-name
-                                         version: version))
-                 (pkg-md
-                  (package-metadata pkg))
-                 (pkgs-to-be-installed (list pkg)))
-            (if (not ignore-dependencies?)
-                (let loop ((deps (package-metadata-dependencies pkg-md)))
-                  (cond
-                   ((pair? deps)
-                    (let* ((dep-pkg-name
-                            (symbol->string (caar deps)))
-                           (dep-pkg-v `(and ,@(cdar deps)))
-                           (installed-pkg
-                            (find-suitable-package (get-installed-packages)
-                                                   dep-pkg-name
-                                                   version: dep-pkg-v
-                                                   throw-error?: #f)))
-                      (if (not installed-pkg)
-                          (let ((install-pkg
-                                 (find-suitable-package (get-remote-packages)
-                                                        dep-pkg-name
-                                                        version: dep-pkg-v
-                                                        throw-error?: #f)))
-                            (if (not install-pkg)
-                                (error "Can't install dependency"
-                                       dep-pkg-name
-                                       dep-pkg-v)
-                                (begin
-                                  (loop (package-metadata-dependencies
-                                         (package-metadata install-pkg)))
-                                  (push! pkgs-to-be-installed install-pkg))))))
-                    (loop (cdr deps))))))
-            
-            pkgs-to-be-installed))
-      pkg-names))))
+         ignore-dependencies?
+         (throw-error? #t))
+  (call/cc
+   (lambda (exit)
+     (remove-duplicates
+      (apply
+       append
+       (map
+           (lambda (pkg-name)
+             (let* ((pkg
+                     (or
+                      (find-suitable-package (get-remote-packages)
+                                             pkg-name
+                                             version: version
+                                             throw-error?: throw-error?)
+                      (exit #f)))
+                    (pkg-md
+                     (package-metadata pkg))
+                    (pkgs-to-be-installed (list pkg)))
+               (if (not ignore-dependencies?)
+                   (let loop ((deps (package-metadata-dependencies pkg-md)))
+                     (cond
+                      ((pair? deps)
+                       (let* ((dep-pkg-name
+                               (symbol->string (caar deps)))
+                              (dep-pkg-v `(and ,@(cdar deps)))
+                              (installed-pkg
+                               (find-suitable-package (get-installed-packages)
+                                                      dep-pkg-name
+                                                      version: dep-pkg-v
+                                                      throw-error?: #f)))
+                         (if (not installed-pkg)
+                             (let ((install-pkg
+                                    (find-suitable-package (get-remote-packages)
+                                                           dep-pkg-name
+                                                           version: dep-pkg-v
+                                                           throw-error?: #f)))
+                               (if (not install-pkg)
+                                   (error "Can't install dependency"
+                                          dep-pkg-name
+                                          dep-pkg-v)
+                                   (begin
+                                     (loop (package-metadata-dependencies
+                                            (package-metadata install-pkg)))
+                                     (push! pkgs-to-be-installed install-pkg))))))
+                       (loop (cdr deps))))))
+               
+               pkgs-to-be-installed))
+         pkg-names))))))
 
 (define (package-install! pkg
                           #!key
