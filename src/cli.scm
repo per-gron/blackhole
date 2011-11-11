@@ -550,7 +550,9 @@
 
 (define (help-cmd cmd opts args)
   (define help-topics
-    `(("commands" ,@help-commands)
+    `(("packages" ,@help-packages)
+      
+      ("commands" ,@help-commands)
 
       ("exe" ,@help-exe)
       ("compile" ,@help-compile)

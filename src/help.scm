@@ -14,9 +14,72 @@ Example usage:
                          installation
 
 Further help:
+  bh help packages     # Show help on packages
   bh help commands     # Show a list of available commands
   bh help COMMAND      # Show detailed information about a specific
                          command
+THE-END
+)
+
+(define help-packages #<<THE-END
+  Black Hole packages
+
+Black Hole includes a package system similar to Ruby Gems and such
+tools. A Black Hole package is a tarball with the modules of the
+package and a pkgfile that contains metadata about the package, like
+version number, package author and maintainer.
+
+  Central package list
+
+The central list of packages is currently located at the GitHub
+repository https://github.com/pereckerdal/bh-packages
+
+To add a new package, please send an email with the package's tarball
+to per dot eckerdal at gmail dot com.
+
+  pkgfile
+
+pkgfiles are s-expressions of the form
+
+  (package (attribute value ...) ...)
+
+The available attributes are
+* Version: The package version. A pkgfile must contain the package's
+  version. For instance
+    (version v0.0.2)
+* Maintainer: for instance
+    (maintainer "Per Eckerdal <per dot eckerdal at gmail dot com>")
+* Author: for instance
+    (author "Per Eckerdal <per dot eckerdal at gmail dot com>")
+* Homepage: for instance
+    (homepage "http://github.com/pereckerdal/srfi")
+* Description: A short description of the package. For instance
+    (description "A collection of SRFI implementations")
+* Keywords: A list of keywords (they should be symbols). For instance
+    (keywords srfi util)
+* License: A list of licenses (they should be symbols). For instance
+    (license mit)
+* Source directory: If the source is located in a subdirectory of
+  the package, and you want to avoid having to type
+  (import (pkg-name src/module)), you can specify it like this
+    (source-directory "src")
+* Exported modules: A list of the exported modules (they should be
+  symbols)
+
+  A quick guide to creating packages
+
+1. Put all the modules that should be part of the package in a
+   directory.
+2. Create the pkgfile and put it in the package's root directory.
+3. Create a tarball out of the directory.
+4. Host the tarball somewhere on the 'net.
+5. Send an email to per dot eckerdal at gmail dot com with the
+   URL to the tarball.
+
+If you have your package on GitHub, you don't need to worry about
+creating or hosting the tarball, since GitHub does that automatically:
+The tarball for a particular commit is available at
+  http://github.com/[username]/[repo name]/tarball/[commit hash/tag]
 THE-END
 )
 
