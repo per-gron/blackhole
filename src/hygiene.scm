@@ -1297,8 +1297,12 @@
                          (top-level #f))
                       (expr*:value-set
                        source
-                       (cons (expr*:value-set (car code)
-                                              (cadr val))
+                       (cons (expr*:value-set
+                              (car code)
+                              ((*external-reference-access-hook*)
+                               val
+                               (*expansion-phase*)
+                               #f))
                              (dotted-map (lambda (x)
                                            (expand-macro x env))
                                          (cdr code)))))
