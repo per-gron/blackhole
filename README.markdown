@@ -16,7 +16,7 @@ how to install Black Hole
 * Download Black Hole
 * Compile Black Hole by running `./compile.sh` from a terminal inside
   the Black Hole source directory.
-* Make a symbolic link called `bsc` somewhere in your path that points
+* Make a symbolic link called somewhere in your path that points
   the to the newly created `bh` binary in the Black Hole source
   directory.
 * You can now run Black Hole with the command `bh`. To see what you
