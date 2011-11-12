@@ -286,9 +286,6 @@
     (module-add-defs-to-env (module-info-imports module-info)
                             env
                             phase: phase)
-    (module-add-defs-to-env (module-info-imports-for-syntax module-info)
-                            env
-                            phase: next-phase)
 
     (let ((instance (module-instance-get!
                      phase

@@ -319,7 +319,6 @@
         (unknown-definitions '())
         (macros '())
         (imports '())
-        (imports-for-syntax '())
         (exports #f)
         (options- '())
         (cc-options- "")
@@ -333,14 +332,8 @@
     (parameterize
         ((*module-macroexpansion-import*
           (lambda (pkgs env phase)
-            (let ((phase-number (expansion-phase-number phase)))
-              (cond
-               ((zero? phase-number)
-                (push! imports
-                       pkgs))
-               ((= 1 phase-number)
-                (push! imports-for-syntax
-                       pkgs))))
+            (push! imports
+                   pkgs)
             (void)))
          
          (*module-macroexpansion-export*
@@ -439,9 +432,7 @@
                (values (expand-macro sexpr)
                        (*top-environment*))))
             (imports
-             (apply append imports))
-            (imports-for-syntax
-             (apply append imports-for-syntax)))
+             (apply append imports)))
 
         (let ((undefined-names '()))
           (for-each
@@ -483,11 +474,6 @@
                (resolve-imports imports
                                 module-reference
                                 relative: #t))
-              (import-for-syntax-defs
-               import-for-syntax-module-refs
-               (resolve-imports imports-for-syntax
-                                module-reference
-                                relative: #t))
 
               (ns-str
                (environment-namespace
@@ -505,17 +491,16 @@
                                               import-module-refs))
                   (generate-visit-code module-reference
                                        macros
-                                       import-for-syntax-module-refs)
+                                       import-module-refs)
                   (let* ((info
                           `((definitions ,@definitions)
                             (imports ,@import-defs)
-                            (imports-for-syntax ,@import-for-syntax-defs)
                             (exports ,@export-defs)
                             (runtime-dependencies
                              ,@(append export-uses-module-refs
                                        import-module-refs))
                             (compiletime-dependencies
-                             ,@import-for-syntax-module-refs)
+                             ,@import-module-refs)
                             (namespace-string ,@ns-str)
                             (options ,@options-)
                             (cc-options ,@cc-options-)

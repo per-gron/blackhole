@@ -11,7 +11,6 @@
   (symbols read-only:)
   (exports read-only:)
   (imports read-only:)
-  (imports-for-syntax read-only:)
   (definitions read-only:)
   
   ;; A list of module references, possibly relative
@@ -38,7 +37,6 @@
                           (symbols '())
                           (exports '())
                           (imports '())
-                          (imports-for-syntax '())
                           (definitions '())
                           (runtime-dependencies '())
                           (compiletime-dependencies '())
@@ -52,7 +50,6 @@
   (make-module-info/internal symbols
                              exports
                              imports
-                             imports-for-syntax
                              definitions
                              runtime-dependencies
                              compiletime-dependencies
@@ -87,7 +84,6 @@
          
          (definitions (table-ref tbl 'definitions '()))
          (imports (table-ref tbl 'imports '()))
-         (imports-for-syntax (table-ref tbl 'imports-for-syntax '()))
          (exports (resolve-export-self-reference
                    module-ref
                    (table-ref tbl 'exports #f)))
@@ -117,7 +113,6 @@
      symbols: symbols
      exports: exports
      imports: imports
-     imports-for-syntax: imports-for-syntax
      definitions: definitions
      runtime-dependencies: runtime-dependencies
      compiletime-dependencies: compiletime-dependencies
