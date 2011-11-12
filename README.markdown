@@ -59,7 +59,7 @@ is located (or the working directory if in the REPL).
 
 ## Compiling modules
 
-Modules are not compiled using the `bh` command.
+Modules are compiled using the `bh` command.
 
 * `bh compile test.scm` compiles the module found in "test.scm".
 * `bh compile -r test.scm` compiles the module found in
