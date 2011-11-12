@@ -392,7 +392,9 @@
         ;; This first clause is purely an optimization
         (env-get orig-env maybe-update-best-def #f)
         (begin
-          (env-get orig-env maybe-update-best-def #t)
+          (env-get orig-env
+                   maybe-update-best-def
+                   #t)
           (env-get sc-environment
                    maybe-update-best-def
                    #f)))
