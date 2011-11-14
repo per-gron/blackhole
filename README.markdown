@@ -88,6 +88,20 @@ special identifier objects instead of just symbols when combined with
 hygienic macros. Usage of the other forms of macros is strongly
 recommended.
 
+# Development
+
+If you want to contribute to Black Hole, either with small bugfix
+patches or bigger things, feel free to do so! For bigger things, it's
+good to keep in touch with me at per dot eckerdal at gmail dot com, to
+make sure that we're on the same page.
+
+I prefer getting patches through GitHub pull requests.
+
+To actually work on the Black Hole code base, I strongly recommend
+using the script `src/deventry.scm` instead of compiling the `bh`
+binary over and over again. That file has instructions on how to use
+it.
+
 # More information / Contact
 
 Please drop me a line at *per dot eckerdal at gmail dot com* or use
