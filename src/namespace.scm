@@ -37,6 +37,9 @@
 (define (save-ns-table tbl)
   (if (not tbl)
       (error "Cannot save non-existent ns-table"))
+
+  (create-dir-unless-exists (path-directory ns-file))
+
   (if ns-file
       (with-output-to-file
           ns-file
