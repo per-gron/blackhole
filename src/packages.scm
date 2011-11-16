@@ -420,7 +420,7 @@
 ;;; Remote packages
 
 (define (load-remote-packages)
-  (read-url "http://github.com/pereckerdal/bh-packages/raw/master/pkglist"))
+  (read-url "https://raw.github.com/pereckerdal/bh-packages/master/pkglist"))
 
 (define (parse-remote-package-list package-list)
   (list->tree
