@@ -209,7 +209,7 @@
 
         (else
          (error "Internal error in module-instance-let-fn"
-                key))))
+                sym-pair))))
      table)
     
     (reverse! result)))
