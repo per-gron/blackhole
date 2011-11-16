@@ -505,6 +505,7 @@
                                 (phase
                                  (*expansion-phase*)))
   (define (macro+env-from-module-ref phase ref)
+    (loaded-module-visit/deps (module-reference-ref ref) phase)
     (let* ((mi (module-instance-ref phase ref))
            (macros (and mi (module-instance-macros mi)))
            (env (and mi (module-instance-macro-env mi))))
