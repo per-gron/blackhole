@@ -499,20 +499,17 @@
         ;; TODO Add something to check for duplicate imports and
         ;; exports.
         (let ((export-defs
-               export-uses-module-refs ;; TODO Remove this return value.
                (if exports
                    (resolve-exports (apply append exports)
                                     env)
-                   (values
-                    (macroexpansion-symbol-defs
-                     ;; TODO This map feels quite misplaced. Change
-                     ;; macroexpansion-symbol-defs
-                     (map (lambda (def)
-                            (cons (car def)
-                                  (cadr def)))
-                       definitions)
-                     env)
-                    '())))
+                   (macroexpansion-symbol-defs
+                    ;; TODO This map feels quite misplaced. Change
+                    ;; macroexpansion-symbol-defs
+                    (map (lambda (def)
+                           (cons (car def)
+                                 (cadr def)))
+                      definitions)
+                    env)))
               (import-defs
                import-module-refs ;; TODO Remove this return value.
                (resolve-imports imports

@@ -293,8 +293,7 @@
                  (cons env (cdr val))))))
    
    ((symbol? val)
-    (values (list (export-helper env val val))
-            '()))
+    (list (export-helper env val val)))
    
    (else
     (error "Invalid exports declaration" val))))
@@ -302,34 +301,30 @@
 ;; TODO This code is pretty much a copy/paste of resolve-imports, which
 ;; is bad.
 (define (resolve-exports vals env)
-  (let ((defs '())
-        (mods '()))
+  (let ((defs '()))
     (for-each (lambda (val)
-                (let ((def
-                       mod
-                       (resolve-export val env)))
-                  (set! defs (cons def defs))
-                  (set! mods (cons mod mods))))
-              vals)
-    (values (flatten1 defs)
-            (flatten1 mods))))
+                (push! defs (resolve-export val env)))
+      vals)
+    (flatten1 defs)))
 
 (define (rename-export-resolver env . renames)
-  (values (map (lambda (rename)
-                 (if (not (and (list? rename)
-                               (eq? 2 (length rename))))
-                     (error "Invalid exports declaration"
-                            rename))
-                 (export-helper env
-                                (car rename)
-                                (cadr rename)))
-               renames)
-          '()))
+  (map (lambda (rename)
+         (if (not (and (list? rename)
+                       (eq? 2 (length rename))))
+             (error "Invalid exports declaration"
+                    rename))
+         (export-helper env
+                        (car rename)
+                        (cadr rename)))
+    renames))
 
 (define (re-export-export-resolver env . import-decls)
-  (resolve-imports import-decls
-                   (environment-module-reference env)
-                   relative: #t))
+  (let ((def
+         mod
+         (resolve-imports import-decls
+                          (environment-module-reference env)
+                          relative: #t)))
+    def))
 
 (set! *export-resolvers*
       `((rename: . ,rename-export-resolver)
