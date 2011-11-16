@@ -136,105 +136,155 @@
 (define (generate-runtime-code namespace-string
                                module-reference
                                expanded-code)
-  (clone-sexp
-   expanded-code
-   (lambda (def phase)
-     (if (not (expansion-phase-runtime? phase))
-         (error "Internal error in Black Hole, generate-macro-code"))
-     (cadr def))
-   (lambda (def phase val)
-     (if (not (expansion-phase-runtime? phase))
-         (error "Internal error in Black Hole, generate-macro-code"))
-     `(set! ,(cadr def) ,val))))
+  (let* (;; Keys are absolute module references, values are the relative ones
+         (dep-table (make-table))
 
-(define (module-instance-let-fn dep table)
-  (let ((info
-         (loaded-module-info (module-reference-ref dep))))
-    (if (module-info-no-global-state info)
-        (begin
-          (table-set! table dep 'no-global-state)
-          '())
-        (let ((sym (generate-module-instance-symbol dep "instance"))
-              (get-sym (generate-module-instance-symbol dep "get"))
-              (set-sym (generate-module-instance-symbol dep "set")))
-          (table-set! table dep (cons get-sym
-                                      set-sym))
-          `((,sym
-             (let ((tmp (bh#module-instance-ref
-                         ,expansion-phase-sym
-                         (bh#module-reference-absolutize
-                          (bh#u8vector->module-reference
-                           ',(module-reference->u8vector dep))
-                          (bh#loaded-module-reference
-                           ,loaded-module-sym)))))
-               (or tmp
-                   (error "Internal error in Black Hole (module-macroexpansion.scm)"))))
-            (,get-sym
-             (let ((tmp (bh#module-instance-getter ,sym)))
-               (or tmp
-                   (error "Internal error in Black Hole (module-macroexpansion.scm)"))))
-            (,set-sym
-             (let ((tmp (bh#module-instance-setter ,sym)))
-               (or tmp
-                   (error "Internal error in Black Hole (module-macroexpansion.scm)")))))))))
+         (register-dep!
+          (lambda (def)
+            (let ((ref (caddr def)))
+              (if ref
+                  (table-set! dep-table
+                              (module-reference-absolutize ref
+                                                           module-reference)
+                              ref))))))
+    (define result-code
+      (clone-sexp
+       expanded-code
+       (lambda (def phase)
+         (if (not (expansion-phase-runtime? phase))
+             (error "Internal error in Black Hole, generate-macro-code"))
+         (register-dep! def)
+         (cadr def))
+       (lambda (def phase val)
+         (if (not (expansion-phase-runtime? phase))
+             (error "Internal error in Black Hole, generate-macro-code"))
+         (register-dep! def)
+         `(set! ,(cadr def) ,val))))
+    
+    (values result-code
+            ;; This creates a list of runtime dependencies
+            (map cdr (table->list dep-table)))))
 
-(define (clone-sexp/sym-table sexp ref->sym-table)
-  (clone-sexp sexp
-              ;; References to external modules
-              (lambda (def phase)
-                (let* ((ref (caddr def))
-                       (sym-pair
-                        (and ref
-                             (table-ref ref->sym-table
-                                        ref))))
-                  (if (and ref
-                           (not (eq? 'no-global-state
-                                     sym-pair)))
-                      `(,(car sym-pair)
-                        ',(cadr def))
-                      (cadr def))))
-              ;; set!s to external modules
-              (lambda (def phase val)
-                (let* ((ref (caddr def))
-                       (sym-pair
-                        (and ref
-                             (table-ref ref->sym-table
-                                        ref))))
-                  (if (and ref
-                           (not (eq? 'no-global-state
-                                     sym-pair)))
-                      `(,(cdr
-                          (table-ref ref->sym-table
-                                     ref))
-                        ',(cadr def)
-                        ,val)
-                      `(set! ,(cadr def) ,val))))))
+(define (module-instance-let-fn table)
+  (let ((result '()))
+    (table-for-each
+     (lambda (dep sym-pair)
+       (cond
+        ((eqv? 'no-global-state sym-pair)
+         ;; Do nothing
+         #!void)
+
+        ((pair? sym-pair)
+         (let ((sym (generate-module-instance-symbol dep "instance"))
+               (get-sym (car sym-pair))
+               (set-sym (cadr sym-pair))
+               (relative-ref (caddr sym-pair)))
+           (push!
+            result
+            `(,sym
+              (let ((tmp (bh#module-instance-ref
+                          ,expansion-phase-sym
+                          (bh#module-reference-absolutize
+                           (bh#u8vector->module-reference
+                            ',(module-reference->u8vector relative-ref))
+                           (bh#loaded-module-reference
+                            ,loaded-module-sym)))))
+                (or tmp
+                    (error
+                     "Internal error in Black Hole (module-macroexpansion.scm)")))))
+           (push!
+            result
+            `(,get-sym
+              (let ((tmp (bh#module-instance-getter ,sym)))
+                (or tmp
+                    (error
+                     "Internal error in Black Hole (module-macroexpansion.scm)")))))
+           (push!
+            result
+            `(,set-sym
+              (let ((tmp (bh#module-instance-setter ,sym)))
+                (or tmp
+                    (error
+                     "Internal error in Black Hole (module-macroexpansion.scm)")))))))
+
+        (else
+         (error "Internal error in module-instance-let-fn"
+                key))))
+     table)
+    
+    (reverse! result)))
+
+(define (clone-sexp/sym-table ref->sym-table base-module-ref sexp)
+  (define (module-ref->sym-pair ref relative-ref)
+    (let ((info (loaded-module-info (module-reference-ref ref))))
+      (if (module-info-no-global-state info)
+          (begin
+            (table-set! ref->sym-table ref 'no-global-state)
+            'no-global-state)
+          (let* ((sym (generate-module-instance-symbol ref "instance"))
+                 (get-sym (generate-module-instance-symbol ref "get"))
+                 (set-sym (generate-module-instance-symbol ref "set"))
+                 (sym-pair (list get-sym
+                                 set-sym
+                                 relative-ref)))
+            (table-set! ref->sym-table
+                        ref
+                        sym-pair)
+            sym-pair))))
+  
+  (let ((get-ref
+         (lambda (relative-ref)
+           (and
+            relative-ref
+            (let ((ref (module-reference-absolutize relative-ref
+                                                    base-module-ref)))
+              (or (table-ref ref->sym-table ref #f)
+                  (let ((sym-pair (module-ref->sym-pair ref relative-ref)))
+                    (table-set! ref->sym-table ref sym-pair)
+                    sym-pair)))))))
+    (clone-sexp sexp
+                ;; References to external modules
+                (lambda (def phase)
+                  (let* ((ref (caddr def))
+                         (sym-pair (get-ref ref)))
+                    (if (and ref
+                             (not (eq? 'no-global-state
+                                       sym-pair)))
+                        `(,(car sym-pair)
+                          ',(cadr def))
+                        (cadr def))))
+                ;; set!s to external modules
+                (lambda (def phase val)
+                  (let* ((ref (caddr def))
+                         (sym-pair (get-ref ref)))
+                    (if (and ref
+                             (not (eq? 'no-global-state
+                                       sym-pair)))
+                        `(,(cadr sym-pair)
+                          ',(cadr def)
+                          ,val)
+                        `(set! ,(cadr def) ,val)))))))
 
 (define (generate-compiletime-code module-reference
                                    namespace-string
                                    expanded-code
-                                   definitions
-                                   dependencies)
-  (let ((names
-         (map (lambda (x)
-                (cons (car x)
-                      (gen-symbol namespace-string
-                                  (car x))))
-           (filter (lambda (x) (eq? 'def (cadr x)))
-                   definitions)))
-        (ref->rt-sym-table (make-table)))
+                                   definitions)
+  (let* ((names
+          (map (lambda (x)
+                 (cons (car x)
+                       (gen-symbol namespace-string
+                                   (car x))))
+            (filter (lambda (x) (eq? 'def (cadr x)))
+                    definitions)))
+         (ref->rt-sym-table (make-table))
+         (cloned-code
+          (clone-sexp/sym-table ref->rt-sym-table
+                                module-reference
+                                expanded-code)))
     `(lambda (,loaded-module-sym ,expansion-phase-sym)
-       (let* (,@(apply
-                 append
-                 (map (lambda (dep)
-                        (module-instance-let-fn (module-reference-absolutize
-                                                 dep
-                                                 module-reference)
-                                                ref->rt-sym-table))
-                   dependencies)))
+       (let* ,(module-instance-let-fn ref->rt-sym-table)
          ,(transform-to-let
-           (clone-sexp/sym-table expanded-code
-                                 ref->rt-sym-table)
+           cloned-code
            `(values
              (lambda (,name-sym)
                (case ,name-sym
@@ -252,27 +302,21 @@
                  (else (error "Unbound variable" ,name-sym))))))))))
 
 (define (generate-visit-code module-reference
-                             macros
-                             dependencies)
-  (let ((ref->ct-sym-table (make-table)))
-    `(lambda (,loaded-module-sym ,expansion-phase-sym)
-       (let* (,@(apply
-                 append
-                 (map (lambda (dep)
-                        (module-instance-let-fn (module-reference-absolutize
-                                                 dep
-                                                 module-reference)
-                                                ref->ct-sym-table))
-                   dependencies)))
-         (list
-          ,@(map
-                (lambda (name/sexp-pair)
-                  `(cons
-                    ',(car name/sexp-pair)
-                    ,(clone-sexp/sym-table
-                      (cdr name/sexp-pair)
-                      ref->ct-sym-table)))
-              macros))))))
+                             macros)
+  (let* ((ref->ct-sym-table (make-table))
+         (cloned-macros
+          (map (lambda (name/sexp-pair)
+                 `(cons
+                   ',(car name/sexp-pair)
+                   ,(clone-sexp/sym-table ref->ct-sym-table
+                                          module-reference
+                                          (cdr name/sexp-pair))))
+            macros)))
+    (values
+     `(lambda (,loaded-module-sym ,expansion-phase-sym)
+        (let* ,(module-instance-let-fn ref->ct-sym-table)
+          (list ,@cloned-macros)))
+     (map caddr (table->list ref->ct-sym-table)))))
 
 (define (calculate-letsyntax-environment memo-table env)
   (define (memoize-function-with-one-parameter fn)
@@ -455,7 +499,7 @@
         ;; TODO Add something to check for duplicate imports and
         ;; exports.
         (let ((export-defs
-               export-uses-module-refs
+               export-uses-module-refs ;; TODO Remove this return value.
                (if exports
                    (resolve-exports (apply append exports)
                                     env)
@@ -470,7 +514,7 @@
                      env)
                     '())))
               (import-defs
-               import-module-refs
+               import-module-refs ;; TODO Remove this return value.
                (resolve-imports imports
                                 module-reference
                                 relative: #t))
@@ -479,34 +523,35 @@
                (environment-namespace
                 env
                 phase-number: 0)))
-          (values (generate-runtime-code ns-str
-                                         module-reference
-                                         expanded-code)
-                  (and
-                   (not no-global-state-)
-                   (generate-compiletime-code module-reference
-                                              ns-str
-                                              expanded-code
-                                              definitions
-                                              import-module-refs))
-                  (generate-visit-code module-reference
-                                       macros
-                                       import-module-refs)
-                  (let* ((info
-                          `((definitions ,@definitions)
-                            (imports ,@import-defs)
-                            (exports ,@export-defs)
-                            (runtime-dependencies
-                             ,@(append export-uses-module-refs
-                                       import-module-refs))
-                            (compiletime-dependencies
-                             ,@import-module-refs)
-                            (namespace-string ,@ns-str)
-                            (options ,@options-)
-                            (cc-options ,@cc-options-)
-                            (ld-options-prelude ,@ld-options-prelude-)
-                            (ld-options ,@ld-options-)
-                            (force-compile ,@force-compile-)
-                            (no-global-state ,@no-global-state-)))
-                         (vec (module-reference->u8vector info)))
-                    `',vec)))))))
+          (let ((runtime-code
+                 runtime-deps
+                 (generate-runtime-code ns-str
+                                        module-reference
+                                        expanded-code))
+
+                (visit-code
+                 compiletime-deps
+                 (generate-visit-code module-reference macros)))
+            (values runtime-code
+                    (and
+                     (not no-global-state-)
+                     (generate-compiletime-code module-reference
+                                                ns-str
+                                                expanded-code
+                                                definitions))
+                    visit-code
+                    (let* ((info
+                            `((definitions ,@definitions)
+                              (imports ,@import-defs)
+                              (exports ,@export-defs)
+                              (runtime-dependencies ,@runtime-deps)
+                              (compiletime-dependencies ,@compiletime-deps)
+                              (namespace-string ,@ns-str)
+                              (options ,@options-)
+                              (cc-options ,@cc-options-)
+                              (ld-options-prelude ,@ld-options-prelude-)
+                              (ld-options ,@ld-options-)
+                              (force-compile ,@force-compile-)
+                              (no-global-state ,@no-global-state-)))
+                           (vec (module-reference->u8vector info)))
+                      `',vec))))))))
