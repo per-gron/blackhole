@@ -398,7 +398,7 @@
                          (compile-c-to-o
                           fn
                           verbose?: verbose?
-                          cc-options: cc-options
+                          cc-options: (string-append cc-options " " (table-ref info-tbl 'cc-options))
                           shared: (not (eq? mode 'exe)))
                          (display "." port))))
 
