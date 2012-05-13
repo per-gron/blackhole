@@ -1531,22 +1531,86 @@
 
    (cond-expand
     (lambda (source env mac-env)
-      (expr*:value-set
-       source
-       (let ((code (expr*:value source)))
-         (cons
-          (expr*:value-set (car code)
-                           'cond-expand)
-          (map (lambda (inner-source)
-                 (let ((inner-code (expr*:value inner-source)))
-                   (if (not (pair? inner-code))
-                       (error "Invalid cond-expand form: "
-                              (expr*:strip-locationinfo source)))
-                   
-                   (cons (extract-synclosure-crawler
-                          (car inner-code))
-                         (expand-macro (cdr inner-code) env))))
-               (cdr code)))))))
+
+      ;; 2012-05-13: Adding support for a cond-expand:ing to black-hole. The previous code was:
+      
+      ; (expr*:value-set
+      ;   source
+      ;  (let ((code (expr*:value source)))
+      ;    (cons
+      ;     (expr*:value-set (car code)
+      ;                      'cond-expand)
+      ;     (map (lambda (inner-source)
+      ;            (let ((inner-code (expr*:value inner-source)))
+      ;              (if (not (pair? inner-code))
+      ;                  (error "Invalid cond-expand form: "
+      ;                         (expr*:strip-locationinfo source)))
+      ;              
+      ;              (cons (extract-synclosure-crawler
+      ;                     (car inner-code))
+      ;                    (expand-macro (cdr inner-code) env))))
+      ;          (cdr code)))))
+
+
+      ; Now here including cond-expand-build , copied out of src/util.scm of the syntactictower branch:
+      ;
+      ;; Helper for cond-expand. This function is more or less copied from
+      ;; Gambit's _nonstd.scm
+      (define (cond-expand-build src clauses features)
+        (define (satisfied? feature-requirement)
+          (cond ((##symbol? feature-requirement)
+                 (if (##member feature-requirement features)
+                   #t
+                   #f))
+                ((##pair? feature-requirement)
+                 (let ((first (##source-strip (##car feature-requirement))))
+                   (cond ((##eq? first 'not)
+                          (##shape src (##sourcify feature-requirement src) 2)
+                          (##not (satisfied?
+                                  (##source-strip (##cadr feature-requirement)))))
+                         ((or (##eq? first 'and) (##eq? first 'or))
+                          (##shape src (##sourcify feature-requirement src) -1)
+                          (let loop ((lst (##cdr feature-requirement)))
+                            (if (##pair? lst)
+                              (let ((x (##source-strip (##car lst))))
+                                (if (##eq? (satisfied? x) (##eq? first 'and))
+                                  (loop (##cdr lst))
+                                  (##not (##eq? first 'and))))
+                              (##eq? first 'and))))
+                         (else
+                          (error "Ill-formed cond-expand form"
+                                 (expr*:strip-locationinfo src))))))
+                (else
+                 (error "Ill-formed cond-expand form"
+                        (expr*:strip-locationinfo src)))))
+      
+        (define (build clauses)
+          (if (##pair? clauses)
+            (let ((clause (##source-strip (##car clauses))))
+              (##shape src (##sourcify clause src) -1)
+              (let ((feature-requirement (##source-strip (##car clause))))
+                (if (or (and (##eq? feature-requirement 'else)
+                             (##null? (##cdr clauses)))
+                        (satisfied? feature-requirement))
+                  (##cons 'begin (##cdr clause))
+                  (build (##cdr clauses)))))
+            (error "Unfulfilled cond-expand form"
+                   (expr*:strip-locationinfo src))))
+
+        (build clauses))
+      
+     ; Here follows the cond-expand code of the syntactic-tower branch:
+     (expand-macro
+       (##deconstruct-call
+        source
+        -1
+        (lambda clauses
+          (cond-expand-build source
+                             clauses
+                             (cons 'black-hole ##cond-expand-features))))
+       env)
+      
+      ))
 
    (case
        (lambda (source env mac-env)
@@ -1582,44 +1646,73 @@
     (lambda (source env mac-env)
       (extract-synclosure-crawler source)))
 
+   ; Implemented by Mikael More 2012-03-17 based on the implementation of define above, thanks to guidance from Per.
    (c-define
-    (lambda (source env mac-env)
-      (let ([src (cdr (expand-syncapture (expr*:value source) env))])
-        (cond
-          [(< (length src) 6)
-           (error "Ill-formed c-define form"
-                  (expr*:strip-locationinfo source))]
-          [(top-level)
-           (let* ([src    (expr*:value src)]
-                  [var-fs (expr*:value (list-ref src 0))]
-                  [types  (list-ref src 1)]
-                  [result (list-ref src 2)]
-                  [c-name (list-ref src 3)]
-                  [scope  (list-ref src 4)]
-                  [body   (list-tail src 5)]
-                  [var-form (car var-fs)]
-                  [var      (expand-syncapture var-form env)]
-                  [formals  (cdr var-fs)]
-                  [ns (environment-add-define! env (expr*:value var))])
+     (lambda (code env mac-env)
+       (let* ((code (expr*:strip-locationinfo code)) ; code = '(c-define (name a1 a2 ...) (c-type1 c-type2 etc.) returntype s s code code code...)
+              ; (code-cdr (cdr (expand-syncapture
+              ;                 (expr*:value code)
+              ;                 env)))
+              ; position 0 = 'c-define
+              (define-def     (list-ref code 1))
+              (procedure-global-name (car define-def))
+              (procedure-args-def    (cdr define-def))
+              ; (code-cdr-wo-location-info (expr*:strip-locationinfo code-cdr))
+              (argument-c-def (list-ref code 2))
+              (result-type    (list-ref code 3))
+              (c-name         (list-ref code 4))
+              (scope          (list-ref code 5))
+              (code           (cdddr (cdddr code)))
+
+              (simulated-c-define `(lambda ,procedure-args-def ,@code)) ; By some reason ., doesn't deliver here when in compiled mode! Peculiar.
+              (expanded-code (expand-macro simulated-c-define env))
+
+              (expanded-arg-def (list-ref expanded-code 1))
+              (expanded-code-content (cddr expanded-code))
+
+              ; (src (expr*:transform-to-lambda
+              ;       (if (null? code-cdr)
+              ;           (error "Ill-formed define form" code)
+              ;          code-cdr)))
+
+              )
+         ; (print "simulated-c-define is: ") (force-output) (pp simulated-c-define) (force-output)
+         ; (print "expanded-code is: ") (force-output) (pp expanded-code) (force-output)
+         ; (print "expanded-code-content is: ") (force-output) (pp expanded-code-content) (force-output)
+         (cond
+          ((top-level)
+           (let* (; (name-form (car (expr*:value src)))
+                  (name-form procedure-global-name)
+                  (name (expand-synclosure name-form env))
+                  (def-env (if (syntactic-closure? name-form)
+                               (syntactic-closure-env name-form)
+                               env))
+                  (ns (environment-add-define! def-env
+                                               (expr*:value name)))
+                  (result-code `(c-define (,(gen-symbol ns (expr*:value name)) ,@expanded-arg-def) ; By some reason ., doesn't deliver here when in compiled mode! Peculiar.
+                                 ,argument-c-def ,result-type ,c-name ,scope
+
+                                 ; ,(expand-macro (let ((src-v (expr*:value src)))
+                                 ;                  (if (pair? src-v)
+                                 ;                      (let ((src-v-cdr (cdr src-v)))
+                                 ;                        (if (pair? src-v-cdr)
+                                 ;                            (car src-v-cdr)
+                                 ;                            #!void))
+                                 ;                      (error "Ill-formed define form"
+                                 ;                             code)))
+                                 ;                env)
+                                 ,@expanded-code-content ; By some reason ., doesn't deliver here when in compiled mode! Peculiar.
+                                 ))
+                 )
+             ; (print "returning result-code: ") (force-output) (pp result-code) (force-output)
+             ; (print "\n ----- \n") (force-output)
              (expr*:value-set
-              source
-              `(c-define (,(expr*:value-set
-                            var
-                            (gen-symbol ns (expr*:value var)))
-                          ,@(map (lambda (f-form)
-                                   (let ([f (expand-syncapture f-form env)])
-                                     (expr*:value-set
-                                      f
-                                      (gen-symbol ns (expr*:value f)))))
-                                 formals))
-                   ,(extract-synclosure-crawler types)
-                   ,(extract-synclosure-crawler result)
-                   ,(extract-synclosure-crawler c-name)
-                   ,(extract-synclosure-crawler scope)
-                 ,@(expand-macro body env))))]
-          [else
+              code
+              result-code)))
+          
+          (else
            (error "Incorrectly placed c-define:"
-                  (expr*:strip-locationinfo source))]))))
+                  (expr*:strip-locationinfo code)))))))
 
    (c-define-type
     (lambda (source env mac-env)
