@@ -387,7 +387,7 @@
         (lambda clauses
           (cond-expand-build source
                              clauses
-                             (cons 'black-hole ##cond-expand-features))))
+                             ##cond-expand-features)))
        env)))
 
    (case
