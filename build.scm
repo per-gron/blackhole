@@ -49,6 +49,8 @@
         (lib . ,lib-module-resolver)
         (std . ,(package-module-resolver "~~lib/modules/std"))))
 
+;; Add cond-expand feature by default
+(set! ##cond-expand-features (cons 'black-hole ##cond-expand-features))
 
 ;; ---------- Add the hooks =) ----------
 
