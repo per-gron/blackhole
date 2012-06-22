@@ -227,7 +227,7 @@
           (set! prev-hook c#expand-source)
           (set! c#expand-source hook))
         (lambda ()
-          (compile-file-to-c "/dev/null"
+          (compile-file-to-target "/dev/null"
                              output: fn
                              options: options))
         (lambda ()
