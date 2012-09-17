@@ -1095,11 +1095,11 @@
                       (resolve-one-module module)))
     (calc-mode 'load))
    (if to-c
-       (compile-file-to-c fn
-                          output: (or (and (string? to-c) to-c)
-                                      (string-append (path-strip-extension fn)
-                                                     ".c"))
-                          options: (append options *compiler-options*))
+       (compile-file-to-target fn
+                               output: (or (and (string? to-c) to-c)
+                                           (string-append (path-strip-extension fn)
+                                                          ".c"))
+                               options: (append options *compiler-options*))
        (compile-file fn
                      options: (append options *compiler-options*)
                      cc-options: (string-append
