@@ -1,6 +1,6 @@
 (##namespace ("bh#"))
 
-(##include "~~/lib/gambit#.scm")
+(##include "~~lib/gambit#.scm")
 
 (declare (standard-bindings)
 	 (extended-bindings)
