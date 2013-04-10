@@ -105,8 +105,7 @@
 
     (if (not (equal? (module-reference-namespace module-ref)
                      namespace-string))
-        (error "The compiled module's namespace and its current \
-                namespace don't match"
+        (error "The compiled module's namespace and its current namespace don't match"
                namespace-string
                (module-reference-namespace module-ref)))
     (make-module-info

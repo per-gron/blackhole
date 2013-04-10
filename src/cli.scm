@@ -317,8 +317,7 @@
 
   (if (and (not (eqv? #t version))
            (not (= 1 (length args))))
-      (die/error "When specifying a version, only one package can be \
-                  installed at a time:" args))
+      (die/error "When specifying a version, only one package can be installed at a time:" args))
 
   (let ((pkgs-to-be-installed
          (or (find-packages-for-installation
@@ -383,8 +382,7 @@
 
   (if (and (not (eqv? #t version))
            (not (= 1 (length args))))
-      (die/error "When specifying a version, only one package can be \
-                  uninstalled at a time:" args))
+      (die/error "When specifying a version, only one package can be uninstalled at a time:" args))
 
   (let* ((pkgs (get-installed-packages))
          (after-pkgs
@@ -414,8 +412,7 @@
     (if (not (null? orphans))
         (cond
          (ignore-dependencies
-          (display "Warning: The following packages depend on the \
-                    packages you are requesting to remove:\n" port)
+          (display "Warning: The following packages depend on the packages you are requesting to remove:\n" port)
           (for-each
               (lambda (pkg)
                 (display " * " port)
@@ -431,8 +428,7 @@
          (else
           (apply
            die/error
-           (cons "The following packages depend on the packages \
-                  you are requesting to remove:\n"
+           (cons "The following packages depend on the packages you are requesting to remove:\n"
                  (map package-name&version
                    orphans))))))
 
