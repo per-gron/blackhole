@@ -56,7 +56,7 @@
                               (map (lambda (url)
                                      (list " " url))
                                    urls)))
-                      " 2>/dev/null")))
+                      " 2>" null-device)))
                (error "Failed to fetch urls" urls)))
 
           (for-each (lambda (fn)

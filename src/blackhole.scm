@@ -9,6 +9,7 @@
 
 (define *blackhole-work-dir* "~/.blackhole")
 
+(##include "os-specific.scm")           ;; Operating system specific definitions
 (##include "tree.scm")                  ;; A functional weighted tree data structure
 (##include "util.scm")                  ;; Utility functions.
 (##include "expr.scm")                  ;; Library for handling Gambit
