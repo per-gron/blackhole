@@ -52,9 +52,7 @@
 
    ((not (equal? (module-reference-loader module-reference)
                  (module-reference-loader ref)))
-    (error "Cannot absolutize a relative module reference with \
-            respect to a module reference with a different module \
-            loader" module-reference ref))
+    (error "Cannot absolutize a relative module reference with respect to a module reference with a different module loader" module-reference ref))
 
    (else
     (make-module-reference
