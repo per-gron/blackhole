@@ -33,10 +33,10 @@
 ;; Returns false for expressions without 'attached notes'
 (define (expr? obj)
   (and (vector? obj)
-       (##fixnum.= (##vector-length obj) 4)
+       (= (##vector-length obj) 4)
        (let ((v0 (##vector-ref obj 0)))
 	 (and (vector? v0)
-	      (##fixnum.= (##vector-length v0) 1)
+	      (= (##vector-length v0) 1)
 	      (let ((v00 (##vector-ref v0 0)))
 		(case v00
 		  ((source1 source2) #t)
