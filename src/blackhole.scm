@@ -1,6 +1,6 @@
 (##namespace ("bh#"))
 
-(##include "~~lib/gambit#.scm")
+(##include "~~/lib/gambit#.scm")
 
 (declare (standard-bindings)
 	 (extended-bindings)
@@ -80,7 +80,7 @@
               (begin
                 (print (loader-module-name (module-reference-loader mod)
                                            (module-reference-path mod)))
-                (if (##fixnum.< 0 level)
+                (if (< 0 level)
                     (print "/")))))))
      (##repl-channel-ports-read-command channel level depth))))
 

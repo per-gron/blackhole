@@ -108,5 +108,5 @@ Please drop me a line at *per dot eckerdal at gmail dot com* or use
 the Gambit mailing list if you have any questions.
 
 The [Black Hole page at the Gambit
-wiki](http://dynamo.iro.umontreal.ca/~gambit/wiki/index.php/Black_Hole)
+wiki](http://dynamo.iro.umontreal.ca/wiki/index.php/Black_Hole)
 might also be of interest.

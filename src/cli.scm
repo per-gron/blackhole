@@ -37,7 +37,7 @@
     (and (opt? str)
          (not (long-opt? str))))
   
-  (let loop ((args args)
+  (let loop ((args (list-copy args))
              (args-sans-opts '())
              (opts '()))
     
